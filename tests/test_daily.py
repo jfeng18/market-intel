@@ -34,6 +34,11 @@ def test_daily_mock_shape():
     assert data["map"]["layers"]
     assert data["watchlist"]["items"]
     assert data["portfolio_review"]["items"]
+    assert data["coverage_context"]["available"] is True
+    assert data["coverage_context"]["pool"] == "ai-energy"
+    assert data["coverage_context"]["universe"]["available"] is False
+    assert "data.coverage_context" in data["agent_contract"]["stable_fields"]
+    assert "data.coverage_context.universe.sector_profile" in data["agent_contract"]["stable_fields"]
     assert "data.portfolio_review.repeated_exposures" in data["agent_contract"]["stable_fields"]
     assert "data.risk_register" in data["agent_contract"]["stable_fields"]
     assert "data.risk_register[].affected_symbols" in data["agent_contract"]["stable_fields"]

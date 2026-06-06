@@ -26,6 +26,7 @@ from .core.journal import (
 )
 from .core.json_output import envelope, error
 from .core.map_view import build_market_map
+from .core.models import Holding, PoolItem
 from .core.normalize import explain_pool_item, find_pool_item
 from .core.pool_loader import DEFAULT_POOL, default_pool_path, list_pools, load_pool
 from .core.portfolio import build_portfolio_explain, build_portfolio_review
@@ -1195,6 +1196,7 @@ def handle_daily(
         data["validation"] = validation["validation"]
     data["pool"] = pool
     data["mode"] = brief_mode(use_mock, use_runtime, quotes_file, holdings_file)
+    data["coverage_context"] = daily_coverage_context(pool, items, holdings)
     data["sources"] = {
         "quotes": {"mode": quote_mode, "source": quote_source},
         "holdings": {"mode": holdings_mode, "source": holdings_source},
@@ -1248,6 +1250,22 @@ def handle_daily(
         data=data,
         source="%s;%s" % (quote_source, holdings_source),
     )
+
+
+def daily_coverage_context(pool: str, items: List[PoolItem], holdings: List[Holding]) -> Dict[str, object]:
+    coverage = build_pool_coverage(pool, items, holdings=holdings)
+    return {
+        "available": True,
+        "pool": coverage.get("pool"),
+        "scope": coverage.get("scope"),
+        "status": coverage.get("status"),
+        "summary": coverage.get("summary"),
+        "universe": coverage.get("universe"),
+        "holdings_coverage": coverage.get("holdings_coverage"),
+        "gaps": list(coverage.get("gaps", []))[:5] if isinstance(coverage.get("gaps"), list) else [],
+        "next_actions": list(coverage.get("next_actions", []))[:5] if isinstance(coverage.get("next_actions"), list) else [],
+        "guardrails": list(coverage.get("guardrails", []))[:5] if isinstance(coverage.get("guardrails"), list) else [],
+    }
 
 
 def handle_focus(

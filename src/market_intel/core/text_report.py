@@ -824,6 +824,10 @@ def render_focus_text(payload: Dict[str, object]) -> str:
         "数据状态",
     ]
     lines.extend(render_focus_data_status(data.get("data_status", {})))
+    coverage = data.get("coverage_context", {}) if isinstance(data.get("coverage_context"), dict) else {}
+    if coverage:
+        lines.extend(["", "覆盖底座"])
+        lines.extend(render_focus_coverage_context(coverage))
     lines.extend(["", "市场焦点"])
     lines.extend(render_focus_market(data.get("market_focus", {})))
     lines.extend(["", "组合压力"])
@@ -864,6 +868,63 @@ def render_focus_data_status(value: object) -> List[str]:
         lines.append("   重点: %s" % "；".join(rendered))
     if status.get("command"):
         lines.append("   命令: %s" % status.get("command"))
+    return lines
+
+
+def render_focus_coverage_context(value: object) -> List[str]:
+    coverage = value if isinstance(value, dict) else {}
+    if not coverage.get("available"):
+        return ["- %s" % (coverage.get("summary") or "暂无复盘池覆盖上下文。")]
+    lines = [
+        "- %s | %s | 缺口 %s"
+        % (
+            coverage.get("pool") or "-",
+            coverage.get("status") or "-",
+            coverage.get("gap_count", 0),
+        )
+    ]
+    if coverage.get("summary"):
+        lines.append("   摘要: %s" % coverage.get("summary"))
+    universe = coverage.get("universe", {}) if isinstance(coverage.get("universe"), dict) else {}
+    profile = universe.get("sector_profile", {}) if isinstance(universe.get("sector_profile"), dict) else {}
+    if universe:
+        lines.append(
+            "   全 A: %s | 记录 %s | 行业 %s | 概念 %s | 指数 %s"
+            % (
+                "已接入" if universe.get("available") else "未接入",
+                universe.get("record_count", 0),
+                universe.get("industry_count", 0),
+                universe.get("concept_count", 0),
+                universe.get("index_membership_count", 0),
+            )
+        )
+    if profile:
+        lines.append(
+            "   字段覆盖: 行业 %.1f%% | 概念 %.1f%% | 指数 %.1f%%"
+            % (
+                float(profile.get("industry_coverage_ratio") or 0) * 100,
+                float(profile.get("concept_coverage_ratio") or 0) * 100,
+                float(profile.get("index_coverage_ratio") or 0) * 100,
+            )
+        )
+        missing_counts = profile.get("missing_field_counts", {}) if isinstance(profile.get("missing_field_counts"), dict) else {}
+        if any(int(count or 0) for count in missing_counts.values()):
+            lines.append(
+                "   缺字段: 行业 %s | 概念 %s | 指数 %s"
+                % (
+                    missing_counts.get("industry", 0),
+                    missing_counts.get("concepts", 0),
+                    missing_counts.get("index_membership", 0),
+                )
+            )
+    gaps = coverage.get("top_gaps", []) if isinstance(coverage.get("top_gaps"), list) else []
+    for gap in gaps[:3]:
+        if isinstance(gap, dict):
+            lines.append("   缺口: %s | %s" % (gap.get("severity"), gap.get("id")))
+    actions = coverage.get("next_actions", []) if isinstance(coverage.get("next_actions"), list) else []
+    for action in actions[:2]:
+        if isinstance(action, dict) and action.get("command"):
+            lines.append("   下一步: %s" % action.get("command"))
     return lines
 
 

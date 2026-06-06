@@ -11,6 +11,7 @@ def build_focus_report(daily: Dict[str, object], limit: int = 5, step_limit: int
     review_path = daily.get("review_path", []) if isinstance(daily.get("review_path"), list) else []
     security_queue = daily.get("security_review_queue", []) if isinstance(daily.get("security_review_queue"), list) else []
     command_queue = daily.get("command_queue", []) if isinstance(daily.get("command_queue"), list) else []
+    coverage = daily.get("coverage_context", {}) if isinstance(daily.get("coverage_context"), dict) else {}
 
     priority_securities = [focus_security(item) for item in security_queue[:limit] if isinstance(item, dict)]
     next_steps = [focus_step(item) for item in review_path[:step_limit] if isinstance(item, dict)]
@@ -21,6 +22,7 @@ def build_focus_report(daily: Dict[str, object], limit: int = 5, step_limit: int
         "mode": daily.get("mode"),
         "pool": daily.get("pool"),
         "data_status": focus_data_status(daily, validation),
+        "coverage_context": focus_coverage_context(coverage),
         "market_focus": focus_market(brief, market_map),
         "portfolio_pressure": focus_portfolio_pressure(portfolio, risk_register),
         "priority_securities": priority_securities,
@@ -40,6 +42,9 @@ def focus_contract() -> Dict[str, object]:
         "stable_fields": [
             "data.headline",
             "data.data_status",
+            "data.coverage_context",
+            "data.coverage_context.universe.sector_profile",
+            "data.coverage_context.next_actions",
             "data.market_focus",
             "data.portfolio_pressure",
             "data.priority_securities",
@@ -107,6 +112,64 @@ def focus_data_status(daily: Dict[str, object], validation: Dict[str, object]) -
         "top_errors": compact_issues(errors),
         "top_warnings": compact_issues(warnings),
         "command": data_status_command(daily, state),
+    }
+
+
+def focus_coverage_context(coverage: Dict[str, object]) -> Dict[str, object]:
+    if not coverage.get("available"):
+        return {
+            "available": False,
+            "summary": "暂无复盘池覆盖上下文。",
+            "universe": {"available": False, "sector_profile": {}},
+            "gap_count": 0,
+            "top_gaps": [],
+            "next_actions": [],
+        }
+    universe = coverage.get("universe", {}) if isinstance(coverage.get("universe"), dict) else {}
+    profile = universe.get("sector_profile", {}) if isinstance(universe.get("sector_profile"), dict) else {}
+    gaps = coverage.get("gaps", []) if isinstance(coverage.get("gaps"), list) else []
+    actions = coverage.get("next_actions", []) if isinstance(coverage.get("next_actions"), list) else []
+    return {
+        "available": True,
+        "pool": coverage.get("pool"),
+        "scope": coverage.get("scope"),
+        "status": coverage.get("status"),
+        "summary": coverage.get("summary"),
+        "universe": {
+            "available": bool(universe.get("available")),
+            "record_count": universe.get("record_count", 0),
+            "industry_count": universe.get("industry_count", 0),
+            "concept_count": universe.get("concept_count", 0),
+            "index_membership_count": universe.get("index_membership_count", 0),
+            "sector_profile": {
+                "industry_coverage_ratio": profile.get("industry_coverage_ratio", 0),
+                "concept_coverage_ratio": profile.get("concept_coverage_ratio", 0),
+                "index_coverage_ratio": profile.get("index_coverage_ratio", 0),
+                "top_industries": list(profile.get("top_industries", []))[:5] if isinstance(profile.get("top_industries"), list) else [],
+                "missing_field_counts": profile.get("missing_field_counts", {}) if isinstance(profile.get("missing_field_counts"), dict) else {},
+                "missing_field_samples": list(profile.get("missing_field_samples", []))[:5] if isinstance(profile.get("missing_field_samples"), list) else [],
+                "coverage_flags": list(profile.get("coverage_flags", [])) if isinstance(profile.get("coverage_flags"), list) else [],
+            },
+        },
+        "gap_count": len(gaps),
+        "top_gaps": [
+            {
+                "id": item.get("id"),
+                "severity": item.get("severity"),
+                "message": item.get("message"),
+            }
+            for item in gaps[:5]
+            if isinstance(item, dict)
+        ],
+        "next_actions": [
+            {
+                "id": item.get("id"),
+                "command": item.get("command"),
+                "done_when": item.get("done_when"),
+            }
+            for item in actions[:5]
+            if isinstance(item, dict)
+        ],
     }
 
 

@@ -206,6 +206,11 @@ def test_agent_briefing_ready_without_journal(monkeypatch, tmp_path):
     assert data["daily"]["watchlist"]["top_items"]
     assert data["daily"]["watchlist"]["top_items"][0]["commands"]
     assert data["daily"]["portfolio_review"]["top_items"]
+    assert data["daily"]["coverage_context"]["available"] is True
+    assert data["daily"]["coverage_context"]["pool"] == "ai-energy"
+    assert data["daily"]["coverage_context"]["universe"]["available"] is False
+    assert "data.daily.coverage_context" in data["agent_contract"]["stable_fields"]
+    assert "data.daily.coverage_context.universe.sector_profile" in data["agent_contract"]["stable_fields"]
     assert data["daily"]["portfolio_review"]["top_items"][0]["commands"][0].startswith("market-intel portfolio explain")
     exposure = data["daily"]["portfolio_exposure"]
     assert exposure["has_concentration"] is True
@@ -298,6 +303,8 @@ def test_agent_briefing_ready_without_journal(monkeypatch, tmp_path):
     assert "data.review_focus" in data["agent_contract"]["stable_fields"]
     assert "data.review_checklist" in data["agent_contract"]["stable_fields"]
     assert "data.daily.portfolio_exposure" in data["agent_contract"]["stable_fields"]
+    assert "data.daily.coverage_context" in data["agent_contract"]["stable_fields"]
+    assert "data.daily.coverage_context.universe.sector_profile" in data["agent_contract"]["stable_fields"]
     assert "data.daily.risk_register" in data["agent_contract"]["stable_fields"]
     assert "data.daily.risk_register[].affected_symbols" in data["agent_contract"]["stable_fields"]
     assert "data.daily.review_path" in data["agent_contract"]["stable_fields"]
@@ -321,6 +328,44 @@ def test_agent_briefing_ready_without_journal(monkeypatch, tmp_path):
     assert "data.command_queue[].state_effect" in data["agent_contract"]["stable_fields"]
     assert "data.security_review_queue" in data["agent_contract"]["stable_fields"]
     assert "data.history.latest_entry.latest_note" in data["agent_contract"]["stable_fields"]
+
+
+def test_agent_briefing_surfaces_all_a_sector_profile(monkeypatch, tmp_path):
+    monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(tmp_path / "runtime"))
+    universe_path = tmp_path / "a_share_universe.csv"
+    universe_path.write_text(
+        "证券代码,证券名称,行业,概念,指数成分,上市状态\n"
+        "000001,平安银行,银行,,沪深300,listed\n",
+        encoding="utf-8",
+    )
+    quotes_path = tmp_path / "quotes.csv"
+    quotes_path.write_text(
+        "证券代码,证券名称,交易日期,最新价,涨跌幅,成交额,量比,换手率,振幅,涨停,阶段新高,日内回落\n"
+        "000001,平安银行,2026-06-07,11.20,1.2%,9.8亿,1.4,0.8%,2.1%,否,否,0.4%\n",
+        encoding="utf-8",
+    )
+    holdings_path = tmp_path / "holdings.csv"
+    holdings_path.write_text(
+        "证券代码,证券名称,持仓数量\n"
+        "000001,平安银行,100\n",
+        encoding="utf-8",
+    )
+    handle_import_universe(str(universe_path), use_runtime=True)
+    handle_import_quotes(str(quotes_path), use_runtime=True)
+    handle_import_holdings(str(holdings_path), use_runtime=True)
+
+    payload = handle_agent_briefing("all-a", max_quote_age_days=9999)
+    coverage = payload["data"]["daily"]["coverage_context"]
+    profile = coverage["universe"]["sector_profile"]
+
+    assert payload["ok"] is True
+    assert coverage["pool"] == "all-a"
+    assert coverage["universe"]["available"] is True
+    assert profile["industry_coverage_ratio"] == 1
+    assert profile["concept_coverage_ratio"] == 0
+    assert profile["index_coverage_ratio"] == 1
+    assert profile["coverage_flags"] == ["concepts_missing"]
+    assert any(action["id"] == "complete_a_share_universe_fields" for action in coverage["next_actions"])
 
 
 def test_agent_run_ready_executes_read_only_and_skips_writes(monkeypatch, tmp_path):

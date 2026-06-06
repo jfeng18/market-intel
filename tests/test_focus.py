@@ -13,6 +13,11 @@ def test_focus_mock_shape():
     assert payload["command"] == "focus"
     assert data["headline"]
     assert data["data_status"]["state"] == "warning"
+    assert data["coverage_context"]["available"] is True
+    assert data["coverage_context"]["pool"] == "ai-energy"
+    assert data["coverage_context"]["universe"]["available"] is False
+    assert "data.coverage_context" in data["agent_contract"]["stable_fields"]
+    assert "data.coverage_context.universe.sector_profile" in data["agent_contract"]["stable_fields"]
     assert data["market_focus"]["strongest_chain"]["sub_sector"] == "液冷"
     assert data["portfolio_pressure"]["repeated_exposure_count"] >= 1
     assert data["portfolio_pressure"]["repeated_exposures"][0]["symbols"]
@@ -72,6 +77,8 @@ def test_focus_text_renderer():
     text = render_focus_text(payload)
 
     assert "market-intel focus" in text
+    assert "覆盖底座" in text
+    assert "全 A: 未接入" in text
     assert "市场焦点" in text
     assert "组合压力" in text
     assert "优先标的" in text
@@ -84,6 +91,31 @@ def test_focus_text_renderer():
     assert "先跑: market-intel portfolio review --mock --text --pool ai-energy" in text
     assert "buy" not in text.lower()
     assert "sell" not in text.lower()
+
+
+def test_focus_surfaces_all_a_sector_profile(monkeypatch, tmp_path):
+    universe_file = tmp_path / "a_share_universe.csv"
+    universe_file.write_text(
+        "证券代码,证券名称,行业,概念,指数成分,上市状态\n"
+        "000001,平安银行,银行,,沪深300,listed\n"
+        "600519,贵州茅台,,白酒;消费,,listed\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("MARKET_INTEL_A_SHARE_UNIVERSE_PATHS", str(universe_file))
+
+    payload = handle_focus("all-a", use_mock=True, top=1)
+    data = payload["data"]
+    profile = data["coverage_context"]["universe"]["sector_profile"]
+    text = render_focus_text(payload)
+
+    assert payload["ok"] is True
+    assert data["coverage_context"]["pool"] == "all-a"
+    assert data["coverage_context"]["universe"]["available"] is True
+    assert profile["industry_coverage_ratio"] == 0.5
+    assert profile["coverage_flags"] == ["industry_missing", "concepts_missing", "index_membership_missing"]
+    assert any(action["id"] == "complete_a_share_universe_fields" for action in data["coverage_context"]["next_actions"])
+    assert "字段覆盖: 行业 50.0% | 概念 50.0% | 指数 50.0%" in text
+    assert "缺字段: 行业 1 | 概念 1 | 指数 1" in text
 
 
 def test_focus_cli_smoke(cli_cmd):

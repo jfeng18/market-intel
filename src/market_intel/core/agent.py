@@ -102,6 +102,7 @@ def compact_daily_payload(payload: Optional[Dict[str, object]]) -> Dict[str, obj
             "watchlist": {"count": 0, "top_items": []},
             "portfolio_review": {"count": 0, "high_review_count": 0, "top_items": []},
             "risk_flags": [],
+            "coverage_context": {"available": False},
             "risk_register": [],
             "review_path": [],
             "validation": empty_validation_summary(),
@@ -120,6 +121,7 @@ def compact_daily_payload(payload: Optional[Dict[str, object]]) -> Dict[str, obj
     portfolio = data.get("portfolio_review", {}) if isinstance(data.get("portfolio_review"), dict) else {}
     validation = data.get("validation", {}) if isinstance(data.get("validation"), dict) else {}
     validation_summary = validation.get("summary", {}) if isinstance(validation.get("summary"), dict) else {}
+    coverage = data.get("coverage_context", {}) if isinstance(data.get("coverage_context"), dict) else {}
     portfolio_items = portfolio.get("items", []) if isinstance(portfolio.get("items"), list) else []
     watchlist_items = watchlist.get("items", []) if isinstance(watchlist.get("items"), list) else []
 
@@ -145,6 +147,7 @@ def compact_daily_payload(payload: Optional[Dict[str, object]]) -> Dict[str, obj
         },
         "portfolio_exposure": compact_portfolio_exposure(portfolio, portfolio_items),
         "risk_flags": list(data.get("risk_flags", [])) if isinstance(data.get("risk_flags"), list) else [],
+        "coverage_context": compact_coverage_context(coverage),
         "risk_register": compact_risk_register(data.get("risk_register", [])),
         "review_path": compact_review_path(data.get("review_path", [])),
         "validation": compact_validation_summary(validation, validation_summary),
@@ -155,6 +158,54 @@ def compact_daily_payload(payload: Optional[Dict[str, object]]) -> Dict[str, obj
         "journal_actions": compact_daily_journal_actions(data.get("journal_actions", [])),
         "command_queue": compact_command_queue(data.get("command_queue", [])),
         "errors": [],
+    }
+
+
+def compact_coverage_context(value: object) -> Dict[str, object]:
+    coverage = value if isinstance(value, dict) else {}
+    if not coverage.get("available"):
+        return {"available": False}
+    universe = coverage.get("universe", {}) if isinstance(coverage.get("universe"), dict) else {}
+    profile = universe.get("sector_profile", {}) if isinstance(universe.get("sector_profile"), dict) else {}
+    return {
+        "available": True,
+        "pool": coverage.get("pool"),
+        "scope": coverage.get("scope"),
+        "status": coverage.get("status"),
+        "summary": coverage.get("summary"),
+        "universe": {
+            "available": bool(universe.get("available")),
+            "record_count": universe.get("record_count", 0),
+            "industry_count": universe.get("industry_count", 0),
+            "concept_count": universe.get("concept_count", 0),
+            "index_membership_count": universe.get("index_membership_count", 0),
+            "sector_profile": {
+                "industry_coverage_ratio": profile.get("industry_coverage_ratio", 0),
+                "concept_coverage_ratio": profile.get("concept_coverage_ratio", 0),
+                "index_coverage_ratio": profile.get("index_coverage_ratio", 0),
+                "top_industries": list(profile.get("top_industries", []))[:5] if isinstance(profile.get("top_industries"), list) else [],
+                "missing_field_counts": profile.get("missing_field_counts", {}) if isinstance(profile.get("missing_field_counts"), dict) else {},
+                "coverage_flags": list(profile.get("coverage_flags", [])) if isinstance(profile.get("coverage_flags"), list) else [],
+            },
+        },
+        "gaps": [
+            {
+                "id": item.get("id"),
+                "severity": item.get("severity"),
+                "message": item.get("message"),
+            }
+            for item in (coverage.get("gaps", []) if isinstance(coverage.get("gaps"), list) else [])[:5]
+            if isinstance(item, dict)
+        ],
+        "next_actions": [
+            {
+                "id": item.get("id"),
+                "command": item.get("command"),
+                "done_when": item.get("done_when"),
+            }
+            for item in (coverage.get("next_actions", []) if isinstance(coverage.get("next_actions"), list) else [])[:5]
+            if isinstance(item, dict)
+        ],
     }
 
 
@@ -1027,6 +1078,9 @@ def agent_briefing_contract(max_quote_age_days: int) -> Dict[str, object]:
             "data.daily.portfolio_review.top_items[].coverage_state_reasons",
             "data.daily.portfolio_review.top_items[].research_status",
             "data.daily.portfolio_exposure",
+            "data.daily.coverage_context",
+            "data.daily.coverage_context.universe.sector_profile",
+            "data.daily.coverage_context.next_actions",
             "data.daily.risk_register",
             "data.daily.risk_register[].severity",
             "data.daily.risk_register[].affected_symbols",
