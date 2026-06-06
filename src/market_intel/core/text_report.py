@@ -245,6 +245,8 @@ def render_pool_coverage_text(payload: Dict[str, object]) -> str:
     lines.extend(render_coverage_gaps(data.get("gaps", [])))
     lines.extend(["", "数据质量"])
     lines.extend(render_coverage_data_quality(data.get("data_quality", {})))
+    lines.extend(["", "数据质量清理队列"])
+    lines.extend(render_data_quality_queue(data.get("data_quality_queue", [])))
     lines.extend(["", "下一步"])
     lines.extend(render_coverage_next_actions(data.get("next_actions", [])))
     lines.extend(["", "边界"])
@@ -745,6 +747,42 @@ def render_coverage_data_quality(value: object) -> List[str]:
             flags = row.get("flags", []) if isinstance(row.get("flags"), list) else []
             rendered.append("%s %s[%s]" % (row.get("symbol") or "未上市", row.get("name"), ",".join(str(flag) for flag in flags[:3])))
         lines.append("   样例: %s" % "；".join(rendered))
+    return lines
+
+
+def render_data_quality_queue(value: object) -> List[str]:
+    rows = value if isinstance(value, list) else []
+    if not rows:
+        return ["- 暂无清理项。"]
+    lines = []
+    for row in rows[:5]:
+        if not isinstance(row, dict):
+            continue
+        lines.append(
+            "- #%s %s | %s | 影响 %s | %s"
+            % (
+                row.get("rank"),
+                row.get("flag"),
+                row.get("severity"),
+                row.get("affected_count", 0),
+                row.get("suggested_action") or "查看样本并修正。",
+            )
+        )
+        samples = row.get("samples", []) if isinstance(row.get("samples"), list) else []
+        rendered = []
+        for sample in samples[:3]:
+            if not isinstance(sample, dict):
+                continue
+            rendered.append(
+                "%s %s(row %s)"
+                % (
+                    sample.get("symbol") or sample.get("raw_code") or "未上市",
+                    sample.get("name"),
+                    sample.get("raw_row"),
+                )
+            )
+        if rendered:
+            lines.append("   样例: %s" % "；".join(rendered))
     return lines
 
 

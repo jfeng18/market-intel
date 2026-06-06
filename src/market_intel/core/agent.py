@@ -266,6 +266,7 @@ def compact_coverage_context(value: object) -> Dict[str, object]:
         return {"available": False}
     universe = coverage.get("universe", {}) if isinstance(coverage.get("universe"), dict) else {}
     profile = universe.get("sector_profile", {}) if isinstance(universe.get("sector_profile"), dict) else {}
+    data_quality_queue = coverage.get("data_quality_queue", []) if isinstance(coverage.get("data_quality_queue"), list) else []
     return {
         "available": True,
         "pool": coverage.get("pool"),
@@ -296,6 +297,7 @@ def compact_coverage_context(value: object) -> Dict[str, object]:
             for item in (coverage.get("gaps", []) if isinstance(coverage.get("gaps"), list) else [])[:5]
             if isinstance(item, dict)
         ],
+        "data_quality_queue": compact_coverage_data_quality_queue(data_quality_queue),
         "next_actions": [
             {
                 "id": item.get("id"),
@@ -306,6 +308,37 @@ def compact_coverage_context(value: object) -> Dict[str, object]:
             if isinstance(item, dict)
         ],
     }
+
+
+def compact_coverage_data_quality_queue(rows: List[object]) -> List[Dict[str, object]]:
+    compact = []
+    for item in rows[:5]:
+        if not isinstance(item, dict):
+            continue
+        samples = item.get("samples", []) if isinstance(item.get("samples"), list) else []
+        compact.append(
+            {
+                "rank": item.get("rank"),
+                "flag": item.get("flag"),
+                "severity": item.get("severity"),
+                "category": item.get("category"),
+                "affected_count": item.get("affected_count", 0),
+                "suggested_action": item.get("suggested_action"),
+                "done_when": item.get("done_when"),
+                "review_command": item.get("review_command"),
+                "samples": [
+                    {
+                        "symbol": sample.get("symbol"),
+                        "name": sample.get("name"),
+                        "raw_row": sample.get("raw_row"),
+                        "raw_code": sample.get("raw_code"),
+                    }
+                    for sample in samples[:3]
+                    if isinstance(sample, dict)
+                ],
+            }
+        )
+    return compact
 
 
 def compact_daily_review_tasks(value: object) -> List[Dict[str, object]]:
@@ -1236,6 +1269,7 @@ def agent_briefing_contract(max_quote_age_days: int) -> Dict[str, object]:
             "data.daily.portfolio_exposure",
             "data.daily.coverage_context",
             "data.daily.coverage_context.universe.sector_profile",
+            "data.daily.coverage_context.data_quality_queue",
             "data.daily.coverage_context.next_actions",
             "data.daily.risk_register",
             "data.daily.risk_register[].severity",

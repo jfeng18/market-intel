@@ -289,6 +289,8 @@ market-intel holdings impact --runtime --json
 
 `pool coverage` 是复盘池覆盖度自检：给出 pool 范围、状态、A 股数量、市场分布、层级分布、数据质量标记、覆盖缺口和下一步命令。当前 `all-a` 会明确标记为 seed 覆盖，提醒 agent 和人不要把它当作完整全 A 结论。
 
+`data.data_quality_queue` 会把 `invalid_symbol`、`column_shift_suspected`、`missing_role`、`unknown_layer`、`duplicate_symbol_exposure` 等标记压成有优先级的清理队列。每项包含 `flag`、`severity`、`affected_count`、`samples`、`suggested_action`、`done_when` 和复验命令，方便人或 agent 先清最影响覆盖可信度的问题。
+
 可以先用 A 股基础清单扩展 `all-a` 的底座覆盖。CSV 支持 `symbol/name/industry/concepts/index_membership/listing_status`，也支持常见中文列名如 `证券代码/证券名称/行业/概念/指数成分/上市状态`。基础清单只代表“代码、名称、行业、概念、指数成分”的覆盖，不等于研究证据完成；匹配到基础清单的持仓会进入待复核覆盖队列。
 
 ```bash

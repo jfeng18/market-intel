@@ -55,6 +55,17 @@ def test_pool_coverage_all_a_reports_seed_boundaries():
     assert data["next_actions"][0]["command"] == "market-intel pool coverage --text"
     assert data["holdings_source"] == {"provided": False}
     assert data["expansion_queue"] == []
+    assert data["data_quality_queue"]
+    assert data["data_quality_queue"][0]["flag"] in {"invalid_symbol", "column_shift_suspected", "missing_role"}
+    assert data["data_quality_queue"][0]["severity"] == "high"
+    assert data["data_quality_queue"][0]["samples"]
+    assert data["data_quality_queue"][0]["done_when"]
+    assert data["data_quality_queue"][0]["review_command"] == "market-intel pool coverage --json"
+    cleanup_action = next(action for action in data["next_actions"] if action["id"] == "clean_data_quality_queue")
+    assert cleanup_action["focus"]["flag"] == data["data_quality_queue"][0]["flag"]
+    assert cleanup_action["rank"] == 2
+    assert "data.data_quality_queue" in data["agent_contract"]["stable_fields"]
+    assert "data.data_quality_queue[].samples" in data["agent_contract"]["stable_fields"]
 
 
 def test_pool_coverage_mock_holdings_reports_personal_coverage():
@@ -252,7 +263,7 @@ def test_pool_coverage_file_holdings_reports_unmatched_gap(tmp_path):
     assert data["expansion_queue"][0]["candidate_pool_row"]["status"] == "candidate"
     assert data["expansion_queue"][0]["candidate_pool_row"]["code"] == "000001"
     assert data["expansion_queue"][0]["required_fields"] == ["section", "level", "desc"]
-    assert data["next_actions"][2]["id"] == "review_expansion_queue"
+    assert any(action["id"] == "review_expansion_queue" for action in data["next_actions"])
     assert data["holdings_source"]["source"] == "holdings_file"
     assert str(holdings_file) not in json.dumps(payload, ensure_ascii=False)
 
@@ -484,6 +495,8 @@ def test_pool_coverage_text_renderer():
     assert "market-intel pool coverage" in text
     assert "持仓覆盖" in text
     assert "覆盖缺口" in text
+    assert "数据质量清理队列" in text
+    assert "影响" in text
     assert "all_a_seed_only" in text
     assert "交易动作" not in text
     assert "buy" not in text.lower()

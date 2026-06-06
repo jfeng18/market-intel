@@ -1437,6 +1437,7 @@ def daily_coverage_context(pool: str, items: List[PoolItem], holdings: List[Hold
         "universe": coverage.get("universe"),
         "holdings_coverage": coverage.get("holdings_coverage"),
         "gaps": list(coverage.get("gaps", []))[:5] if isinstance(coverage.get("gaps"), list) else [],
+        "data_quality_queue": list(coverage.get("data_quality_queue", []))[:5] if isinstance(coverage.get("data_quality_queue"), list) else [],
         "next_actions": list(coverage.get("next_actions", []))[:5] if isinstance(coverage.get("next_actions"), list) else [],
         "guardrails": list(coverage.get("guardrails", []))[:5] if isinstance(coverage.get("guardrails"), list) else [],
     }
@@ -2495,6 +2496,8 @@ def compact_dashboard_coverage_context(coverage: Dict[str, object]) -> Dict[str,
     profile = universe.get("sector_profile", {}) if isinstance(universe.get("sector_profile"), dict) else {}
     raw_gaps = coverage.get("gaps") if isinstance(coverage.get("gaps"), list) else None
     gaps = raw_gaps if raw_gaps is not None else coverage.get("top_gaps", [])
+    raw_quality_queue = coverage.get("data_quality_queue") if isinstance(coverage.get("data_quality_queue"), list) else coverage.get("top_data_quality_queue")
+    data_quality_queue = raw_quality_queue if isinstance(raw_quality_queue, list) else []
     actions = coverage.get("next_actions", []) if isinstance(coverage.get("next_actions"), list) else []
     return {
         "available": True,
@@ -2529,6 +2532,7 @@ def compact_dashboard_coverage_context(coverage: Dict[str, object]) -> Dict[str,
             for item in gaps[:5]
             if isinstance(item, dict)
         ] if isinstance(gaps, list) else [],
+        "top_data_quality_queue": compact_data_quality_queue(data_quality_queue),
         "next_actions": [
             {
                 "id": item.get("id"),
@@ -2540,6 +2544,37 @@ def compact_dashboard_coverage_context(coverage: Dict[str, object]) -> Dict[str,
         ],
         "write_policy": "只说明复盘池和全 A 基础清单覆盖边界，不生成交易指令。",
     }
+
+
+def compact_data_quality_queue(rows: List[object]) -> List[Dict[str, object]]:
+    compact = []
+    for item in rows[:5]:
+        if not isinstance(item, dict):
+            continue
+        samples = item.get("samples", []) if isinstance(item.get("samples"), list) else []
+        compact.append(
+            {
+                "rank": item.get("rank"),
+                "flag": item.get("flag"),
+                "severity": item.get("severity"),
+                "category": item.get("category"),
+                "affected_count": item.get("affected_count", 0),
+                "suggested_action": item.get("suggested_action"),
+                "done_when": item.get("done_when"),
+                "review_command": item.get("review_command"),
+                "samples": [
+                    {
+                        "symbol": sample.get("symbol"),
+                        "name": sample.get("name"),
+                        "raw_row": sample.get("raw_row"),
+                        "raw_code": sample.get("raw_code"),
+                    }
+                    for sample in samples[:3]
+                    if isinstance(sample, dict)
+                ],
+            }
+        )
+    return compact
 
 
 def dashboard_state(run_data: Dict[str, object], digest: Dict[str, object]) -> str:
@@ -3082,6 +3117,7 @@ def dashboard_contract() -> Dict[str, object]:
             "data.coverage_context.universe",
             "data.coverage_context.universe.sector_profile",
             "data.coverage_context.top_gaps",
+            "data.coverage_context.top_data_quality_queue",
             "data.coverage_context.next_actions",
             "data.market_pulse",
             "data.market_pulse.top_groups",
@@ -3453,6 +3489,7 @@ def agent_run_digest_coverage_context(daily: Dict[str, object]) -> Dict[str, obj
     universe = coverage.get("universe", {}) if isinstance(coverage.get("universe"), dict) else {}
     profile = universe.get("sector_profile", {}) if isinstance(universe.get("sector_profile"), dict) else {}
     gaps = coverage.get("gaps", []) if isinstance(coverage.get("gaps"), list) else []
+    data_quality_queue = coverage.get("data_quality_queue", []) if isinstance(coverage.get("data_quality_queue"), list) else []
     actions = coverage.get("next_actions", []) if isinstance(coverage.get("next_actions"), list) else []
     return {
         "available": True,
@@ -3486,6 +3523,7 @@ def agent_run_digest_coverage_context(daily: Dict[str, object]) -> Dict[str, obj
             for item in gaps[:5]
             if isinstance(item, dict)
         ],
+        "top_data_quality_queue": compact_data_quality_queue(data_quality_queue),
         "next_actions": [
             {
                 "id": item.get("id"),
@@ -7020,6 +7058,7 @@ def agent_run_contract() -> Dict[str, object]:
             "data.review_digest",
             "data.review_digest.coverage_context",
             "data.review_digest.coverage_context.universe.sector_profile",
+            "data.review_digest.coverage_context.top_data_quality_queue",
             "data.review_digest.coverage_context.next_actions",
             "data.review_digest.market_scan",
             "data.review_digest.market_scan.top_groups",
@@ -7156,6 +7195,7 @@ def agent_next_contract() -> Dict[str, object]:
             "data.source_agent_run_state",
             "data.coverage_context",
             "data.coverage_context.universe.sector_profile",
+            "data.coverage_context.top_data_quality_queue",
             "data.coverage_context.next_actions",
             "data.market_scan",
             "data.market_scan.top_groups",
@@ -7291,6 +7331,12 @@ def command_payload_observations(payload: Dict[str, object]) -> List[str]:
             for item in gaps[:3]
             if isinstance(item, dict)
         )
+        queue = data.get("data_quality_queue", []) if isinstance(data.get("data_quality_queue"), list) else []
+        if queue and isinstance(queue[0], dict):
+            observations.append(
+                "数据质量优先清理: %s | %s | 影响 %s。"
+                % (queue[0].get("flag"), queue[0].get("severity"), queue[0].get("affected_count", 0))
+            )
     elif command == "pool.explain":
         facts = data.get("facts", {}) if isinstance(data.get("facts"), dict) else {}
         observations.append("%s %s | %s/%s | 暴露 %s 条。" % (

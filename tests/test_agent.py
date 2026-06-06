@@ -418,6 +418,7 @@ def test_agent_run_ready_executes_read_only_and_skips_writes(monkeypatch, tmp_pa
     assert digest["coverage_context"]["available"] is True
     assert digest["coverage_context"]["pool"] == "ai-energy"
     assert digest["coverage_context"]["universe"]["available"] is False
+    assert isinstance(digest["coverage_context"]["top_data_quality_queue"], list)
     assert digest["market_scan"]["available"] is True
     assert digest["market_scan"]["read"] is True
     assert digest["market_scan"]["top_groups"]
@@ -425,6 +426,7 @@ def test_agent_run_ready_executes_read_only_and_skips_writes(monkeypatch, tmp_pa
     assert digest["market_scan"]["write_policy"] == "只读全市场扫描，不生成交易指令。"
     assert "data.review_digest.coverage_context" in data["agent_contract"]["stable_fields"]
     assert "data.review_digest.coverage_context.universe.sector_profile" in data["agent_contract"]["stable_fields"]
+    assert "data.review_digest.coverage_context.top_data_quality_queue" in data["agent_contract"]["stable_fields"]
     assert "data.review_digest.market_scan" in data["agent_contract"]["stable_fields"]
     assert "data.review_digest.market_scan.top_groups" in data["agent_contract"]["stable_fields"]
     assert "data.review_digest.market_scan.top_candidates" in data["agent_contract"]["stable_fields"]
@@ -963,6 +965,7 @@ def test_agent_next_returns_compact_handoff(monkeypatch, tmp_path):
     assert data["review_completion"]["checks"]
     assert "data.coverage_context" in data["agent_contract"]["stable_fields"]
     assert "data.coverage_context.universe.sector_profile" in data["agent_contract"]["stable_fields"]
+    assert "data.coverage_context.top_data_quality_queue" in data["agent_contract"]["stable_fields"]
     assert "data.market_scan" in data["agent_contract"]["stable_fields"]
     assert "data.market_scan.top_groups" in data["agent_contract"]["stable_fields"]
     assert "data.market_scan.top_candidates" in data["agent_contract"]["stable_fields"]
@@ -995,6 +998,8 @@ def test_dashboard_returns_one_screen_workbench(monkeypatch, tmp_path):
     assert data["coverage_context"]["universe"]["sector_profile"]["industry_coverage_ratio"] == 1
     assert data["coverage_context"]["gap_count"] >= 1
     assert data["coverage_context"]["top_gaps"]
+    assert data["coverage_context"]["top_data_quality_queue"]
+    assert data["coverage_context"]["top_data_quality_queue"][0]["samples"]
     assert data["market_pulse"]["available"] is True
     assert data["market_pulse"]["top_groups"]
     assert data["market_pulse"]["candidates"]
@@ -1017,6 +1022,7 @@ def test_dashboard_returns_one_screen_workbench(monkeypatch, tmp_path):
     assert "data.coverage_context" in data["agent_contract"]["stable_fields"]
     assert "data.coverage_context.universe.sector_profile" in data["agent_contract"]["stable_fields"]
     assert "data.coverage_context.top_gaps" in data["agent_contract"]["stable_fields"]
+    assert "data.coverage_context.top_data_quality_queue" in data["agent_contract"]["stable_fields"]
     assert "data.market_pulse.candidates" in data["agent_contract"]["stable_fields"]
     assert "data.portfolio_pulse.top_holdings" in data["agent_contract"]["stable_fields"]
     assert "data.action_lane.items" in data["agent_contract"]["stable_fields"]

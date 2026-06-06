@@ -35,11 +35,17 @@ def build_pool_coverage(
     tradable = [item for item in items if item.tradable and item.symbol]
     cn_a = [item for item in tradable if item.market == "CN_A"]
     data_quality = data_quality_summary(items)
+    data_quality_queue = build_data_quality_queue(pool, items, data_quality)
     universe = universe_summary(items)
     scope = str(definition.get("scope") or "")
     holdings_coverage = build_holdings_coverage(items, holdings)
     expansion_queue = build_expansion_queue(pool, scope, holdings_coverage)
     research_queue = build_research_queue(pool, holdings_coverage)
+    next_actions = coverage_next_actions(pool, scope, holdings_coverage, expansion_queue, research_queue, universe)
+    cleanup_action = data_quality_cleanup_action(pool, data_quality_queue)
+    if cleanup_action:
+        next_actions.insert(1, cleanup_action)
+    rerank_actions(next_actions)
     return {
         "pool": pool,
         "scope": scope,
@@ -58,12 +64,13 @@ def build_pool_coverage(
         "layer_distribution": layer_rows(items),
         "cn_a_board_distribution": counter_rows(cn_a_board(item.symbol) for item in cn_a),
         "data_quality": data_quality,
+        "data_quality_queue": data_quality_queue,
         "universe": universe,
         "holdings_coverage": holdings_coverage,
         "expansion_queue": expansion_queue,
         "research_queue": research_queue,
         "gaps": coverage_gaps(scope, items, cn_a, data_quality, holdings_coverage, universe),
-        "next_actions": coverage_next_actions(pool, scope, holdings_coverage, expansion_queue, research_queue, universe),
+        "next_actions": next_actions,
         "agent_contract": coverage_contract(),
         "guardrails": coverage_guardrails(scope, universe),
     }
@@ -583,6 +590,131 @@ def data_quality_summary(items: List[PoolItem]) -> Dict[str, object]:
     }
 
 
+DATA_QUALITY_FLAG_META = {
+    "invalid_symbol": {
+        "severity": "high",
+        "category": "symbol",
+        "reason": "原始 code 不是可识别证券代码，可能是板块标记、待上市公司或表格错位。",
+        "suggested_action": "确认该行是否证券；非证券行保留为说明行，证券行补正确 code。",
+        "done_when": "invalid_symbol 样本已被删除、标记为非证券，或补齐为有效证券代码。",
+    },
+    "column_shift_suspected": {
+        "severity": "high",
+        "category": "schema",
+        "reason": "系统从描述中恢复了证券代码，说明原始表格列可能错位。",
+        "suggested_action": "回看原始 CSV 行，把公司、代码、描述和 notes 放回正确列。",
+        "done_when": "重新运行 coverage 后，该行不再出现 column_shift_suspected。",
+    },
+    "pending_listing": {
+        "severity": "medium",
+        "category": "listing_status",
+        "reason": "该行是待上市或未上市主体，不能当作可交易证券。",
+        "suggested_action": "保留为产业链观察对象，或移到非证券/待上市说明区。",
+        "done_when": "pending 行不会进入可交易标的、热点候选或持仓覆盖匹配。",
+    },
+    "non_security_row": {
+        "severity": "medium",
+        "category": "non_security",
+        "reason": "该行更像分类标题、指标或说明，不是证券。",
+        "suggested_action": "确认 section/level/company/code 是否用于分组说明，避免被当成标的。",
+        "done_when": "非证券说明行保持 non_security，不参与 tradable、scan 或持仓匹配。",
+    },
+    "missing_role": {
+        "severity": "medium",
+        "category": "research_field",
+        "reason": "缺少链路角色，单票解释和板块聚合会变得粗糙。",
+        "suggested_action": "在 level/desc 中补齐龙头、核心、弹性、设备、材料、服务等角色定位。",
+        "done_when": "重点样本已补角色，coverage 的 missing_role 数量下降。",
+    },
+    "unknown_layer": {
+        "severity": "medium",
+        "category": "taxonomy",
+        "reason": "section 未能映射到已知层级，板块聚合可能丢失上下文。",
+        "suggested_action": "把 section 改成可识别的行业/主题层级，或扩展层级映射规则。",
+        "done_when": "unknown_layer 样本已归入明确行业/主题层级。",
+    },
+    "duplicate_symbol_exposure": {
+        "severity": "low",
+        "category": "dedupe",
+        "reason": "同一证券出现在多条链路中，需要确认是合理多链路暴露还是重复行。",
+        "suggested_action": "保留真实多链路暴露，合并重复描述，避免重复计数误导持仓压力。",
+        "done_when": "重复样本已确认保留或合并，exposure_count 与实际研究口径一致。",
+    },
+}
+
+DATA_QUALITY_SEVERITY_RANK = {"high": 0, "medium": 1, "low": 2}
+
+
+def build_data_quality_queue(
+    pool: str,
+    items: List[PoolItem],
+    data_quality: Dict[str, object],
+) -> List[Dict[str, object]]:
+    if not data_quality.get("flagged_item_count"):
+        return []
+    by_flag: Dict[str, List[PoolItem]] = {}
+    for item in items:
+        for flag in sorted(set(item.data_quality_flags)):
+            by_flag.setdefault(flag, []).append(item)
+    rows = []
+    for flag, flagged_items in by_flag.items():
+        meta = data_quality_flag_meta(flag)
+        rows.append(
+            {
+                "rank": 0,
+                "flag": flag,
+                "severity": meta["severity"],
+                "category": meta["category"],
+                "affected_count": len(flagged_items),
+                "reason": meta["reason"],
+                "suggested_action": meta["suggested_action"],
+                "done_when": meta["done_when"],
+                "review_command": "market-intel pool coverage --json%s" % pool_arg(pool),
+                "samples": data_quality_queue_samples(flagged_items),
+            }
+        )
+    rows.sort(
+        key=lambda row: (
+            DATA_QUALITY_SEVERITY_RANK.get(str(row.get("severity")), 9),
+            -int(row.get("affected_count", 0)),
+            str(row.get("flag") or ""),
+        )
+    )
+    for index, row in enumerate(rows, start=1):
+        row["rank"] = index
+    return rows
+
+
+def data_quality_flag_meta(flag: str) -> Dict[str, str]:
+    return DATA_QUALITY_FLAG_META.get(
+        flag,
+        {
+            "severity": "medium",
+            "category": "unknown",
+            "reason": "复盘池存在未分类的数据质量标记。",
+            "suggested_action": "查看样本行，确认是否需要补字段、改分类或扩展校验规则。",
+            "done_when": "该标记已被解释、修复或加入明确的质量规则。",
+        },
+    )
+
+
+def data_quality_queue_samples(items: List[PoolItem]) -> List[Dict[str, object]]:
+    samples = []
+    for item in items[:8]:
+        samples.append(
+            {
+                "symbol": item.symbol,
+                "name": item.name,
+                "raw_row": item.raw.get("raw_row"),
+                "raw_code": item.raw.get("raw_code"),
+                "raw_section": item.raw.get("raw_section"),
+                "raw_level": item.raw.get("raw_level"),
+                "flags": sorted(set(item.data_quality_flags)),
+            }
+        )
+    return samples
+
+
 def layer_rows(items: List[PoolItem]) -> List[Dict[str, object]]:
     rows = []
     by_layer: Dict[str, List[PoolItem]] = {}
@@ -1093,6 +1225,28 @@ def coverage_next_actions(
     return actions
 
 
+def data_quality_cleanup_action(pool: str, data_quality_queue: List[Dict[str, object]]) -> Optional[Dict[str, object]]:
+    if not data_quality_queue:
+        return None
+    first = data_quality_queue[0]
+    return {
+        "rank": 0,
+        "id": "clean_data_quality_queue",
+        "command": "market-intel pool coverage --json%s" % pool_arg(pool),
+        "done_when": "已按 data_quality_queue 的 rank 清理或解释高优先级标记，data_quality.flagged_item_count 下降。",
+        "focus": {
+            "flag": first.get("flag"),
+            "severity": first.get("severity"),
+            "affected_count": first.get("affected_count"),
+        },
+    }
+
+
+def rerank_actions(actions: List[Dict[str, object]]) -> None:
+    for index, action in enumerate(actions, start=1):
+        action["rank"] = index
+
+
 def coverage_contract() -> Dict[str, object]:
     return {
         "success": "ok=true 且 errors=[]",
@@ -1105,6 +1259,9 @@ def coverage_contract() -> Dict[str, object]:
             "data.layer_distribution",
             "data.cn_a_board_distribution",
             "data.data_quality",
+            "data.data_quality_queue",
+            "data.data_quality_queue[].samples",
+            "data.data_quality_queue[].done_when",
             "data.universe",
             "data.universe.sector_profile",
             "data.universe.sector_profile.top_industries",
