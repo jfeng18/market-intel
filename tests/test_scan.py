@@ -12,6 +12,7 @@ def test_scan_mock_defaults_to_all_a_seed():
 
     assert payload["ok"] is True
     assert payload["command"] == "scan"
+    assert payload["warnings"] == []
     assert data["pool"] == "all-a"
     assert data["scan_mode"] == "pool_chain_seed"
     assert data["sector_groups"]
@@ -25,6 +26,7 @@ def test_scan_mock_defaults_to_all_a_seed():
     assert data["candidate_securities"][0]["commands"][0].startswith("market-intel pool explain")
     assert data["coverage_context"]["available"] is True
     assert data["coverage_context"]["pool"] == "all-a"
+    assert data["coverage_context"]["top_data_quality_queue"]
     assert "data.sector_groups" in data["agent_contract"]["stable_fields"]
     assert "data.candidate_securities[].review_focus" in data["agent_contract"]["stable_fields"]
     assert "data.candidate_securities[].review_focus.classification" in data["agent_contract"]["stable_fields"]

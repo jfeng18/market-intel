@@ -327,7 +327,7 @@ market-intel pool coverage --runtime --text
 
 `pool research` 只导出 foundation 持仓的研究证据草稿，不自动生成研究结论。
 
-`scan` 是全 A / 复盘池扫描入口：只要求行情源，持仓源可选；有 A 股基础清单时按行业、概念、指数成分聚合，没有基础清单时退回当前复盘池链路。它输出 `sector_groups` 和 `candidate_securities`，每个候选都包含 `why_now`、`review_focus`、`checklist`、`coverage_state`、`research_status`、后续命令和完成标准。`review_focus` 会把行业/概念/指数或链路分类、覆盖/研究缺口、信号驱动、首个核对项和下一条命令压成稳定结构。`scan` 用来回答“今天全市场哪些板块和标的值得复盘”，不生成买卖动作、目标价或仓位建议。
+`scan` 是全 A / 复盘池扫描入口：只要求行情源，持仓源可选；有 A 股基础清单时按行业、概念、指数成分聚合，没有基础清单时退回当前复盘池链路。它输出 `sector_groups` 和 `candidate_securities`，每个候选都包含 `why_now`、`review_focus`、`checklist`、`coverage_state`、`research_status`、后续命令和完成标准。`review_focus` 会把行业/概念/指数或链路分类、覆盖/研究缺口、信号驱动、首个核对项和下一条命令压成稳定结构。`scan` 的顶层 `warnings` 不重复完整 pool 的数据质量告警；agent 应通过 `data.coverage_context.top_data_quality_queue` 或 `pool quality <flag>` 处理质量队列。`scan` 用来回答“今天全市场哪些板块和标的值得复盘”，不生成买卖动作、目标价或仓位建议。
 
 ```bash
 market-intel scan --runtime --text

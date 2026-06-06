@@ -562,6 +562,7 @@ def scan_contract() -> Dict[str, object]:
             "data.scan_mode",
             "data.coverage_context",
             "data.coverage_context.universe.sector_profile",
+            "data.coverage_context.top_data_quality_queue",
             "data.sector_groups",
             "data.sector_groups[].group_type",
             "data.sector_groups[].score",

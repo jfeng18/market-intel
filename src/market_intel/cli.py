@@ -1001,7 +1001,7 @@ def handle_scan(
     return envelope(
         command="scan",
         data=data,
-        warnings=pool_warnings(items),
+        warnings=[],
         source="pool:%s" % pool,
     )
 
@@ -1454,6 +1454,7 @@ def handle_daily(
 
 def daily_coverage_context(pool: str, items: List[PoolItem], holdings: List[Holding]) -> Dict[str, object]:
     coverage = build_pool_coverage(pool, items, holdings=holdings)
+    data_quality_queue = list(coverage.get("data_quality_queue", []))[:5] if isinstance(coverage.get("data_quality_queue"), list) else []
     return {
         "available": True,
         "pool": coverage.get("pool"),
@@ -1463,7 +1464,8 @@ def daily_coverage_context(pool: str, items: List[PoolItem], holdings: List[Hold
         "universe": coverage.get("universe"),
         "holdings_coverage": coverage.get("holdings_coverage"),
         "gaps": list(coverage.get("gaps", []))[:5] if isinstance(coverage.get("gaps"), list) else [],
-        "data_quality_queue": list(coverage.get("data_quality_queue", []))[:5] if isinstance(coverage.get("data_quality_queue"), list) else [],
+        "data_quality_queue": data_quality_queue,
+        "top_data_quality_queue": compact_data_quality_queue(data_quality_queue),
         "next_actions": list(coverage.get("next_actions", []))[:5] if isinstance(coverage.get("next_actions"), list) else [],
         "guardrails": list(coverage.get("guardrails", []))[:5] if isinstance(coverage.get("guardrails"), list) else [],
     }
