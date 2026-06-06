@@ -144,6 +144,113 @@ def render_pool_explain_text(payload: Dict[str, object]) -> str:
     return "\n".join(lines)
 
 
+def render_pool_coverage_text(payload: Dict[str, object]) -> str:
+    data = payload.get("data", {})
+    if not isinstance(data, dict):
+        return "market-intel pool coverage\n\n无数据。"
+    counts = data.get("counts", {}) if isinstance(data.get("counts"), dict) else {}
+    lines = [
+        "market-intel pool coverage",
+        "",
+        "总览",
+        "- %s | 状态 %s | 范围 %s" % (data.get("pool"), data.get("status"), data.get("scope")),
+        "- %s" % (data.get("summary") or "暂无摘要。"),
+        "",
+        "计数",
+        "- 条目 %s | 可交易 %s | A 股 %s | 非 A 股 %s | 不可交易 %s | 数据待复核 %s"
+        % (
+            counts.get("items", 0),
+            counts.get("tradable", 0),
+            counts.get("cn_a", 0),
+            counts.get("non_cn_a", 0),
+            counts.get("non_tradable", 0),
+            counts.get("data_quality_flagged", 0),
+        ),
+        "",
+        "市场分布",
+    ]
+    lines.extend(render_named_counts(data.get("market_distribution", []), empty="暂无市场分布。"))
+    lines.extend(["", "A 股板块"])
+    lines.extend(render_named_counts(data.get("cn_a_board_distribution", []), empty="暂无 A 股板块分布。"))
+    lines.extend(["", "层级分布"])
+    lines.extend(render_coverage_layers(data.get("layer_distribution", [])))
+    lines.extend(["", "覆盖缺口"])
+    lines.extend(render_coverage_gaps(data.get("gaps", [])))
+    lines.extend(["", "数据质量"])
+    lines.extend(render_coverage_data_quality(data.get("data_quality", {})))
+    lines.extend(["", "下一步"])
+    lines.extend(render_coverage_next_actions(data.get("next_actions", [])))
+    lines.extend(["", "边界"])
+    lines.extend(render_list(data.get("guardrails", []), empty="无。"))
+    return "\n".join(lines)
+
+
+def render_named_counts(value: object, empty: str) -> List[str]:
+    rows = value if isinstance(value, list) else []
+    if not rows:
+        return ["- %s" % empty]
+    lines = []
+    for row in rows[:8]:
+        if isinstance(row, dict):
+            lines.append("- %s: %s" % (row.get("name"), row.get("count")))
+    return lines or ["- %s" % empty]
+
+
+def render_coverage_layers(value: object) -> List[str]:
+    rows = value if isinstance(value, list) else []
+    if not rows:
+        return ["- 暂无层级分布。"]
+    lines = []
+    for row in rows[:8]:
+        if not isinstance(row, dict):
+            continue
+        lines.append(
+            "- %s | 条目 %s | 可交易 %s | A 股 %s"
+            % (row.get("layer"), row.get("item_count"), row.get("tradable_count"), row.get("cn_a_count"))
+        )
+    return lines
+
+
+def render_coverage_gaps(value: object) -> List[str]:
+    rows = value if isinstance(value, list) else []
+    if not rows:
+        return ["- 暂无覆盖缺口。"]
+    lines = []
+    for row in rows[:6]:
+        if isinstance(row, dict):
+            lines.append("- %s | %s: %s" % (row.get("severity"), row.get("id"), row.get("message")))
+    return lines
+
+
+def render_coverage_data_quality(value: object) -> List[str]:
+    quality = value if isinstance(value, dict) else {}
+    lines = ["- 待复核条目: %s" % quality.get("flagged_item_count", 0)]
+    top_flags = quality.get("top_flags", []) if isinstance(quality.get("top_flags"), list) else []
+    if top_flags:
+        lines.append("   标记: %s" % "；".join("%s(%s)" % (row.get("name"), row.get("count")) for row in top_flags[:5] if isinstance(row, dict)))
+    samples = quality.get("sample_items", []) if isinstance(quality.get("sample_items"), list) else []
+    if samples:
+        rendered = []
+        for row in samples[:4]:
+            if not isinstance(row, dict):
+                continue
+            flags = row.get("flags", []) if isinstance(row.get("flags"), list) else []
+            rendered.append("%s %s[%s]" % (row.get("symbol") or "未上市", row.get("name"), ",".join(str(flag) for flag in flags[:3])))
+        lines.append("   样例: %s" % "；".join(rendered))
+    return lines
+
+
+def render_coverage_next_actions(value: object) -> List[str]:
+    rows = value if isinstance(value, list) else []
+    if not rows:
+        return ["- 暂无下一步。"]
+    lines = []
+    for row in rows[:5]:
+        if isinstance(row, dict):
+            lines.append("- #%s %s | %s" % (row.get("rank"), row.get("id"), row.get("command")))
+    return lines
+
+
 def render_watchlist_text(payload: Dict[str, object]) -> str:
     data = payload.get("data", {})
     if not isinstance(data, dict):

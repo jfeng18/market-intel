@@ -9,6 +9,7 @@ from .core.agent import build_agent_briefing, build_agent_plan, command_queue_it
 from .core.fixtures import load_holdings_file, load_mock_holdings, load_mock_quotes, load_quotes_file
 from .core.brief import build_daily_brief
 from .core.csv_importer import import_holdings_csv, import_quotes_csv, import_schema
+from .core.coverage import build_pool_coverage
 from .core.daily import build_daily_report, validate_daily_files
 from .core.focus import build_focus_report
 from .core.holdings import calculate_holding_impacts
@@ -40,6 +41,7 @@ from .core.text_report import (
     render_daily_report_text,
     render_focus_text,
     render_market_map_text,
+    render_pool_coverage_text,
     render_pool_explain_text,
     render_journal_entry_text,
     render_journal_compare_text,
@@ -65,6 +67,11 @@ def build_parser() -> argparse.ArgumentParser:
     list_parser = pool_subparsers.add_parser("list")
     list_parser.add_argument("--pool", default=DEFAULT_POOL)
     list_parser.add_argument("--json", action="store_true", dest="as_json")
+
+    coverage_parser = pool_subparsers.add_parser("coverage")
+    coverage_parser.add_argument("--pool", default=DEFAULT_POOL)
+    coverage_parser.add_argument("--json", action="store_true", dest="as_json")
+    coverage_parser.add_argument("--text", action="store_true")
 
     explain_parser = pool_subparsers.add_parser("explain")
     explain_parser.add_argument("symbol")
@@ -287,6 +294,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     try:
         if args.resource == "pool" and args.action == "list":
             result = handle_pool_list(args.pool)
+        elif args.resource == "pool" and args.action == "coverage":
+            result = handle_pool_coverage(args.pool)
+            if args.text and result["ok"]:
+                print(render_pool_coverage_text(result))
+                return 0
         elif args.resource == "pool" and args.action == "explain":
             result = handle_pool_explain(args.pool, args.symbol, args.runtime)
             if args.text and result["ok"]:
@@ -500,6 +512,17 @@ def handle_pool_list(pool: str) -> Dict[str, Any]:
         data=data,
         warnings=warnings,
         source=str(default_pool_path(pool)),
+    )
+
+
+def handle_pool_coverage(pool: str) -> Dict[str, Any]:
+    items = load_pool(pool)
+    data = build_pool_coverage(pool, items)
+    return envelope(
+        command="pool.coverage",
+        data=data,
+        warnings=pool_warnings(items),
+        source="pool:%s" % pool,
     )
 
 

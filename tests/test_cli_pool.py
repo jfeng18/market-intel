@@ -1,7 +1,8 @@
+import json
 import subprocess
 
-from market_intel.cli import handle_init_runtime, handle_pool_explain, handle_pool_list
-from market_intel.core.text_report import render_pool_explain_text
+from market_intel.cli import handle_init_runtime, handle_pool_coverage, handle_pool_explain, handle_pool_list
+from market_intel.core.text_report import render_pool_coverage_text, render_pool_explain_text
 
 
 def test_pool_list_returns_json_envelope():
@@ -22,6 +23,45 @@ def test_all_a_pool_list_uses_seed_universe():
     assert payload["ok"] is True
     assert payload["data"]["pool"] == "all-a"
     assert payload["data"]["items"][0]["raw"]["pool_scope"] == "all_a_seed"
+
+
+def test_pool_coverage_all_a_reports_seed_boundaries():
+    payload = handle_pool_coverage("all-a")
+    data = payload["data"]
+
+    assert payload["ok"] is True
+    assert payload["command"] == "pool.coverage"
+    assert data["pool"] == "all-a"
+    assert data["scope"] == "all_a_seed"
+    assert data["status"] == "seed"
+    assert data["counts"]["cn_a"] > 0
+    assert data["market_distribution"]
+    assert data["layer_distribution"]
+    assert data["cn_a_board_distribution"]
+    assert any(gap["id"] == "all_a_seed_only" for gap in data["gaps"])
+    assert "data.gaps" in data["agent_contract"]["stable_fields"]
+    assert data["next_actions"][0]["command"] == "market-intel pool coverage --text"
+
+
+def test_pool_coverage_theme_pool_stays_explicit():
+    payload = handle_pool_coverage("ai-energy")
+    data = payload["data"]
+
+    assert data["pool"] == "ai-energy"
+    assert data["scope"] == "theme"
+    assert all(gap["id"] != "all_a_seed_only" for gap in data["gaps"])
+    assert data["next_actions"][0]["command"] == "market-intel pool coverage --text --pool ai-energy"
+
+
+def test_pool_coverage_text_renderer():
+    text = render_pool_coverage_text(handle_pool_coverage("all-a"))
+
+    assert "market-intel pool coverage" in text
+    assert "覆盖缺口" in text
+    assert "all_a_seed_only" in text
+    assert "交易动作" not in text
+    assert "buy" not in text.lower()
+    assert "sell" not in text.lower()
 
 
 def test_pool_explain_acceptance_sample_shape():
@@ -91,3 +131,22 @@ def test_pool_explain_text_cli_smoke(cli_cmd):
     assert "market-intel pool explain" in result.stdout
     assert "英维克" in result.stdout
     assert "主链路" in result.stdout
+
+
+def test_pool_coverage_cli_smoke(cli_cmd):
+    text_result = subprocess.run(
+        cli_cmd("pool", "coverage", "--text"),
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    json_result = subprocess.run(
+        cli_cmd("pool", "coverage", "--json"),
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+
+    assert "market-intel pool coverage" in text_result.stdout
+    assert "覆盖缺口" in text_result.stdout
+    assert json.loads(json_result.stdout)["command"] == "pool.coverage"

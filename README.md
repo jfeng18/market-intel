@@ -50,6 +50,8 @@ PYTHONPATH=src python3 -m market_intel.cli focus --mock --text
 
 ```bash
 PYTHONPATH=src python3 -m market_intel.cli pool list --pool all-a --json
+PYTHONPATH=src python3 -m market_intel.cli pool coverage --text
+PYTHONPATH=src python3 -m market_intel.cli pool coverage --pool ai-energy --json
 PYTHONPATH=src python3 -m market_intel.cli pool list --pool ai-energy --json
 PYTHONPATH=src python3 -m market_intel.cli pool explain 002837 --json
 PYTHONPATH=src python3 -m market_intel.cli pool explain 002837 --text
@@ -71,6 +73,7 @@ PYTHONPATH=src python3 -m market_intel.cli focus --mock --text
 python3 -m pip install -e .
 market-intel pool explain 002837 --json
 market-intel pool explain 002837 --text
+market-intel pool coverage --text
 market-intel hotspots --mock --json
 market-intel holdings impact --mock --json
 market-intel portfolio review --mock --text
@@ -227,6 +230,8 @@ market-intel holdings impact --runtime --json
 - symbol 是否能匹配到当前复盘池。
 - 是否有重复 symbol。
 - 持仓是否缺行情，行情是否不在持仓里。
+
+`pool coverage` 是复盘池覆盖度自检：给出 pool 范围、状态、A 股数量、市场分布、层级分布、数据质量标记、覆盖缺口和下一步命令。当前 `all-a` 会明确标记为 seed 覆盖，提醒 agent 和人不要把它当作完整全 A 结论。
 
 `watchlist` 是盘中盯盘清单：把热点领涨标的和持仓标的合并去重，标出链路、涨幅、成交放大、回落、风险和是否持仓。
 
