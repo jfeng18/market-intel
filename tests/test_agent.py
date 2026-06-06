@@ -425,6 +425,7 @@ def test_agent_run_ready_executes_read_only_and_skips_writes(monkeypatch, tmp_pa
     assert digest["market_scan"]["read"] is True
     assert digest["market_scan"]["top_groups"]
     assert digest["market_scan"]["top_candidates"]
+    assert digest["market_scan"]["top_candidates"][0]["review_focus"]["next_command"] == digest["market_scan"]["top_candidates"][0]["commands"][0]
     assert digest["market_scan"]["write_policy"] == "只读全市场扫描，不生成交易指令。"
     assert "data.review_digest.coverage_context" in data["agent_contract"]["stable_fields"]
     assert "data.review_digest.coverage_context.universe.sector_profile" in data["agent_contract"]["stable_fields"]
@@ -967,6 +968,7 @@ def test_agent_next_returns_compact_handoff(monkeypatch, tmp_path):
     assert data["market_scan"]["top_candidates"]
     assert data["market_scan"]["top_candidates"][0]["review_focus"]["headline"]
     assert data["market_scan"]["top_candidates"][0]["review_focus"]["next_command"]
+    assert data["market_scan"]["top_candidates"][0]["review_focus"]["next_command"] == data["market_scan"]["top_candidates"][0]["commands"][0]
     assert data["review_handoff"]["command_chain"]
     assert data["review_handoff"]["command_chain"][0]["json_command"].endswith("--json")
     assert data["security_cards"]["cards"]
@@ -1014,6 +1016,7 @@ def test_dashboard_returns_one_screen_workbench(monkeypatch, tmp_path):
     assert data["market_pulse"]["top_groups"]
     assert data["market_pulse"]["candidates"]
     assert data["market_pulse"]["candidates"][0]["review_focus"]["headline"]
+    assert data["market_pulse"]["candidates"][0]["review_focus"]["next_command"] == data["market_pulse"]["candidates"][0]["json_command"]
     assert data["market_pulse"]["candidates"][0]["json_command"].endswith("--json")
     assert data["portfolio_pulse"]["available"] is True
     assert data["portfolio_pulse"]["top_holdings"]
@@ -1083,6 +1086,7 @@ def test_dashboard_mock_returns_demo_workbench_without_runtime(monkeypatch, tmp_
     assert data["market_pulse"]["available"] is True
     assert data["market_pulse"]["candidates"]
     assert data["market_pulse"]["candidates"][0]["review_focus"]["headline"]
+    assert data["market_pulse"]["candidates"][0]["review_focus"]["next_command"] == data["market_pulse"]["candidates"][0]["json_command"]
     assert data["market_pulse"]["candidates"][0]["json_command"].endswith("--json")
     assert data["portfolio_pulse"]["available"] is True
     assert data["portfolio_pulse"]["top_holdings"]

@@ -1028,6 +1028,7 @@ def localize_scan_commands(data: Dict[str, object], pool: str, mode: object) -> 
             continue
         commands = item.get("commands", []) if isinstance(item.get("commands"), list) else []
         item["commands"] = [localize_scan_command(str(command), pool, mode_text) for command in commands if command]
+        sync_scan_review_focus_next_command(item, item["commands"])
     actions = data.get("next_actions", []) if isinstance(data.get("next_actions"), list) else []
     for item in actions:
         if isinstance(item, dict) and item.get("command"):
@@ -1058,6 +1059,12 @@ def localize_scan_command(command: str, pool: str, mode: str) -> str:
         if "focus " in command:
             return with_pool_arg("market-intel focus --json", pool)
     return with_pool_arg(command, pool)
+
+
+def sync_scan_review_focus_next_command(item: Dict[str, object], commands: List[str]) -> None:
+    focus = item.get("review_focus", {}) if isinstance(item.get("review_focus"), dict) else {}
+    if focus and commands:
+        focus["next_command"] = commands[0]
 
 
 def handle_holdings_impact(
@@ -2125,15 +2132,17 @@ def mock_dashboard_candidate(pool: str, item: Dict[str, object]) -> Dict[str, ob
         if symbol
         else with_pool_arg("market-intel scan --mock --json", pool)
     )
+    json_command = mock_dashboard_json_command(commands, fallback)
+    review_focus = compact_scan_review_focus_with_next(item.get("review_focus", {}), json_command)
     return {
         "rank": item.get("rank"),
         "symbol": symbol,
         "name": item.get("name"),
         "review_score": item.get("review_score"),
         "coverage_state": item.get("coverage_state"),
-        "review_focus": compact_scan_review_focus(item.get("review_focus", {})),
+        "review_focus": review_focus,
         "why_now": item.get("why_now"),
-        "json_command": mock_dashboard_json_command(commands, fallback),
+        "json_command": json_command,
     }
 
 
@@ -2680,6 +2689,8 @@ def dashboard_scan_candidates(scan: Dict[str, object]) -> List[Dict[str, object]
         if not isinstance(item, dict):
             continue
         commands = item.get("commands", []) if isinstance(item.get("commands"), list) else []
+        json_command = digest_json_variant(commands[0]) if commands else "market-intel pool explain %s --runtime --json" % item.get("symbol")
+        review_focus = compact_scan_review_focus_with_next(item.get("review_focus", {}), json_command)
         rows.append(
             {
                 "rank": item.get("rank"),
@@ -2687,12 +2698,19 @@ def dashboard_scan_candidates(scan: Dict[str, object]) -> List[Dict[str, object]
                 "name": item.get("name"),
                 "review_score": item.get("review_score"),
                 "coverage_state": item.get("coverage_state"),
-                "review_focus": compact_scan_review_focus(item.get("review_focus", {})),
+                "review_focus": review_focus,
                 "why_now": item.get("why_now"),
-                "json_command": digest_json_variant(commands[0]) if commands else "market-intel pool explain %s --runtime --json" % item.get("symbol"),
+                "json_command": json_command,
             }
         )
     return rows[:5]
+
+
+def compact_scan_review_focus_with_next(value: object, next_command: object) -> Dict[str, object]:
+    focus = compact_scan_review_focus(value)
+    if next_command:
+        focus["next_command"] = next_command
+    return focus
 
 
 def dashboard_portfolio_pulse(digest: Dict[str, object]) -> Dict[str, object]:
@@ -3628,7 +3646,10 @@ def agent_run_digest_market_scan(briefing_data: Dict[str, object], results: List
                 "name": item.get("name"),
                 "review_score": item.get("review_score"),
                 "coverage_state": item.get("coverage_state"),
-                "review_focus": compact_scan_review_focus(item.get("review_focus", {})),
+                "review_focus": compact_scan_review_focus_with_next(
+                    item.get("review_focus", {}),
+                    (item.get("commands", []) if isinstance(item.get("commands"), list) else [None])[0],
+                ),
                 "why_now": item.get("why_now"),
                 "commands": list(item.get("commands", []))[:3] if isinstance(item.get("commands"), list) else [],
             }

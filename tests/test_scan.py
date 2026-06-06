@@ -106,6 +106,7 @@ def test_scan_uses_a_share_universe_groups(monkeypatch, tmp_path):
     assert "股份行" in first["review_focus"]["classification"]["concepts"]
     assert "沪深300" in first["review_focus"]["classification"]["index_membership"]
     assert first["review_focus"]["coverage"]["missing_research_fields"] == ["thesis", "evidence", "invalidation"]
+    assert first["review_focus"]["next_command"] == first["commands"][0]
     assert first["commands"][1] == "market-intel pool research --runtime --dry-run --json"
     assert "全 A 基础清单" in text
     assert "行业银行" in text
