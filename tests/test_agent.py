@@ -999,8 +999,12 @@ def test_dashboard_returns_one_screen_workbench(monkeypatch, tmp_path):
     assert data["action_lane"]["items"]
     assert data["review_plan"]["available"] is True
     assert data["review_plan"]["items"]
-    assert data["review_plan"]["items"][0]["json_command"].endswith("--json")
+    assert data["review_plan"]["items"][0]["item_type"] == "coverage_review"
+    assert data["review_plan"]["items"][0]["json_command"] == "market-intel pool coverage --runtime --json"
+    assert data["review_plan"]["items"][1]["item_type"] == "market_scan"
     assert data["review_plan"]["items"][0]["done_when"]
+    assert data["action_lane"]["items"][0]["item_type"] == "coverage_review"
+    assert data["action_lane"]["items"][0]["json_command"] == "market-intel pool coverage --runtime --json"
     assert data["handoff"]["next_read"]
     assert data["guardrails"]
     assert "data.coverage_context" in data["agent_contract"]["stable_fields"]
@@ -1045,8 +1049,11 @@ def test_dashboard_mock_returns_demo_workbench_without_runtime(monkeypatch, tmp_
     assert data["portfolio_pulse"]["top_holdings"][0]["rank"] == 1
     assert data["portfolio_pulse"]["top_holdings"][0]["primary_json_command"].endswith("--mock --json")
     assert data["evidence_gaps"]["items"]
-    assert data["review_plan"]["items"][0]["json_command"] == "market-intel scan --mock --json"
+    assert data["review_plan"]["items"][0]["item_type"] == "coverage_review"
+    assert data["review_plan"]["items"][0]["json_command"] == "market-intel pool coverage --mock --json"
+    assert data["review_plan"]["items"][1]["json_command"] == "market-intel scan --mock --json"
     assert data["action_lane"]["items"]
+    assert data["action_lane"]["items"][0]["item_type"] == "coverage_review"
     assert data["handoff"]["handoff_state"] == "demo"
     assert data["handoff"]["next_read"]
     assert any("mock" in item for item in data["guardrails"])
@@ -1068,7 +1075,9 @@ def test_dashboard_mock_preserves_non_default_pool(monkeypatch, tmp_path):
     assert payload["ok"] is True
     assert data["pool"] == "ai-energy"
     assert data["review_plan"]["items"][0]["json_command"].endswith("--pool ai-energy")
+    assert data["review_plan"]["items"][1]["json_command"].endswith("--pool ai-energy")
     assert data["portfolio_pulse"]["top_holdings"][0]["primary_json_command"].endswith("--pool ai-energy")
+    assert data["action_lane"]["items"][0]["json_command"].endswith("--pool ai-energy")
     assert data["handoff"]["summary"].endswith("--pool ai-energy。")
 
 
@@ -1409,5 +1418,7 @@ def test_dashboard_mock_cli_smoke(monkeypatch, tmp_path, cli_cmd):
     assert data["command"] == "dashboard"
     assert data["data"]["state"] == "demo_ready"
     assert data["data"]["run_limits"]["mode"] == "mock"
-    assert data["data"]["review_plan"]["items"][0]["json_command"] == "market-intel scan --mock --json"
+    assert data["data"]["review_plan"]["items"][0]["json_command"] == "market-intel pool coverage --mock --json"
+    assert data["data"]["review_plan"]["items"][1]["json_command"] == "market-intel scan --mock --json"
     assert "mock 示例" in text_result.stdout
+    assert "先确认覆盖底座" in text_result.stdout

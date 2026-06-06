@@ -2005,7 +2005,7 @@ def build_mock_dashboard_data(
     market = mock_dashboard_market_pulse(pool, scan)
     portfolio = mock_dashboard_portfolio_pulse(pool, portfolio_review)
     evidence = mock_dashboard_evidence_gaps(market, portfolio)
-    plan = mock_dashboard_review_plan(pool, market, portfolio, evidence)
+    plan = mock_dashboard_review_plan(pool, coverage, market, portfolio, evidence)
     actions = mock_dashboard_action_lane(plan)
     handoff = mock_dashboard_handoff(pool, plan)
     tiles = mock_dashboard_tiles(market, portfolio, evidence, plan)
@@ -2269,11 +2269,13 @@ def mock_dashboard_gap_item(
 
 def mock_dashboard_review_plan(
     pool: str,
+    coverage: Dict[str, object],
     market: Dict[str, object],
     portfolio: Dict[str, object],
     evidence: Dict[str, object],
 ) -> Dict[str, object]:
     items: List[Dict[str, object]] = []
+    add_dashboard_plan_coverage(items, coverage, pool, "mock")
     candidates = market.get("candidates", []) if isinstance(market.get("candidates"), list) else []
     groups = market.get("top_groups", []) if isinstance(market.get("top_groups"), list) else []
     if market.get("available"):
@@ -2469,9 +2471,9 @@ def build_dashboard_data(
         "market_pulse": dashboard_market_pulse(digest),
         "portfolio_pulse": dashboard_portfolio_pulse(digest),
         "evidence_gaps": dashboard_evidence_gaps(digest),
-        "action_lane": dashboard_action_lane(digest),
+        "action_lane": dashboard_action_lane(digest, dashboard_coverage_context(digest)),
         "handoff": dashboard_handoff(digest),
-        "review_plan": dashboard_review_plan(digest),
+        "review_plan": dashboard_review_plan(pool, digest),
         "guardrails": [
             "dashboard 只整理复盘优先级和证据缺口，不生成买卖指令、目标价或仓位建议。",
             "全 A 结论受行情源、A 股基础清单和研究证据覆盖度影响。",
@@ -2707,10 +2709,11 @@ def dashboard_pending_evidence_count(evidence: Dict[str, object]) -> int:
     )
 
 
-def dashboard_action_lane(digest: Dict[str, object]) -> Dict[str, object]:
+def dashboard_action_lane(digest: Dict[str, object], coverage: Optional[Dict[str, object]] = None) -> Dict[str, object]:
     attention = digest.get("attention_queue", {}) if isinstance(digest.get("attention_queue"), dict) else {}
     items = attention.get("items", []) if isinstance(attention.get("items"), list) else []
     rows = []
+    rows.extend(dashboard_coverage_action_items(coverage or {}))
     for item in items:
         if not isinstance(item, dict):
             continue
@@ -2736,6 +2739,30 @@ def dashboard_action_lane(digest: Dict[str, object]) -> Dict[str, object]:
     }
 
 
+def dashboard_coverage_action_items(coverage: Dict[str, object]) -> List[Dict[str, object]]:
+    if not coverage.get("available"):
+        return []
+    gaps = coverage.get("top_gaps", []) if isinstance(coverage.get("top_gaps"), list) else []
+    actions = coverage.get("next_actions", []) if isinstance(coverage.get("next_actions"), list) else []
+    if not gaps and not actions:
+        return []
+    command = dashboard_coverage_plan_command(str(coverage.get("pool") or DEFAULT_POOL), "runtime", actions)
+    return [
+        {
+            "rank": 1,
+            "item_type": "coverage_review",
+            "title": "先确认覆盖底座",
+            "reason": coverage.get("summary") or "确认复盘池、A 股基础清单、字段完整度和覆盖缺口。",
+            "json_command": command,
+            "runnable": digest_command_is_read_only(command),
+            "requires_manual": False,
+            "already_read": False,
+            "related_symbols": [],
+            "done_when": "已确认 all-a 覆盖边界、A 股基础清单字段完整度、覆盖缺口和下一步补数动作。",
+        }
+    ]
+
+
 def dashboard_handoff(digest: Dict[str, object]) -> Dict[str, object]:
     handoff = digest.get("review_handoff", {}) if isinstance(digest.get("review_handoff"), dict) else {}
     completion = digest.get("review_completion", {}) if isinstance(digest.get("review_completion"), dict) else {}
@@ -2757,8 +2784,9 @@ def dashboard_handoff(digest: Dict[str, object]) -> Dict[str, object]:
     }
 
 
-def dashboard_review_plan(digest: Dict[str, object]) -> Dict[str, object]:
+def dashboard_review_plan(pool: str, digest: Dict[str, object]) -> Dict[str, object]:
     items: List[Dict[str, object]] = []
+    add_dashboard_plan_coverage(items, dashboard_coverage_context(digest), pool, "runtime")
     add_dashboard_plan_market(items, digest)
     add_dashboard_plan_portfolio(items, digest)
     add_dashboard_plan_evidence(items, digest)
@@ -2772,6 +2800,76 @@ def dashboard_review_plan(digest: Dict[str, object]) -> Dict[str, object]:
         "items": items[:10],
         "write_policy": "review_plan 只安排复盘顺序；写入、导入和研究结论仍需人工确认。",
     }
+
+
+def add_dashboard_plan_coverage(
+    items: List[Dict[str, object]],
+    coverage: Dict[str, object],
+    pool: str,
+    mode: str,
+) -> None:
+    if not coverage.get("available"):
+        return
+    gaps = coverage.get("top_gaps", []) if isinstance(coverage.get("top_gaps"), list) else []
+    actions = coverage.get("next_actions", []) if isinstance(coverage.get("next_actions"), list) else []
+    if not gaps and not actions:
+        return
+    command = dashboard_coverage_plan_command(pool, mode, actions)
+    items.append(
+        dashboard_plan_item(
+            "coverage_review",
+            "先确认覆盖底座",
+            coverage.get("summary") or "确认复盘池、A 股基础清单、字段完整度和覆盖缺口。",
+            command,
+            "read",
+            "已确认 all-a 覆盖边界、A 股基础清单字段完整度、覆盖缺口和下一步补数动作。",
+            evidence=dashboard_coverage_plan_evidence(coverage),
+        )
+    )
+
+
+def dashboard_coverage_plan_command(pool: str, mode: str, actions: List[object]) -> str:
+    for action in actions:
+        if not isinstance(action, dict):
+            continue
+        command = str(action.get("command") or "")
+        if "pool coverage" not in command:
+            continue
+        command = digest_json_variant(command)
+        if mode == "mock":
+            command = command.replace(" --runtime", "").replace(" --text", " --json")
+            if " --mock" not in command:
+                command = command.replace("pool coverage", "pool coverage --mock")
+        elif " --runtime" not in command:
+            command = command.replace("pool coverage", "pool coverage --runtime")
+        return with_pool_arg(command, pool)
+    if mode == "mock":
+        return with_pool_arg("market-intel pool coverage --mock --json", pool)
+    return with_pool_arg("market-intel pool coverage --runtime --json", pool)
+
+
+def dashboard_coverage_plan_evidence(coverage: Dict[str, object]) -> List[object]:
+    rows = []
+    universe = coverage.get("universe", {}) if isinstance(coverage.get("universe"), dict) else {}
+    profile = universe.get("sector_profile", {}) if isinstance(universe.get("sector_profile"), dict) else {}
+    if universe:
+        rows.append(
+            "全 A %s | 记录 %s | 行业/概念/指数 %.0f%%/%.0f%%/%.0f%%"
+            % (
+                "已接入" if universe.get("available") else "未接入",
+                universe.get("record_count", 0),
+                float(profile.get("industry_coverage_ratio") or 0) * 100,
+                float(profile.get("concept_coverage_ratio") or 0) * 100,
+                float(profile.get("index_coverage_ratio") or 0) * 100,
+            )
+        )
+    for gap in coverage.get("top_gaps", []) if isinstance(coverage.get("top_gaps"), list) else []:
+        if isinstance(gap, dict):
+            rows.append("%s | %s" % (gap.get("severity"), gap.get("id")))
+    for action in coverage.get("next_actions", [])[:2] if isinstance(coverage.get("next_actions"), list) else []:
+        if isinstance(action, dict):
+            rows.append("下一步 %s" % action.get("id"))
+    return rows[:5]
 
 
 def add_dashboard_plan_market(items: List[Dict[str, object]], digest: Dict[str, object]) -> None:
