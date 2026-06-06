@@ -44,7 +44,10 @@ def focus_contract() -> Dict[str, object]:
             "data.portfolio_pressure",
             "data.priority_securities",
             "data.priority_securities[].symbol",
+            "data.priority_securities[].why_now",
+            "data.priority_securities[].checklist",
             "data.priority_securities[].commands",
+            "data.priority_securities[].done_when",
             "data.next_steps",
             "data.next_steps[].command",
             "data.first_runnable_command",
@@ -209,6 +212,9 @@ def item_in_exposure_group(item: Dict[str, object], group_name: str) -> bool:
 
 def focus_security(item: Dict[str, object]) -> Dict[str, object]:
     context = item.get("context", {}) if isinstance(item.get("context"), dict) else {}
+    risk_flags = list(item.get("risk_flags", []))[:5] if isinstance(item.get("risk_flags"), list) else []
+    review_points = list(item.get("review_points", []))[:4] if isinstance(item.get("review_points"), list) else []
+    reasons = list(item.get("reasons", []))[:3] if isinstance(item.get("reasons"), list) else []
     return {
         "rank": item.get("rank"),
         "symbol": item.get("symbol"),
@@ -218,9 +224,12 @@ def focus_security(item: Dict[str, object]) -> Dict[str, object]:
         "chain": chain_name(context.get("layer"), context.get("sub_sector")),
         "change_pct": context.get("change_pct"),
         "hotspot_score": context.get("hotspot_score"),
-        "risk_flags": list(item.get("risk_flags", []))[:5] if isinstance(item.get("risk_flags"), list) else [],
-        "reasons": list(item.get("reasons", []))[:3] if isinstance(item.get("reasons"), list) else [],
+        "risk_flags": risk_flags,
+        "reasons": reasons,
+        "why_now": security_why_now(item, context, risk_flags),
+        "checklist": security_checklist(review_points, risk_flags),
         "commands": list(item.get("commands", []))[:3] if isinstance(item.get("commands"), list) else [],
+        "done_when": security_done_when(item, context),
     }
 
 
@@ -271,6 +280,97 @@ def data_status_command(daily: Dict[str, object], state: str) -> str:
             shlex.quote(str(holding_source)),
         )
     return "market-intel import schema --json"
+
+
+RISK_CHECKS = {
+    "chase_high_risk": "涨幅较高，确认强度来自链路共振还是少数标的拉动。",
+    "intraday_fade_risk": "日内回落明显，确认是否只是早盘脉冲。",
+    "multi_chain_exposure": "多链路归属，确认是真实业务弹性还是口径过宽。",
+    "theme_overlap": "主题重叠，确认是否会放大同涨同跌。",
+    "theme_concentration": "组合集中，确认多个持仓是否受同一叙事驱动。",
+    "turnover_expansion_watch": "成交放大，确认是否有持续性而不是一次性放量。",
+    "single_name_or_thin_resonance": "弱共振，确认是否只是单票异动。",
+    "weak_hotspot_score": "热点分偏弱，确认是否需要降低当天解读权重。",
+    "holding_missing_quote": "持仓缺行情，先补行情再做复核。",
+    "no_hotspot_context": "缺少热点上下文，确认它是否仍属于今天主线。",
+    "not_in_pool": "池子未匹配，确认是否应加入池子或标为池外持仓。",
+    "holding_watch": "这是持仓观察项，确认今天是否需要展开单票复核。",
+    "hotspot_leader_watch": "这是热点领涨观察项，确认是否代表链路共振而非单票拉动。",
+    "watch": "这是观察项，确认是否需要后续跟踪。",
+    "thin_resonance_verify": "共振偏弱，确认是否只是少数标的驱动。",
+}
+
+
+RISK_REASONS = {
+    "chase_high_risk": "涨幅较高",
+    "intraday_fade_risk": "日内回落明显",
+    "multi_chain_exposure": "多链路暴露",
+    "theme_overlap": "主题重叠",
+    "theme_concentration": "组合集中",
+    "turnover_expansion_watch": "成交放大",
+    "single_name_or_thin_resonance": "共振偏弱",
+    "weak_hotspot_score": "热点分偏弱",
+    "holding_missing_quote": "持仓缺行情",
+    "no_hotspot_context": "缺少热点上下文",
+    "not_in_pool": "池子未匹配",
+}
+
+
+def security_why_now(item: Dict[str, object], context: Dict[str, object], risk_flags: List[object]) -> str:
+    parts = []
+    holding_text = "持仓" if context.get("is_holding") else "观察标的"
+    parts.append("%s进入优先队列，队列分 %s" % (holding_text, item.get("priority_score")))
+    chain = chain_name(context.get("layer"), context.get("sub_sector"))
+    if chain:
+        parts.append("关联 %s" % chain)
+    if context.get("change_pct") is not None:
+        parts.append("涨幅 %s%%" % context.get("change_pct"))
+    if context.get("hotspot_score") is not None:
+        parts.append("热点分 %s" % context.get("hotspot_score"))
+    risk_text = [risk_reason(flag) for flag in risk_flags[:3]]
+    risk_text = [text for text in risk_text if text]
+    if risk_text:
+        parts.append("主要风险是%s" % "、".join(risk_text))
+    return "；".join(parts) + "。"
+
+
+def security_checklist(review_points: List[object], risk_flags: List[object]) -> List[str]:
+    checks = [normalize_check(point) for point in review_points if point]
+    checks.extend(RISK_CHECKS.get(str(flag), "") for flag in risk_flags)
+    return dedupe_texts([check for check in checks if check])[:4]
+
+
+def normalize_check(value: object) -> str:
+    text = str(value or "")
+    if text in RISK_CHECKS:
+        return RISK_CHECKS[text]
+    if text.isascii() and "_" in text:
+        return ""
+    return text
+
+
+def risk_reason(value: object) -> str:
+    text = str(value or "")
+    if text in RISK_REASONS:
+        return RISK_REASONS[text]
+    if text.isascii() and "_" in text:
+        return ""
+    return text
+
+
+def security_done_when(item: Dict[str, object], context: Dict[str, object]) -> str:
+    symbol = symbol_name(item.get("symbol"), item.get("name"))
+    if context.get("is_holding"):
+        return "已确认 %s 的行情、热点上下文、链路暴露、主要风险，以及它是否放大组合集中。" % symbol
+    return "已确认 %s 是否只是观察项、是否属于当天主线，以及后续是否需要加入持仓复核。" % symbol
+
+
+def dedupe_texts(values: List[str]) -> List[str]:
+    rows = []
+    for value in values:
+        if value not in rows:
+            rows.append(value)
+    return rows
 
 
 def compact_issues(issues: List[object]) -> List[Dict[str, object]]:

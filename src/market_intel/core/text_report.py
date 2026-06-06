@@ -517,12 +517,19 @@ def render_focus_securities(value: object) -> List[str]:
         )
         if item.get("chain"):
             lines.append("   链路: %s" % item.get("chain"))
+        if item.get("why_now"):
+            lines.append("   为何现在看: %s" % item.get("why_now"))
         risks = item.get("risk_flags", []) if isinstance(item.get("risk_flags"), list) else []
         if risks:
             lines.append("   风险: %s" % render_labels(risks))
+        checklist = item.get("checklist", []) if isinstance(item.get("checklist"), list) else []
+        if checklist:
+            lines.append("   核对: %s" % "；".join(str(row) for row in checklist[:3]))
         commands = item.get("commands", []) if isinstance(item.get("commands"), list) else []
         if commands:
             lines.append("   命令: %s" % commands[0])
+        if item.get("done_when"):
+            lines.append("   完成: %s" % item.get("done_when"))
     return lines
 
 

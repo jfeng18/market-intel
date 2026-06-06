@@ -17,9 +17,16 @@ def test_focus_mock_shape():
     assert data["portfolio_pressure"]["repeated_exposure_count"] >= 1
     assert data["portfolio_pressure"]["repeated_exposures"][0]["symbols"]
     assert data["priority_securities"][0]["symbol"] == "300308"
+    assert data["priority_securities"][0]["why_now"]
+    assert data["priority_securities"][0]["checklist"]
+    assert data["priority_securities"][0]["done_when"]
+    assert all("_" not in item for row in data["priority_securities"] for item in row["checklist"])
     assert data["priority_securities"][0]["commands"][0] == "market-intel portfolio explain 300308 --mock --text"
     assert data["first_runnable_command"] == "market-intel portfolio review --mock --text"
+    assert "data.priority_securities[].why_now" in data["agent_contract"]["stable_fields"]
+    assert "data.priority_securities[].checklist" in data["agent_contract"]["stable_fields"]
     assert "data.priority_securities[].commands" in data["agent_contract"]["stable_fields"]
+    assert "data.priority_securities[].done_when" in data["agent_contract"]["stable_fields"]
 
 
 def test_focus_requires_source_has_text_guidance():
@@ -45,6 +52,9 @@ def test_focus_text_renderer():
     assert "组合压力" in text
     assert "优先标的" in text
     assert "300308 中际旭创" in text
+    assert "为何现在看" in text
+    assert "核对:" in text
+    assert "完成:" in text
     assert "先跑: market-intel portfolio review --mock --text" in text
     assert "buy" not in text.lower()
     assert "sell" not in text.lower()
