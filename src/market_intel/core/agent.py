@@ -1177,6 +1177,7 @@ def briefing_next_commands(
         ]
     commands = [
         "market-intel agent briefing --json",
+        "market-intel pool coverage --runtime --text",
         "market-intel scan --runtime --text",
         "market-intel daily --runtime --text",
         "market-intel portfolio review --runtime --text",
@@ -2025,6 +2026,8 @@ def command_input_context(command: str) -> List[str]:
         return ["runtime_quotes", "runtime_holdings", "pool"]
     if "agent briefing" in command:
         return ["runtime_daily", "journal_timeline", "latest_archive_compare"]
+    if "pool coverage" in command:
+        return ["pool", "runtime_holdings", "all_a_universe", "research_notes"]
     if "scan" in command:
         return ["runtime_quotes", "optional_runtime_holdings", "pool", "all_a_universe"]
     if "daily" in command:
@@ -2055,6 +2058,8 @@ def command_output_use(command: str) -> str:
         return "把错误和告警转成数据质量复核项。"
     if "agent briefing" in command:
         return "作为当天复盘的主工作台和后续命令来源。"
+    if "pool coverage" in command:
+        return "先确认全 A/复盘池覆盖边界、持仓覆盖状态和证据缺口。"
     if "scan" in command:
         return "读取全市场板块强弱、候选复盘标的、覆盖状态和证据缺口。"
     if "daily" in command:
@@ -2089,6 +2094,8 @@ def command_done_when(command: str) -> str:
         return "errors 已清空，或每个 warning/error 都有对应处理说明。"
     if "agent briefing" in command:
         return "已读取 review_focus、review_checklist、current_change 和 command_queue。"
+    if "pool coverage" in command:
+        return "已记录 coverage status、universe sector_profile、holdings_coverage、gaps 和 next_actions。"
     if "scan" in command:
         return "已记录 sector_groups、candidate_securities、coverage_state 和 next_actions。"
     if "daily" in command:
@@ -2131,6 +2138,11 @@ def command_read_contract(command: str) -> tuple:
         return (
             ["data.review_focus", "data.review_checklist", "data.current_change", "data.command_queue"],
             "读取 agent 可接力的复盘入口。",
+        )
+    if "pool coverage" in command:
+        return (
+            ["data.status", "data.universe.sector_profile", "data.holdings_coverage", "data.gaps", "data.next_actions"],
+            "确认覆盖边界、持仓覆盖和证据缺口，再进入市场扫描。",
         )
     if "scan" in command:
         return (

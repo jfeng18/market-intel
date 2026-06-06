@@ -14,6 +14,7 @@ from market_intel.cli import (
     handle_import_universe,
     handle_journal_note,
     handle_journal_save,
+    run_agent_read_command,
 )
 from market_intel.core.text_report import render_agent_briefing_text, render_agent_next_text, render_agent_plan_text, render_agent_run_text, render_dashboard_text
 
@@ -305,6 +306,10 @@ def test_agent_briefing_ready_without_journal(monkeypatch, tmp_path):
     assert data["command_queue"][0]["input_context"]
     assert data["command_queue"][0]["output_use"]
     assert data["command_queue"][0]["done_when"]
+    assert data["command_queue"][1]["command"] == "market-intel pool coverage --runtime --text"
+    assert data["command_queue"][1]["json_command"] == "market-intel pool coverage --runtime --json"
+    assert data["command_queue"][1]["state_effect"] == "read_only"
+    assert "data.universe.sector_profile" in data["command_queue"][1]["read_fields"]
     scan_command = next(item for item in data["command_queue"] if item["command"] == "market-intel scan --runtime --text")
     assert scan_command["json_command"] == "market-intel scan --runtime --json"
     assert scan_command["state_effect"] == "read_only"
@@ -313,6 +318,7 @@ def test_agent_briefing_ready_without_journal(monkeypatch, tmp_path):
     assert archive_command["mutates_state"] is True
     assert archive_command["state_effect"] == "writes_journal"
     assert archive_command["done_when"]
+    assert "market-intel pool coverage --runtime --text" in data["next_commands"]
     assert "market-intel scan --runtime --text" in data["next_commands"]
     assert any("portfolio explain" in command for command in data["next_commands"])
     assert any("pool explain" in command for command in data["next_commands"])
@@ -387,7 +393,7 @@ def test_agent_briefing_surfaces_all_a_sector_profile(monkeypatch, tmp_path):
 def test_agent_run_ready_executes_read_only_and_skips_writes(monkeypatch, tmp_path):
     import_runtime_examples(monkeypatch, tmp_path)
 
-    payload = handle_agent_run("ai-energy", max_quote_age_days=9999, max_steps=5)
+    payload = handle_agent_run("ai-energy", max_quote_age_days=9999, max_steps=6)
     data = payload["data"]
 
     assert payload["ok"] is True
@@ -395,7 +401,8 @@ def test_agent_run_ready_executes_read_only_and_skips_writes(monkeypatch, tmp_pa
     assert data["state"] == "ran_with_skips"
     assert data["run_limits"]["read_only_only"] is True
     assert data["results"]
-    assert [item["payload_command"] for item in data["results"][:5]] == [
+    assert [item["payload_command"] for item in data["results"][:6]] == [
+        "pool.coverage",
         "scan",
         "daily",
         "portfolio.review",
@@ -522,7 +529,7 @@ def test_agent_run_ready_executes_read_only_and_skips_writes(monkeypatch, tmp_pa
     assert attention["items"][0]["related_symbols"] == ["300308"]
     assert attention["items"][0]["already_read"] is True
     assert attention["items"][0]["linked_result"]["payload_command"] == "portfolio.explain"
-    assert attention["items"][0]["linked_result"]["run_rank"] == 6
+    assert attention["items"][0]["linked_result"]["run_rank"] == 7
     assert attention["items"][0]["journal_note"]["available"] is True
     assert attention["items"][0]["journal_note"]["section"] == "security_review"
     assert attention["items"][0]["journal_note"]["run_after"] == "market-intel journal save --runtime --json"
@@ -1026,6 +1033,14 @@ def test_dashboard_returns_one_screen_workbench(monkeypatch, tmp_path):
     assert "buy" not in text.lower()
     assert "sell" not in text.lower()
 
+    coverage_command = data["review_plan"]["items"][0]["json_command"]
+    coverage_payload = run_agent_read_command(coverage_command, "all-a", 5, 2, 9999)
+    assert coverage_payload["ok"] is True
+    assert coverage_payload["command"] == "pool.coverage"
+    assert coverage_payload["data"]["pool"] == "all-a"
+    assert coverage_payload["data"]["universe"]["available"] is True
+    assert coverage_payload["data"]["holdings_source"]["mode"] == "runtime"
+
 
 def test_dashboard_mock_returns_demo_workbench_without_runtime(monkeypatch, tmp_path):
     monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(tmp_path / "runtime"))
@@ -1065,6 +1080,13 @@ def test_dashboard_mock_returns_demo_workbench_without_runtime(monkeypatch, tmp_
     assert "buy" not in text.lower()
     assert "sell" not in text.lower()
 
+    coverage_command = data["review_plan"]["items"][0]["json_command"]
+    coverage_payload = run_agent_read_command(coverage_command, "all-a", 5, 2, 9999)
+    assert coverage_payload["ok"] is True
+    assert coverage_payload["command"] == "pool.coverage"
+    assert coverage_payload["data"]["pool"] == "all-a"
+    assert coverage_payload["data"]["holdings_source"]["mode"] == "mock"
+
 
 def test_dashboard_mock_preserves_non_default_pool(monkeypatch, tmp_path):
     monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(tmp_path / "runtime"))
@@ -1079,6 +1101,11 @@ def test_dashboard_mock_preserves_non_default_pool(monkeypatch, tmp_path):
     assert data["portfolio_pulse"]["top_holdings"][0]["primary_json_command"].endswith("--pool ai-energy")
     assert data["action_lane"]["items"][0]["json_command"].endswith("--pool ai-energy")
     assert data["handoff"]["summary"].endswith("--pool ai-energy。")
+
+    coverage_payload = run_agent_read_command(data["review_plan"]["items"][0]["json_command"], "all-a", 5, 2, 9999)
+    assert coverage_payload["ok"] is True
+    assert coverage_payload["command"] == "pool.coverage"
+    assert coverage_payload["data"]["pool"] == "ai-energy"
 
 
 def test_agent_next_can_focus_symbol(monkeypatch, tmp_path):

@@ -3315,6 +3315,8 @@ def run_agent_read_command(
         if not symbol:
             return envelope(command="portfolio.explain", errors=[error("COMMAND_SYMBOL_REQUIRED", "portfolio explain requires a symbol.")], ok=False)
         return handle_portfolio_explain(pool, symbol, use_mock=use_mock, quotes_file=quotes_file, holdings_file=holdings_file, use_runtime=use_runtime)
+    if resource == "pool" and sub == "coverage":
+        return handle_pool_coverage(pool, use_mock=use_mock, holdings_file=holdings_file, use_runtime=use_runtime)
     if resource == "pool" and sub == "explain":
         symbol = first_positional(tokens[2:])
         if not symbol:
@@ -7250,6 +7252,45 @@ def command_payload_observations(payload: Dict[str, object]) -> List[str]:
             len(related.get("same_overlap_group", []) if isinstance(related.get("same_overlap_group"), list) else []),
         ))
         observations.extend(str(question) for question in data.get("questions", [])[:3] if question)
+    elif command == "pool.coverage":
+        counts = data.get("counts", {}) if isinstance(data.get("counts"), dict) else {}
+        universe = data.get("universe", {}) if isinstance(data.get("universe"), dict) else {}
+        profile = universe.get("sector_profile", {}) if isinstance(universe.get("sector_profile"), dict) else {}
+        holdings = data.get("holdings_coverage", {}) if isinstance(data.get("holdings_coverage"), dict) else {}
+        observations.append(
+            "覆盖: %s | %s | A股 %s/%s。"
+            % (
+                data.get("status"),
+                data.get("scope"),
+                counts.get("cn_a", 0),
+                counts.get("tradable", 0),
+            )
+        )
+        observations.append(
+            "全A基础清单: %s | 记录 %s | 行业 %.0f%% / 概念 %.0f%% / 指数 %.0f%%。"
+            % (
+                "已接入" if universe.get("available") else "未接入",
+                universe.get("record_count", 0),
+                float(profile.get("industry_coverage_ratio") or 0) * 100,
+                float(profile.get("concept_coverage_ratio") or 0) * 100,
+                float(profile.get("index_coverage_ratio") or 0) * 100,
+            )
+        )
+        if holdings.get("provided"):
+            observations.append(
+                "持仓覆盖: confirmed %s / foundation %s / missing %s。"
+                % (
+                    holdings.get("confirmed_count", 0),
+                    holdings.get("foundation_matched_count", 0),
+                    holdings.get("unmatched_count", 0),
+                )
+            )
+        gaps = data.get("gaps", []) if isinstance(data.get("gaps"), list) else []
+        observations.extend(
+            "%s | %s" % (item.get("severity"), item.get("id"))
+            for item in gaps[:3]
+            if isinstance(item, dict)
+        )
     elif command == "pool.explain":
         facts = data.get("facts", {}) if isinstance(data.get("facts"), dict) else {}
         observations.append("%s %s | %s/%s | 暴露 %s 条。" % (
