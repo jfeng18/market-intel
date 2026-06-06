@@ -234,7 +234,7 @@ market-intel holdings impact --runtime --json
 
 `daily` 是复盘总入口：先做数据检查，再合并 `brief`、`map`、`watchlist`、组合暴露和 `portfolio review`，并生成今日复核任务，输出一份适合每天留档和 agent 读取的报告。
 
-`focus` 是日常第一屏入口：复用 `daily` 的完整计算，但只保留最强链路、数据状态、组合压力、优先标的和下一步命令，适合快速回答“今天先看什么”。每个优先标的会给出 `why_now`、`checklist`、`done_when` 和下一条命令，让人可以照着复核，也让 agent 能直接接力执行。
+`focus` 是日常第一屏入口：复用 `daily` 的完整计算，但只保留最强链路、数据状态、组合压力、优先标的和下一步命令，适合快速回答“今天先看什么”。每个优先标的会给出 `why_now`、`checklist`、`note_command`、`journal_ready`、`done_when` 和下一条命令，让人可以照着复核并留痕，也让 agent 能直接接力执行。
 
 `journal` 是日报留档：保存完整 `daily` JSON，并提供列表、最近一次读取和两份日报对比入口，方便后续做历史复盘和趋势对比。
 

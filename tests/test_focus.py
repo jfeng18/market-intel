@@ -19,6 +19,9 @@ def test_focus_mock_shape():
     assert data["priority_securities"][0]["symbol"] == "300308"
     assert data["priority_securities"][0]["why_now"]
     assert data["priority_securities"][0]["checklist"]
+    assert data["priority_securities"][0]["note_command"].startswith("market-intel journal note --section security_review")
+    assert data["priority_securities"][0]["note_prerequisite"]["requires_journal_entry"] is True
+    assert data["priority_securities"][0]["journal_ready"]
     assert data["priority_securities"][0]["done_when"]
     assert all("_" not in item for row in data["priority_securities"] for item in row["checklist"])
     assert data["priority_securities"][0]["commands"][0] == "market-intel portfolio explain 300308 --mock --text"
@@ -26,7 +29,19 @@ def test_focus_mock_shape():
     assert "data.priority_securities[].why_now" in data["agent_contract"]["stable_fields"]
     assert "data.priority_securities[].checklist" in data["agent_contract"]["stable_fields"]
     assert "data.priority_securities[].commands" in data["agent_contract"]["stable_fields"]
+    assert "data.priority_securities[].note_command" in data["agent_contract"]["stable_fields"]
+    assert "data.priority_securities[].note_prerequisite" in data["agent_contract"]["stable_fields"]
+    assert "data.priority_securities[].journal_ready" in data["agent_contract"]["stable_fields"]
     assert "data.priority_securities[].done_when" in data["agent_contract"]["stable_fields"]
+
+
+def test_focus_top_only_limits_priority_securities():
+    payload = handle_focus("ai-energy", use_mock=True, top=1)
+    data = payload["data"]
+
+    assert len(data["priority_securities"]) == 1
+    assert len(data["next_steps"]) > 1
+    assert data["first_runnable_command"] == "market-intel portfolio review --mock --text"
 
 
 def test_focus_requires_source_has_text_guidance():
@@ -54,6 +69,8 @@ def test_focus_text_renderer():
     assert "300308 中际旭创" in text
     assert "为何现在看" in text
     assert "核对:" in text
+    assert "记录: market-intel journal note --section security_review" in text
+    assert "留痕:" in text
     assert "完成:" in text
     assert "先跑: market-intel portfolio review --mock --text" in text
     assert "buy" not in text.lower()

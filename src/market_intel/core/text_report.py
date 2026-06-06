@@ -528,6 +528,11 @@ def render_focus_securities(value: object) -> List[str]:
         commands = item.get("commands", []) if isinstance(item.get("commands"), list) else []
         if commands:
             lines.append("   命令: %s" % commands[0])
+        note_command = item.get("note_command")
+        if note_command:
+            lines.append("   记录: %s" % note_command)
+        if item.get("journal_ready"):
+            lines.append("   留痕: %s" % item.get("journal_ready"))
         if item.get("done_when"):
             lines.append("   完成: %s" % item.get("done_when"))
     return lines

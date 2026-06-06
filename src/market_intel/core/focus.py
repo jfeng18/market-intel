@@ -2,7 +2,7 @@ import shlex
 from typing import Dict, List
 
 
-def build_focus_report(daily: Dict[str, object], limit: int = 5) -> Dict[str, object]:
+def build_focus_report(daily: Dict[str, object], limit: int = 5, step_limit: int = 5) -> Dict[str, object]:
     validation = daily.get("validation", {}) if isinstance(daily.get("validation"), dict) else {}
     brief = daily.get("brief", {}) if isinstance(daily.get("brief"), dict) else {}
     market_map = daily.get("map", {}) if isinstance(daily.get("map"), dict) else {}
@@ -13,7 +13,7 @@ def build_focus_report(daily: Dict[str, object], limit: int = 5) -> Dict[str, ob
     command_queue = daily.get("command_queue", []) if isinstance(daily.get("command_queue"), list) else []
 
     priority_securities = [focus_security(item) for item in security_queue[:limit] if isinstance(item, dict)]
-    next_steps = [focus_step(item) for item in review_path[:limit] if isinstance(item, dict)]
+    next_steps = [focus_step(item) for item in review_path[:step_limit] if isinstance(item, dict)]
 
     return {
         "headline": focus_headline(brief, portfolio, validation, risk_register),
@@ -47,6 +47,9 @@ def focus_contract() -> Dict[str, object]:
             "data.priority_securities[].why_now",
             "data.priority_securities[].checklist",
             "data.priority_securities[].commands",
+            "data.priority_securities[].note_command",
+            "data.priority_securities[].note_prerequisite",
+            "data.priority_securities[].journal_ready",
             "data.priority_securities[].done_when",
             "data.next_steps",
             "data.next_steps[].command",
@@ -215,6 +218,8 @@ def focus_security(item: Dict[str, object]) -> Dict[str, object]:
     risk_flags = list(item.get("risk_flags", []))[:5] if isinstance(item.get("risk_flags"), list) else []
     review_points = list(item.get("review_points", []))[:4] if isinstance(item.get("review_points"), list) else []
     reasons = list(item.get("reasons", []))[:3] if isinstance(item.get("reasons"), list) else []
+    note_prerequisite = focus_note_prerequisite(item.get("note_prerequisite", {}))
+    note_command = item.get("note_command")
     return {
         "rank": item.get("rank"),
         "symbol": item.get("symbol"),
@@ -229,6 +234,9 @@ def focus_security(item: Dict[str, object]) -> Dict[str, object]:
         "why_now": security_why_now(item, context, risk_flags),
         "checklist": security_checklist(review_points, risk_flags),
         "commands": list(item.get("commands", []))[:3] if isinstance(item.get("commands"), list) else [],
+        "note_command": note_command,
+        "note_prerequisite": note_prerequisite,
+        "journal_ready": security_journal_ready(note_command, note_prerequisite),
         "done_when": security_done_when(item, context),
     }
 
@@ -280,6 +288,32 @@ def data_status_command(daily: Dict[str, object], state: str) -> str:
             shlex.quote(str(holding_source)),
         )
     return "market-intel import schema --json"
+
+
+def focus_note_prerequisite(value: object) -> Dict[str, object]:
+    prereq = value if isinstance(value, dict) else {}
+    if not prereq:
+        return {}
+    return {
+        "requires_journal_entry": bool(prereq.get("requires_journal_entry")),
+        "archive_command": prereq.get("archive_command"),
+        "archive_runnable": bool(prereq.get("archive_runnable")),
+        "archive_reason": prereq.get("archive_reason"),
+    }
+
+
+def security_journal_ready(note_command: object, note_prerequisite: Dict[str, object]) -> str:
+    if not note_command:
+        return ""
+    if not note_prerequisite.get("requires_journal_entry"):
+        return "可直接记录复核笔记。"
+    archive_command = note_prerequisite.get("archive_command")
+    if note_prerequisite.get("archive_runnable") and archive_command:
+        return "先执行 %s 保存日报，再记录复核笔记。" % archive_command
+    reason = note_prerequisite.get("archive_reason")
+    if reason:
+        return "需要先有日报留档；当前保存动作不可直接执行：%s" % reason
+    return "需要先有日报留档，再记录复核笔记。"
 
 
 RISK_CHECKS = {
