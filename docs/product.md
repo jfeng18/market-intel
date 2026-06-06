@@ -184,6 +184,7 @@ dashboard --mock -> import/runtime -> status/readiness -> dashboard
 - 引入 A 股基础清单和行业/概念/指数成分输入格式；当前可通过 `MARKET_INTEL_A_SHARE_UNIVERSE_PATHS` 叠加 `a_share_universe_v1` CSV。
 - 让 `pool coverage` 明确展示全 A 覆盖范围、缺口和草稿状态。
 - 让 `pool coverage` 输出 `data_quality_queue`，把 seed 池里的无效代码、列错位、缺角色、未知层级和重复暴露变成有 rank、样本、建议动作和完成标准的清理队列。
+- 让 `pool quality <flag>` 聚焦单个质量标记，给人和 agent 一次只清一个问题的只读工作单。
 - 让 `dashboard` 第一屏展示 `data.coverage_context`，把全 A 基础清单和字段完整度放在热点/持仓之前复核。
 - 把默认叙事从单一 AI 主题池切到全 A：AI 仍保留为种子池，但产品入口、README 和 agent 合同都应以 `all-a` 为默认范围。
 - 保持所有输出不泄露本机路径和用户身份信息。

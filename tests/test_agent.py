@@ -1046,6 +1046,12 @@ def test_dashboard_returns_one_screen_workbench(monkeypatch, tmp_path):
     assert coverage_payload["data"]["pool"] == "all-a"
     assert coverage_payload["data"]["universe"]["available"] is True
     assert coverage_payload["data"]["holdings_source"]["mode"] == "runtime"
+    quality_command = data["coverage_context"]["top_data_quality_queue"][0]["review_command"]
+    quality_payload = run_agent_read_command(quality_command, "all-a", 5, 2, 9999)
+    assert quality_payload["ok"] is True
+    assert quality_payload["command"] == "pool.quality"
+    assert quality_payload["data"]["flag"] == data["coverage_context"]["top_data_quality_queue"][0]["flag"]
+    assert quality_payload["data"]["samples"]
 
 
 def test_dashboard_mock_returns_demo_workbench_without_runtime(monkeypatch, tmp_path):

@@ -254,6 +254,54 @@ def render_pool_coverage_text(payload: Dict[str, object]) -> str:
     return "\n".join(lines)
 
 
+def render_pool_quality_text(payload: Dict[str, object]) -> str:
+    data = payload.get("data", {})
+    if not isinstance(data, dict):
+        return "market-intel pool quality\n\n无数据。"
+    lines = [
+        "market-intel pool quality",
+        "",
+        "总览",
+        "- %s | %s | found=%s" % (data.get("pool"), data.get("flag"), data.get("found")),
+        "- %s" % (data.get("summary") or "暂无摘要。"),
+        "- 严重度 %s | 分类 %s | 影响 %s"
+        % (data.get("severity"), data.get("category"), data.get("affected_count", 0)),
+        "",
+        "原因",
+        "- %s" % (data.get("reason") or "暂无。"),
+        "",
+        "建议动作",
+        "- %s" % (data.get("suggested_action") or "查看样本并修正。"),
+        "",
+        "完成标准",
+        "- %s" % (data.get("done_when") or "重新运行 coverage 确认。"),
+        "",
+        "样本",
+    ]
+    samples = data.get("samples", []) if isinstance(data.get("samples"), list) else []
+    if not samples:
+        lines.append("- 暂无样本。")
+    for sample in samples[:12]:
+        if not isinstance(sample, dict):
+            continue
+        flags = sample.get("flags", []) if isinstance(sample.get("flags"), list) else []
+        lines.append(
+            "- row %s | %s %s | code=%s | section=%s | flags=%s"
+            % (
+                sample.get("raw_row"),
+                sample.get("symbol") or "未上市",
+                sample.get("name"),
+                sample.get("raw_code"),
+                sample.get("raw_section"),
+                ",".join(str(flag) for flag in flags[:4]),
+            )
+        )
+    lines.extend(["", "下一步"])
+    lines.extend(render_list(data.get("next_commands", []), empty="暂无下一步。"))
+    lines.extend(["", "边界", "- %s" % (data.get("write_policy") or "只读复核，不自动修改数据。")])
+    return "\n".join(lines)
+
+
 def render_pool_expansion_text(payload: Dict[str, object]) -> str:
     data = payload.get("data", {})
     if not isinstance(data, dict):

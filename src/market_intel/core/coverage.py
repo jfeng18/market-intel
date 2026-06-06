@@ -76,6 +76,60 @@ def build_pool_coverage(
     }
 
 
+def build_data_quality_detail(pool: str, items: List[PoolItem], flag: str, limit: int = 12) -> Dict[str, object]:
+    clean_flag = str(flag or "").strip()
+    data_quality = data_quality_summary(items)
+    queue = build_data_quality_queue(pool, items, data_quality)
+    queue_item = next((item for item in queue if item.get("flag") == clean_flag), None)
+    if not queue_item:
+        meta = data_quality_flag_meta(clean_flag)
+        return {
+            "pool": pool,
+            "flag": clean_flag,
+            "found": False,
+            "summary": "未找到数据质量标记 %s 的样本。" % clean_flag,
+            "severity": meta["severity"],
+            "category": meta["category"],
+            "reason": meta["reason"],
+            "suggested_action": meta["suggested_action"],
+            "done_when": meta["done_when"],
+            "affected_count": 0,
+            "samples": [],
+            "next_commands": ["market-intel pool coverage --json%s" % pool_arg(pool)],
+            "available_flags": [str(item.get("flag")) for item in queue if item.get("flag")],
+            "agent_contract": data_quality_detail_contract(),
+            "write_policy": "只读复核数据质量样本；不自动修改 pool CSV 或 runtime 文件。",
+        }
+    samples = queue_item.get("samples", []) if isinstance(queue_item.get("samples"), list) else []
+    limited_samples = samples[: max(0, int(limit or 0))]
+    return {
+        "pool": pool,
+        "flag": clean_flag,
+        "found": True,
+        "rank": queue_item.get("rank"),
+        "summary": "%s 数据质量复核：影响 %s 个条目，优先级 %s。" % (
+            clean_flag,
+            queue_item.get("affected_count", 0),
+            queue_item.get("severity"),
+        ),
+        "severity": queue_item.get("severity"),
+        "category": queue_item.get("category"),
+        "reason": queue_item.get("reason"),
+        "suggested_action": queue_item.get("suggested_action"),
+        "done_when": queue_item.get("done_when"),
+        "affected_count": queue_item.get("affected_count", 0),
+        "sample_count": len(limited_samples),
+        "samples": limited_samples,
+        "next_commands": [
+            "market-intel pool quality %s --json%s" % (clean_flag, pool_arg(pool)),
+            "market-intel pool coverage --json%s" % pool_arg(pool),
+        ],
+        "available_flags": [str(item.get("flag")) for item in queue if item.get("flag")],
+        "agent_contract": data_quality_detail_contract(),
+        "write_policy": "只读复核数据质量样本；不自动修改 pool CSV 或 runtime 文件。",
+    }
+
+
 def export_expansion_queue_csv(
     expansion_queue: List[Dict[str, object]],
     output_path: Path,
@@ -669,7 +723,7 @@ def build_data_quality_queue(
                 "reason": meta["reason"],
                 "suggested_action": meta["suggested_action"],
                 "done_when": meta["done_when"],
-                "review_command": "market-intel pool coverage --json%s" % pool_arg(pool),
+                "review_command": "market-intel pool quality %s --json%s" % (flag, pool_arg(pool)),
                 "samples": data_quality_queue_samples(flagged_items),
             }
         )
@@ -1232,13 +1286,35 @@ def data_quality_cleanup_action(pool: str, data_quality_queue: List[Dict[str, ob
     return {
         "rank": 0,
         "id": "clean_data_quality_queue",
-        "command": "market-intel pool coverage --json%s" % pool_arg(pool),
+        "command": "market-intel pool quality %s --json%s" % (first.get("flag"), pool_arg(pool)),
         "done_when": "已按 data_quality_queue 的 rank 清理或解释高优先级标记，data_quality.flagged_item_count 下降。",
         "focus": {
             "flag": first.get("flag"),
             "severity": first.get("severity"),
             "affected_count": first.get("affected_count"),
         },
+    }
+
+
+def data_quality_detail_contract() -> Dict[str, object]:
+    return {
+        "success": "ok=true 且 data.found=true 表示该 flag 有可复核样本。",
+        "stable_fields": [
+            "data.pool",
+            "data.flag",
+            "data.found",
+            "data.severity",
+            "data.category",
+            "data.affected_count",
+            "data.samples",
+            "data.samples[].raw_row",
+            "data.samples[].raw_code",
+            "data.suggested_action",
+            "data.done_when",
+            "data.next_commands",
+            "data.available_flags",
+        ],
+        "boundary": "pool quality 是只读数据质量复核，不自动修改 pool CSV、runtime 文件或 journal。",
     }
 
 

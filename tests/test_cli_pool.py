@@ -8,9 +8,10 @@ from market_intel.cli import (
     handle_pool_expansion,
     handle_pool_explain,
     handle_pool_list,
+    handle_pool_quality,
     handle_pool_research,
 )
-from market_intel.core.text_report import render_pool_coverage_text, render_pool_expansion_text, render_pool_explain_text, render_pool_research_text
+from market_intel.core.text_report import render_pool_coverage_text, render_pool_expansion_text, render_pool_explain_text, render_pool_quality_text, render_pool_research_text
 
 
 def test_pool_list_returns_json_envelope():
@@ -60,7 +61,7 @@ def test_pool_coverage_all_a_reports_seed_boundaries():
     assert data["data_quality_queue"][0]["severity"] == "high"
     assert data["data_quality_queue"][0]["samples"]
     assert data["data_quality_queue"][0]["done_when"]
-    assert data["data_quality_queue"][0]["review_command"] == "market-intel pool coverage --json"
+    assert data["data_quality_queue"][0]["review_command"].startswith("market-intel pool quality ")
     cleanup_action = next(action for action in data["next_actions"] if action["id"] == "clean_data_quality_queue")
     assert cleanup_action["focus"]["flag"] == data["data_quality_queue"][0]["flag"]
     assert cleanup_action["rank"] == 2
@@ -503,6 +504,43 @@ def test_pool_coverage_text_renderer():
     assert "sell" not in text.lower()
 
 
+def test_pool_quality_focuses_data_quality_flag():
+    payload = handle_pool_quality("all-a", "invalid_symbol", limit=3)
+    data = payload["data"]
+    text = render_pool_quality_text(payload)
+
+    assert payload["ok"] is True
+    assert payload["command"] == "pool.quality"
+    assert data["flag"] == "invalid_symbol"
+    assert data["found"] is True
+    assert data["severity"] == "high"
+    assert data["affected_count"] > 0
+    assert data["sample_count"] == 3
+    assert data["samples"][0]["raw_row"]
+    assert data["suggested_action"]
+    assert data["done_when"]
+    assert data["next_commands"][0] == "market-intel pool quality invalid_symbol --json"
+    assert "data.samples[].raw_row" in data["agent_contract"]["stable_fields"]
+    assert "market-intel pool quality" in text
+    assert "invalid_symbol" in text
+    assert "完成标准" in text
+    assert "row" in text
+    assert "交易动作" not in text
+    assert "buy" not in text.lower()
+    assert "sell" not in text.lower()
+
+
+def test_pool_quality_unknown_flag_returns_structured_error():
+    payload = handle_pool_quality("all-a", "not_a_flag")
+    data = payload["data"]
+
+    assert payload["ok"] is False
+    assert payload["command"] == "pool.quality"
+    assert payload["errors"][0]["code"] == "POOL_QUALITY_FLAG_NOT_FOUND"
+    assert data["found"] is False
+    assert data["available_flags"]
+
+
 def test_pool_explain_acceptance_sample_shape():
     payload = handle_pool_explain("ai-energy", "002837")
     data = payload["data"]
@@ -591,6 +629,28 @@ def test_pool_coverage_cli_smoke(cli_cmd):
     assert "覆盖率 100.0%" in text_result.stdout
     assert "覆盖缺口" in text_result.stdout
     assert json.loads(json_result.stdout)["command"] == "pool.coverage"
+
+
+def test_pool_quality_cli_smoke(cli_cmd):
+    text_result = subprocess.run(
+        cli_cmd("pool", "quality", "invalid_symbol", "--limit", "2", "--text"),
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    json_result = subprocess.run(
+        cli_cmd("pool", "quality", "invalid_symbol", "--limit", "2", "--json"),
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+
+    data = json.loads(json_result.stdout)
+    assert data["command"] == "pool.quality"
+    assert data["data"]["flag"] == "invalid_symbol"
+    assert data["data"]["sample_count"] == 2
+    assert "market-intel pool quality" in text_result.stdout
+    assert "invalid_symbol" in text_result.stdout
 
 
 def test_pool_expansion_cli_smoke(tmp_path, cli_cmd):

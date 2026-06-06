@@ -80,6 +80,7 @@ PYTHONPATH=src python3 -m market_intel.cli dashboard --mock --text
 PYTHONPATH=src python3 -m market_intel.cli pool list --pool all-a --json
 PYTHONPATH=src python3 -m market_intel.cli pool coverage --text
 PYTHONPATH=src python3 -m market_intel.cli pool coverage --mock --text
+PYTHONPATH=src python3 -m market_intel.cli pool quality invalid_symbol --text
 PYTHONPATH=src python3 -m market_intel.cli pool coverage --pool ai-energy --json
 PYTHONPATH=src python3 -m market_intel.cli pool list --pool ai-energy --json
 PYTHONPATH=src python3 -m market_intel.cli pool explain 002837 --json
@@ -106,6 +107,7 @@ market-intel pool explain 002837 --json
 market-intel pool explain 002837 --text
 market-intel pool coverage --text
 market-intel pool coverage --runtime --text
+market-intel pool quality invalid_symbol --text
 market-intel hotspots --mock --json
 market-intel holdings impact --mock --json
 market-intel portfolio review --mock --text
@@ -291,12 +293,15 @@ market-intel holdings impact --runtime --json
 
 `data.data_quality_queue` 会把 `invalid_symbol`、`column_shift_suspected`、`missing_role`、`unknown_layer`、`duplicate_symbol_exposure` 等标记压成有优先级的清理队列。每项包含 `flag`、`severity`、`affected_count`、`samples`、`suggested_action`、`done_when` 和复验命令，方便人或 agent 先清最影响覆盖可信度的问题。
 
+`pool quality <flag>` 是单个质量标记的聚焦复核命令：展开该 flag 的样本行、原因、建议动作、完成标准和下一步命令，适合按 `data_quality_queue[].rank` 逐项清理。
+
 可以先用 A 股基础清单扩展 `all-a` 的底座覆盖。CSV 支持 `symbol/name/industry/concepts/index_membership/listing_status`，也支持常见中文列名如 `证券代码/证券名称/行业/概念/指数成分/上市状态`。基础清单只代表“代码、名称、行业、概念、指数成分”的覆盖，不等于研究证据完成；匹配到基础清单的持仓会进入待复核覆盖队列。
 
 ```bash
 market-intel import universe examples/a_share_universe.csv.example --runtime --json
 market-intel pool coverage --text
 market-intel pool coverage --runtime --text
+market-intel pool quality invalid_symbol --text
 ```
 
 `market-intel init runtime --json` 也会生成 `data/runtime/a_share_universe.csv` 和 `data/runtime/research_notes.csv` 模板。需要临时叠加额外清单时，仍可使用 `MARKET_INTEL_A_SHARE_UNIVERSE_PATHS=...`。

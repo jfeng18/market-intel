@@ -2062,6 +2062,8 @@ def command_input_context(command: str) -> List[str]:
         return ["runtime_daily", "journal_timeline", "latest_archive_compare"]
     if "pool coverage" in command:
         return ["pool", "runtime_holdings", "all_a_universe", "research_notes"]
+    if "pool quality" in command:
+        return ["pool", "data_quality_flag", "pool_csv_rows"]
     if "scan" in command:
         return ["runtime_quotes", "optional_runtime_holdings", "pool", "all_a_universe"]
     if "daily" in command:
@@ -2094,6 +2096,8 @@ def command_output_use(command: str) -> str:
         return "作为当天复盘的主工作台和后续命令来源。"
     if "pool coverage" in command:
         return "先确认全 A/复盘池覆盖边界、持仓覆盖状态和证据缺口。"
+    if "pool quality" in command:
+        return "聚焦一个数据质量标记，读取样本、建议动作和完成标准。"
     if "scan" in command:
         return "读取全市场板块强弱、候选复盘标的、覆盖状态和证据缺口。"
     if "daily" in command:
@@ -2130,6 +2134,8 @@ def command_done_when(command: str) -> str:
         return "已读取 review_focus、review_checklist、current_change 和 command_queue。"
     if "pool coverage" in command:
         return "已记录 coverage status、universe sector_profile、holdings_coverage、gaps 和 next_actions。"
+    if "pool quality" in command:
+        return "已记录该 flag 的 affected_count、samples、suggested_action 和 done_when。"
     if "scan" in command:
         return "已记录 sector_groups、candidate_securities、coverage_state 和 next_actions。"
     if "daily" in command:
@@ -2177,6 +2183,11 @@ def command_read_contract(command: str) -> tuple:
         return (
             ["data.status", "data.universe.sector_profile", "data.holdings_coverage", "data.gaps", "data.next_actions"],
             "确认覆盖边界、持仓覆盖和证据缺口，再进入市场扫描。",
+        )
+    if "pool quality" in command:
+        return (
+            ["data.flag", "data.affected_count", "data.samples", "data.suggested_action", "data.done_when"],
+            "读取单个数据质量标记的清理样本和完成标准。",
         )
     if "scan" in command:
         return (

@@ -9,7 +9,7 @@ from .core.agent import build_agent_briefing, build_agent_plan, command_queue_it
 from .core.fixtures import load_holdings_file, load_mock_holdings, load_mock_quotes, load_quotes_file
 from .core.brief import build_daily_brief
 from .core.csv_importer import import_holdings_csv, import_quotes_csv, import_research_csv, import_schema, import_universe_csv
-from .core.coverage import build_pool_coverage, export_expansion_queue_csv, export_research_queue_csv, review_expansion_csv
+from .core.coverage import build_data_quality_detail, build_pool_coverage, export_expansion_queue_csv, export_research_queue_csv, review_expansion_csv
 from .core.daily import build_daily_report, validate_daily_files
 from .core.focus import build_focus_report
 from .core.holdings import calculate_holding_impacts
@@ -47,6 +47,7 @@ from .core.text_report import (
     render_pool_coverage_text,
     render_pool_expansion_text,
     render_pool_explain_text,
+    render_pool_quality_text,
     render_pool_research_text,
     render_journal_entry_text,
     render_journal_compare_text,
@@ -81,6 +82,13 @@ def build_parser() -> argparse.ArgumentParser:
     coverage_parser.add_argument("--holdings-file")
     coverage_parser.add_argument("--json", action="store_true", dest="as_json")
     coverage_parser.add_argument("--text", action="store_true")
+
+    quality_parser = pool_subparsers.add_parser("quality")
+    quality_parser.add_argument("flag")
+    quality_parser.add_argument("--pool", default=DEFAULT_POOL)
+    quality_parser.add_argument("--limit", type=int, default=12)
+    quality_parser.add_argument("--json", action="store_true", dest="as_json")
+    quality_parser.add_argument("--text", action="store_true")
 
     expansion_parser = pool_subparsers.add_parser("expansion")
     expansion_parser.add_argument("--pool", default=DEFAULT_POOL)
@@ -364,6 +372,11 @@ def main(argv: Optional[List[str]] = None) -> int:
             if args.text and result["ok"]:
                 print(render_pool_coverage_text(result))
                 return 0
+        elif args.resource == "pool" and args.action == "quality":
+            result = handle_pool_quality(args.pool, args.flag, args.limit)
+            if args.text:
+                print(render_pool_quality_text(result))
+                return 0 if result["ok"] else 1
         elif args.resource == "pool" and args.action == "expansion":
             result = handle_pool_expansion(
                 args.pool,
@@ -667,6 +680,19 @@ def handle_pool_coverage(
         data=data,
         warnings=pool_warnings(items),
         source="pool:%s" % pool,
+    )
+
+
+def handle_pool_quality(pool: str, flag: str, limit: int = 12) -> Dict[str, Any]:
+    items = load_pool(pool)
+    data = build_data_quality_detail(pool, items, flag, limit=limit)
+    return envelope(
+        command="pool.quality",
+        data=data,
+        warnings=pool_warnings(items),
+        source="pool:%s" % pool,
+        ok=bool(data.get("found")),
+        errors=[] if data.get("found") else [error("POOL_QUALITY_FLAG_NOT_FOUND", "No pool items match this data quality flag.", {"flag": flag})],
     )
 
 
@@ -3353,6 +3379,11 @@ def run_agent_read_command(
         return handle_portfolio_explain(pool, symbol, use_mock=use_mock, quotes_file=quotes_file, holdings_file=holdings_file, use_runtime=use_runtime)
     if resource == "pool" and sub == "coverage":
         return handle_pool_coverage(pool, use_mock=use_mock, holdings_file=holdings_file, use_runtime=use_runtime)
+    if resource == "pool" and sub == "quality":
+        flag = first_positional(tokens[2:])
+        if not flag:
+            return envelope(command="pool.quality", errors=[error("COMMAND_FLAG_REQUIRED", "pool quality requires a data quality flag.")], ok=False)
+        return handle_pool_quality(pool, flag, limit=option_int(tokens, "--limit", 12))
     if resource == "pool" and sub == "explain":
         symbol = first_positional(tokens[2:])
         if not symbol:
@@ -7337,6 +7368,19 @@ def command_payload_observations(payload: Dict[str, object]) -> List[str]:
                 "数据质量优先清理: %s | %s | 影响 %s。"
                 % (queue[0].get("flag"), queue[0].get("severity"), queue[0].get("affected_count", 0))
             )
+    elif command == "pool.quality":
+        observations.append(
+            "质量标记 %s | %s | 影响 %s。"
+            % (data.get("flag"), data.get("severity"), data.get("affected_count", 0))
+        )
+        observations.append(str(data.get("suggested_action") or "查看样本并修正。"))
+        samples = data.get("samples", []) if isinstance(data.get("samples"), list) else []
+        observations.extend(
+            "样本 row %s: %s %s"
+            % (sample.get("raw_row"), sample.get("symbol") or sample.get("raw_code") or "未上市", sample.get("name"))
+            for sample in samples[:3]
+            if isinstance(sample, dict)
+        )
     elif command == "pool.explain":
         facts = data.get("facts", {}) if isinstance(data.get("facts"), dict) else {}
         observations.append("%s %s | %s/%s | 暴露 %s 条。" % (
