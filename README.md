@@ -4,13 +4,43 @@
 
 定位：不是自动交易系统，不输出买卖指令；它是给人和 agent 共用的市场雷达、投研地图、风险识别器。
 
-- CLI：给 Livermore / Claude / qwen 等 agent 调用，输出稳定 JSON。
-- GUI：给江沅使用，展示热点、异动、资金追捧、宏观/行业/个股/消息联动。
-- 独立项目：不污染 tradegov / researchgov / companygov / decision-cockpit，但可以吸收它们作为 adapters。
+- CLI：给自动化流程和人工复盘使用，输出稳定 JSON。
+- GUI：后续可选界面，展示热点、异动、资金追捧、宏观/行业/个股/消息联动。
+- 独立项目：不依赖外部私有系统，默认只读取本仓库数据、示例数据和用户提供的 runtime 文件。
 
 首版设计文档：`docs/design.md`
 
 协作交接文档：`docs/handoff.md`
+
+## 开发工作流
+
+需要 Python 3.10+ 才能执行正式安装和 CI 流程：
+
+```bash
+make install
+make test
+make smoke
+make ci
+```
+
+常用命令：
+
+- `make install`：安装 editable package 和测试工具。
+- `make test`：运行全量 pytest。
+- `make smoke`：用模块入口跑 CLI smoke，不要求 console script 已安装。
+- `make ci`：模拟 GitHub Actions 的安装、测试和 smoke 流程。
+
+如果本机默认 `python3` 低于 3.10，可以指定解释器：
+
+```bash
+make ci PYTHON=python3.10
+```
+
+未安装时仍可用模块入口快速运行：
+
+```bash
+PYTHONPATH=src python3 -m market_intel.cli daily --mock --text
+```
 
 ## 当前 P0 用法
 
@@ -273,5 +303,3 @@ market-intel import holdings holdings.csv --output data/runtime/holdings.json --
 - `examples/holdings.example.json`
 - `examples/quotes.csv.example`
 - `examples/holdings.csv.example`
-
-后续分工：Codex 负责抠设计和 review；Claude 负责开发和测试；Livermore 负责最终验收。

@@ -20,12 +20,10 @@ jobs:
           cache: "pip"
 
       - name: Install package and test tools
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e . pytest
+        run: make install PYTHON=python
 
       - name: Run tests
-        run: python -m pytest -q
+        run: make test PYTHON=python
 
       - name: Run CLI smoke test
-        run: market-intel --help
+        run: make smoke console-smoke PYTHON=python
