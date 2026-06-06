@@ -1348,6 +1348,10 @@ def render_agent_next_text(payload: Dict[str, object]) -> str:
     if coverage:
         lines.extend(["", "覆盖底座"])
         lines.extend(render_focus_coverage_context(coverage))
+    scan = data.get("market_scan", {}) if isinstance(data.get("market_scan"), dict) else {}
+    if scan:
+        lines.extend(["", "全市场扫描"])
+        lines.extend(render_agent_next_market_scan(scan))
     handoff = data.get("review_handoff", {}) if isinstance(data.get("review_handoff"), dict) else {}
     if handoff:
         lines.extend(["", "交接"])
@@ -1381,6 +1385,38 @@ def render_agent_next_handoff(value: Dict[str, object]) -> List[str]:
     return lines
 
 
+def render_agent_next_market_scan(value: Dict[str, object]) -> List[str]:
+    lines = ["- %s" % (value.get("summary") or "暂无。")]
+    groups = value.get("top_groups", []) if isinstance(value.get("top_groups"), list) else []
+    for group in groups[:2]:
+        if isinstance(group, dict):
+            lines.append(
+                "   板块: #%s %s%s | 分 %s | 活跃 %s/%s"
+                % (
+                    group.get("rank"),
+                    scan_group_type_label(group.get("group_type")),
+                    group.get("name"),
+                    group.get("score"),
+                    group.get("active_member_count", 0),
+                    group.get("member_count", 0),
+                )
+            )
+    candidates = value.get("top_candidates", []) if isinstance(value.get("top_candidates"), list) else []
+    for item in candidates[:2]:
+        if isinstance(item, dict):
+            lines.append(
+                "   候选: #%s %s %s | 分 %s | 覆盖 %s"
+                % (
+                    item.get("rank"),
+                    item.get("symbol"),
+                    item.get("name"),
+                    item.get("review_score"),
+                    item.get("coverage_state"),
+                )
+            )
+    return lines
+
+
 def render_agent_run_digest(value: object) -> List[str]:
     digest = value if isinstance(value, dict) else {}
     if not digest:
@@ -1393,6 +1429,36 @@ def render_agent_run_digest(value: object) -> List[str]:
     if coverage:
         lines.append("- 覆盖底座:")
         lines.extend("   %s" % line.lstrip("- ") for line in render_focus_coverage_context(coverage)[:6])
+    scan = digest.get("market_scan", {}) if isinstance(digest.get("market_scan"), dict) else {}
+    if scan:
+        lines.append("- 全市场扫描: %s" % (scan.get("summary") or "暂无。"))
+        groups = scan.get("top_groups", []) if isinstance(scan.get("top_groups"), list) else []
+        for group in groups[:2]:
+            if isinstance(group, dict):
+                lines.append(
+                    "   板块: #%s %s%s | 分 %s | 活跃 %s/%s"
+                    % (
+                        group.get("rank"),
+                        scan_group_type_label(group.get("group_type")),
+                        group.get("name"),
+                        group.get("score"),
+                        group.get("active_member_count", 0),
+                        group.get("member_count", 0),
+                    )
+                )
+        candidates = scan.get("top_candidates", []) if isinstance(scan.get("top_candidates"), list) else []
+        for item in candidates[:2]:
+            if isinstance(item, dict):
+                lines.append(
+                    "   候选: #%s %s %s | 分 %s | 覆盖 %s"
+                    % (
+                        item.get("rank"),
+                        item.get("symbol"),
+                        item.get("name"),
+                        item.get("review_score"),
+                        item.get("coverage_state"),
+                    )
+                )
     repair = digest.get("data_repair_plan", {}) if isinstance(digest.get("data_repair_plan"), dict) else {}
     if repair and repair.get("available"):
         lines.extend(render_agent_run_data_repair_plan(repair))
@@ -2079,6 +2145,7 @@ def render_agent_briefing_text(payload: Dict[str, object]) -> str:
     runtime = data.get("runtime", {}) if isinstance(data.get("runtime"), dict) else {}
     readiness = runtime.get("readiness", {}) if isinstance(runtime.get("readiness"), dict) else {}
     daily = data.get("daily", {}) if isinstance(data.get("daily"), dict) else {}
+    market_scan = data.get("market_scan", {}) if isinstance(data.get("market_scan"), dict) else {}
     history = data.get("history", {}) if isinstance(data.get("history"), dict) else {}
     current_change = data.get("current_change", {}) if isinstance(data.get("current_change"), dict) else {}
     lines = [
@@ -2113,6 +2180,8 @@ def render_agent_briefing_text(payload: Dict[str, object]) -> str:
         lines.extend(render_briefing_watchlist(watchlist.get("top_items", []) if isinstance(watchlist, dict) else []))
         lines.extend(render_briefing_portfolio(portfolio.get("top_items", []) if isinstance(portfolio, dict) else []))
 
+    lines.extend(["", "全市场扫描"])
+    lines.extend(render_briefing_market_scan(market_scan))
     lines.extend(["", "组合暴露"])
     lines.extend(render_portfolio_exposure(daily.get("portfolio_exposure", {}) if isinstance(daily, dict) else {}))
     lines.extend(["", "复盘路径"])
@@ -3304,6 +3373,49 @@ def render_briefing_data_quality(value: object) -> List[str]:
         lines.append("   错误明细: %s" % render_compact_issue_summary(errors[:4]))
     if warnings:
         lines.append("   告警明细: %s" % render_compact_issue_summary(warnings[:4]))
+    return lines
+
+
+def render_briefing_market_scan(value: object) -> List[str]:
+    scan = value if isinstance(value, dict) else {}
+    if not scan.get("available"):
+        return ["- %s" % (scan.get("summary") or "暂无全市场扫描。")]
+    lines = [
+        "- %s | 模式 %s | 匹配行情 %s/%s"
+        % (
+            scan.get("summary") or "暂无摘要。",
+            render_scan_mode(scan.get("scan_mode")),
+            scan.get("matched_quote_count", 0),
+            scan.get("quote_count", 0),
+        )
+    ]
+    groups = scan.get("sector_groups", []) if isinstance(scan.get("sector_groups"), list) else []
+    for group in groups[:3]:
+        if isinstance(group, dict):
+            lines.append(
+                "   板块: #%s %s%s | 分 %s | 活跃 %s/%s"
+                % (
+                    group.get("rank"),
+                    scan_group_type_label(group.get("group_type")),
+                    group.get("name"),
+                    group.get("score"),
+                    group.get("active_member_count", 0),
+                    group.get("member_count", 0),
+                )
+            )
+    candidates = scan.get("candidate_securities", []) if isinstance(scan.get("candidate_securities"), list) else []
+    for item in candidates[:3]:
+        if isinstance(item, dict):
+            lines.append(
+                "   候选: #%s %s %s | 分 %s | 覆盖 %s"
+                % (
+                    item.get("rank"),
+                    item.get("symbol"),
+                    item.get("name"),
+                    item.get("review_score"),
+                    item.get("coverage_state"),
+                )
+            )
     return lines
 
 

@@ -1693,8 +1693,16 @@ def handle_agent_briefing(
 ) -> Dict[str, Any]:
     items = load_pool(pool)
     status_data = build_runtime_status(items, max_quote_age_days=max_quote_age_days, pool=pool)
+    scan_payload = None
     daily_payload = None
     if status_data.get("readiness", {}).get("can_run_daily") if isinstance(status_data.get("readiness"), dict) else False:
+        scan_payload = handle_scan(
+            pool,
+            use_mock=False,
+            top=max(top, 8),
+            candidate_top=max(top * 2, 12),
+            use_runtime=True,
+        )
         daily_payload = handle_daily(
             pool,
             use_mock=False,
@@ -1717,6 +1725,7 @@ def handle_agent_briefing(
     data = build_agent_briefing(
         pool,
         status_data,
+        scan_payload,
         daily_payload,
         timeline_data,
         compare_data,
@@ -1729,6 +1738,8 @@ def handle_agent_briefing(
         warnings.extend(compare_data.get("warnings", []) if isinstance(compare_data.get("warnings"), list) else [])
     if isinstance(current_compare_data, dict):
         warnings.extend(current_compare_data.get("warnings", []) if isinstance(current_compare_data.get("warnings"), list) else [])
+    if isinstance(scan_payload, dict):
+        warnings.extend(scan_payload.get("warnings", []) if isinstance(scan_payload.get("warnings"), list) else [])
     warnings.extend(daily_payload.get("warnings", []) if isinstance(daily_payload.get("warnings"), list) else [])
     return envelope(
         command="agent.briefing",
@@ -1823,6 +1834,7 @@ def handle_agent_next(
     completion = digest.get("review_completion", {}) if isinstance(digest.get("review_completion"), dict) else {}
     cards = digest.get("security_cards", {}) if isinstance(digest.get("security_cards"), dict) else {}
     coverage_context = digest.get("coverage_context", {}) if isinstance(digest.get("coverage_context"), dict) else {}
+    market_scan = digest.get("market_scan", {}) if isinstance(digest.get("market_scan"), dict) else {}
     if symbol:
         handoff = filter_agent_next_handoff_for_symbol(handoff, symbol)
         cards = filter_agent_next_cards_for_symbol(cards, symbol)
@@ -1837,6 +1849,7 @@ def handle_agent_next(
                     "source_agent_run_state": run_data.get("state"),
                     "run_limits": run_data.get("run_limits", {}),
                     "coverage_context": coverage_context,
+                    "market_scan": market_scan,
                     "review_handoff": handoff,
                     "review_completion": completion,
                     "security_cards": cards,
@@ -1854,6 +1867,7 @@ def handle_agent_next(
         "source_agent_run_state": run_data.get("state"),
         "run_limits": run_data.get("run_limits", {}),
         "coverage_context": coverage_context,
+        "market_scan": market_scan,
         "review_handoff": handoff,
         "review_completion": completion,
         "security_cards": cards,
@@ -2048,6 +2062,7 @@ def run_agent_read_command(
     use_mock = flag_present(tokens, "--mock")
     quotes_file = option_value(tokens, "--quotes-file")
     holdings_file = option_value(tokens, "--holdings-file")
+    candidate_top = option_int(tokens, "--candidate-top", max(default_top * 2, 12))
     resource = tokens[0]
     sub = tokens[1] if len(tokens) > 1 else None
 
@@ -2059,6 +2074,8 @@ def run_agent_read_command(
         return handle_import_schema()
     if resource == "daily":
         return handle_daily(pool, use_mock=use_mock, top=top, map_top=map_top, quotes_file=quotes_file, holdings_file=holdings_file, use_runtime=use_runtime)
+    if resource == "scan":
+        return handle_scan(pool, use_mock=use_mock, top=max(top, 8), candidate_top=candidate_top, quotes_file=quotes_file, holdings_file=holdings_file, use_runtime=use_runtime)
     if resource == "brief":
         return handle_brief(pool, use_mock=use_mock, top=top, quotes_file=quotes_file, holdings_file=holdings_file, use_runtime=use_runtime)
     if resource == "watchlist":
@@ -2111,6 +2128,13 @@ def compact_agent_run_result(item: Dict[str, object], payload: Dict[str, object]
         "errors": compact_payload_issues(payload.get("errors", [])),
         "done_when": item.get("done_when"),
     }
+
+
+def first_result_payload(results: List[Dict[str, object]], payload_command: str) -> Dict[str, object]:
+    for result in results:
+        if isinstance(result, dict) and result.get("payload_command") == payload_command:
+            return result
+    return {}
 
 
 def agent_run_skip(item: Dict[str, object], reason: str) -> Dict[str, object]:
@@ -2172,6 +2196,7 @@ def build_agent_run_review_digest(
         },
         "data_quality": agent_run_digest_data_quality(validation, results),
         "coverage_context": agent_run_digest_coverage_context(daily),
+        "market_scan": agent_run_digest_market_scan(briefing_data, results),
         "market_structure": agent_run_digest_market_structure(daily),
         "portfolio_pressure": portfolio_pressure,
         "holding_dashboard": holding_dashboard,
@@ -2246,6 +2271,58 @@ def agent_run_digest_coverage_context(daily: Dict[str, object]) -> Dict[str, obj
             for item in actions[:5]
             if isinstance(item, dict)
         ],
+    }
+
+
+def agent_run_digest_market_scan(briefing_data: Dict[str, object], results: List[Dict[str, object]]) -> Dict[str, object]:
+    scan = briefing_data.get("market_scan", {}) if isinstance(briefing_data.get("market_scan"), dict) else {}
+    result = first_result_payload(results, "scan")
+    result_observations = result.get("observations", []) if isinstance(result.get("observations"), list) else []
+    if not scan.get("available"):
+        return {
+            "available": False,
+            "summary": scan.get("summary") or "暂无全市场扫描。",
+            "read": bool(result),
+            "observations": result_observations[:4],
+        }
+    groups = scan.get("sector_groups", []) if isinstance(scan.get("sector_groups"), list) else []
+    candidates = scan.get("candidate_securities", []) if isinstance(scan.get("candidate_securities"), list) else []
+    return {
+        "available": True,
+        "summary": scan.get("summary"),
+        "scan_mode": scan.get("scan_mode"),
+        "quote_count": scan.get("quote_count", 0),
+        "matched_quote_count": scan.get("matched_quote_count", 0),
+        "top_groups": [
+            {
+                "rank": item.get("rank"),
+                "group_type": item.get("group_type"),
+                "name": item.get("name"),
+                "score": item.get("score"),
+                "active_member_count": item.get("active_member_count"),
+                "member_count": item.get("member_count"),
+                "leaders": list(item.get("leaders", []))[:3] if isinstance(item.get("leaders"), list) else [],
+            }
+            for item in groups[:5]
+            if isinstance(item, dict)
+        ],
+        "top_candidates": [
+            {
+                "rank": item.get("rank"),
+                "symbol": item.get("symbol"),
+                "name": item.get("name"),
+                "review_score": item.get("review_score"),
+                "coverage_state": item.get("coverage_state"),
+                "why_now": item.get("why_now"),
+                "commands": list(item.get("commands", []))[:3] if isinstance(item.get("commands"), list) else [],
+            }
+            for item in candidates[:6]
+            if isinstance(item, dict)
+        ],
+        "questions": list(scan.get("questions", []))[:5] if isinstance(scan.get("questions"), list) else [],
+        "read": bool(result),
+        "observations": result_observations[:4],
+        "write_policy": "只读全市场扫描，不生成交易指令。",
     }
 
 
@@ -5705,6 +5782,9 @@ def agent_run_contract() -> Dict[str, object]:
             "data.review_digest.coverage_context",
             "data.review_digest.coverage_context.universe.sector_profile",
             "data.review_digest.coverage_context.next_actions",
+            "data.review_digest.market_scan",
+            "data.review_digest.market_scan.top_groups",
+            "data.review_digest.market_scan.top_candidates",
             "data.review_digest.data_repair_plan",
             "data.review_digest.data_repair_plan.items",
             "data.review_digest.data_repair_plan.groups",
@@ -5838,6 +5918,9 @@ def agent_next_contract() -> Dict[str, object]:
             "data.coverage_context",
             "data.coverage_context.universe.sector_profile",
             "data.coverage_context.next_actions",
+            "data.market_scan",
+            "data.market_scan.top_groups",
+            "data.market_scan.top_candidates",
             "data.review_handoff",
             "data.review_handoff.handoff_state",
             "data.review_handoff.resume_prompt",
@@ -5914,6 +5997,9 @@ def command_payload_observations(payload: Dict[str, object]) -> List[str]:
         observations.extend(compact_hotspot_lines(brief.get("top_hotspots", [])))
         observations.extend(compact_risk_lines(data.get("risk_register", [])))
         observations.extend(compact_security_profile_lines(data.get("security_risk_profile", [])))
+    elif command == "scan":
+        observations.extend(compact_scan_group_lines(data.get("sector_groups", [])))
+        observations.extend(compact_scan_candidate_lines(data.get("candidate_securities", [])))
     elif command == "portfolio.review":
         observations.extend(compact_security_lines(data.get("items", []), "持仓"))
         observations.extend(compact_group_lines(data.get("repeated_exposures", []), "重复链路"))
@@ -5975,6 +6061,43 @@ def compact_hotspot_lines(value: object) -> List[str]:
             item.get("active_member_count"),
             item.get("member_count"),
         ))
+    return result
+
+
+def compact_scan_group_lines(value: object) -> List[str]:
+    rows = value if isinstance(value, list) else []
+    result = []
+    for item in rows[:3]:
+        if not isinstance(item, dict):
+            continue
+        result.append(
+            "扫描板块: %s%s | 分 %s | 活跃 %s/%s"
+            % (
+                item.get("group_type"),
+                item.get("name"),
+                item.get("score"),
+                item.get("active_member_count"),
+                item.get("member_count"),
+            )
+        )
+    return result
+
+
+def compact_scan_candidate_lines(value: object) -> List[str]:
+    rows = value if isinstance(value, list) else []
+    result = []
+    for item in rows[:4]:
+        if not isinstance(item, dict):
+            continue
+        result.append(
+            "扫描候选: %s %s | 分 %s | 覆盖 %s"
+            % (
+                item.get("symbol"),
+                item.get("name"),
+                item.get("review_score"),
+                item.get("coverage_state"),
+            )
+        )
     return result
 
 

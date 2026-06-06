@@ -209,8 +209,15 @@ def test_agent_briefing_ready_without_journal(monkeypatch, tmp_path):
     assert data["daily"]["coverage_context"]["available"] is True
     assert data["daily"]["coverage_context"]["pool"] == "ai-energy"
     assert data["daily"]["coverage_context"]["universe"]["available"] is False
+    assert data["market_scan"]["available"] is True
+    assert data["market_scan"]["sector_groups"]
+    assert data["market_scan"]["candidate_securities"]
+    assert data["market_scan"]["candidate_securities"][0]["why_now"]
     assert "data.daily.coverage_context" in data["agent_contract"]["stable_fields"]
     assert "data.daily.coverage_context.universe.sector_profile" in data["agent_contract"]["stable_fields"]
+    assert "data.market_scan" in data["agent_contract"]["stable_fields"]
+    assert "data.market_scan.sector_groups" in data["agent_contract"]["stable_fields"]
+    assert "data.market_scan.candidate_securities[].why_now" in data["agent_contract"]["stable_fields"]
     assert data["daily"]["portfolio_review"]["top_items"][0]["commands"][0].startswith("market-intel portfolio explain")
     exposure = data["daily"]["portfolio_exposure"]
     assert exposure["has_concentration"] is True
@@ -280,8 +287,10 @@ def test_agent_briefing_ready_without_journal(monkeypatch, tmp_path):
     }
     assert all(section["note_command"].startswith("market-intel journal note --section") for section in data["journal_prompt"]["sections"])
     assert data["history"]["can_compare"] is False
+    assert any(item["id"] == "market_scan_review" for item in data["review_focus"])
     assert any(item["id"] == "watchlist_review" for item in data["review_focus"])
     assert any(item["id"] == "archive_daily" for item in data["review_focus"])
+    assert any(item["id"] == "market_scan_context_review" for item in data["review_checklist"])
     assert any(item["id"] == "hotspot_resonance_review" for item in data["review_checklist"])
     assert any(item["id"] == "watchlist_context_review" for item in data["review_checklist"])
     assert any(item["id"] == "portfolio_risk_review" for item in data["review_checklist"])
@@ -295,11 +304,17 @@ def test_agent_briefing_ready_without_journal(monkeypatch, tmp_path):
     assert data["command_queue"][0]["input_context"]
     assert data["command_queue"][0]["output_use"]
     assert data["command_queue"][0]["done_when"]
+    scan_command = next(item for item in data["command_queue"] if item["command"] == "market-intel scan --runtime --text")
+    assert scan_command["json_command"] == "market-intel scan --runtime --json"
+    assert scan_command["state_effect"] == "read_only"
+    assert "data.sector_groups" in scan_command["read_fields"]
     archive_command = next(item for item in data["command_queue"] if item["command"] == "market-intel journal save --runtime --json")
     assert archive_command["mutates_state"] is True
     assert archive_command["state_effect"] == "writes_journal"
     assert archive_command["done_when"]
+    assert "market-intel scan --runtime --text" in data["next_commands"]
     assert any("portfolio explain" in command for command in data["next_commands"])
+    assert any("pool explain" in command for command in data["next_commands"])
     assert "data.review_focus" in data["agent_contract"]["stable_fields"]
     assert "data.review_checklist" in data["agent_contract"]["stable_fields"]
     assert "data.daily.portfolio_exposure" in data["agent_contract"]["stable_fields"]
@@ -379,7 +394,8 @@ def test_agent_run_ready_executes_read_only_and_skips_writes(monkeypatch, tmp_pa
     assert data["state"] == "ran_with_skips"
     assert data["run_limits"]["read_only_only"] is True
     assert data["results"]
-    assert [item["payload_command"] for item in data["results"][:4]] == [
+    assert [item["payload_command"] for item in data["results"][:5]] == [
+        "scan",
         "daily",
         "portfolio.review",
         "watchlist",
@@ -394,8 +410,16 @@ def test_agent_run_ready_executes_read_only_and_skips_writes(monkeypatch, tmp_pa
     assert digest["coverage_context"]["available"] is True
     assert digest["coverage_context"]["pool"] == "ai-energy"
     assert digest["coverage_context"]["universe"]["available"] is False
+    assert digest["market_scan"]["available"] is True
+    assert digest["market_scan"]["read"] is True
+    assert digest["market_scan"]["top_groups"]
+    assert digest["market_scan"]["top_candidates"]
+    assert digest["market_scan"]["write_policy"] == "只读全市场扫描，不生成交易指令。"
     assert "data.review_digest.coverage_context" in data["agent_contract"]["stable_fields"]
     assert "data.review_digest.coverage_context.universe.sector_profile" in data["agent_contract"]["stable_fields"]
+    assert "data.review_digest.market_scan" in data["agent_contract"]["stable_fields"]
+    assert "data.review_digest.market_scan.top_groups" in data["agent_contract"]["stable_fields"]
+    assert "data.review_digest.market_scan.top_candidates" in data["agent_contract"]["stable_fields"]
     assert digest["market_structure"]["top_chains"]
     assert digest["portfolio_pressure"]["has_concentration"] is True
     assert digest["portfolio_pressure"]["groups"]
@@ -497,7 +521,7 @@ def test_agent_run_ready_executes_read_only_and_skips_writes(monkeypatch, tmp_pa
     assert attention["items"][0]["related_symbols"] == ["300308"]
     assert attention["items"][0]["already_read"] is True
     assert attention["items"][0]["linked_result"]["payload_command"] == "portfolio.explain"
-    assert attention["items"][0]["linked_result"]["run_rank"] == 5
+    assert attention["items"][0]["linked_result"]["run_rank"] == 6
     assert attention["items"][0]["journal_note"]["available"] is True
     assert attention["items"][0]["journal_note"]["section"] == "security_review"
     assert attention["items"][0]["journal_note"]["run_after"] == "market-intel journal save --runtime --json"
@@ -864,9 +888,11 @@ def test_agent_briefing_text_renderer(monkeypatch, tmp_path):
     assert "记录命令" in text
     assert "journal note --section" in text
     assert "组合暴露" in text
+    assert "全市场扫描" in text
     assert "标的复核队列" in text
     assert "最强链路" in text
     assert "观察清单" in text
+    assert "market-intel scan" in text
     assert "portfolio explain" in text
     assert "下一步" in text
     assert "buy" not in text.lower()
@@ -880,6 +906,7 @@ def test_agent_run_text_renderer(monkeypatch, tmp_path):
 
     assert "market-intel agent run" in text
     assert "复盘摘要" in text
+    assert "全市场扫描" in text
     assert "市场结构" in text
     assert "组合压力" in text
     assert "持仓仪表盘" in text
@@ -919,15 +946,22 @@ def test_agent_next_returns_compact_handoff(monkeypatch, tmp_path):
     assert data["state"] == data["review_handoff"]["handoff_state"]
     assert data["coverage_context"]["available"] is True
     assert data["coverage_context"]["pool"] == "ai-energy"
+    assert data["market_scan"]["available"] is True
+    assert data["market_scan"]["top_groups"]
+    assert data["market_scan"]["top_candidates"]
     assert data["review_handoff"]["command_chain"]
     assert data["review_handoff"]["command_chain"][0]["json_command"].endswith("--json")
     assert data["security_cards"]["cards"]
     assert data["review_completion"]["checks"]
     assert "data.coverage_context" in data["agent_contract"]["stable_fields"]
     assert "data.coverage_context.universe.sector_profile" in data["agent_contract"]["stable_fields"]
+    assert "data.market_scan" in data["agent_contract"]["stable_fields"]
+    assert "data.market_scan.top_groups" in data["agent_contract"]["stable_fields"]
+    assert "data.market_scan.top_candidates" in data["agent_contract"]["stable_fields"]
     assert "data.review_handoff.command_chain[].json_command" in data["agent_contract"]["stable_fields"]
     assert "market-intel agent next" in text
     assert "覆盖底座" in text
+    assert "全市场扫描" in text
     assert "命令链" in text
     assert "单票卡片" in text
     assert "buy" not in text.lower()

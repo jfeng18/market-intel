@@ -47,6 +47,7 @@ def build_agent_plan(
 def build_agent_briefing(
     pool: str,
     runtime_status: Dict[str, object],
+    scan_payload: Optional[Dict[str, object]],
     daily_payload: Optional[Dict[str, object]],
     journal_timeline: Dict[str, object],
     journal_compare: Optional[Dict[str, object]],
@@ -58,19 +59,20 @@ def build_agent_briefing(
     universe = runtime_status.get("universe", {}) if isinstance(runtime_status.get("universe"), dict) else {}
     validation = runtime_status.get("validation", {}) if isinstance(runtime_status.get("validation"), dict) else {}
     validation_summary = validation.get("summary", {}) if isinstance(validation.get("summary"), dict) else {}
+    market_scan = compact_market_scan(scan_payload)
     daily = compact_daily_payload(daily_payload)
     history = compact_history(journal_timeline, journal_compare)
     current_change = compact_current_change(current_compare)
-    security_queue = build_security_review_queue(daily, current_change)
-    focus = build_review_focus(readiness, daily, history, current_change)
-    checklist = build_review_checklist(readiness, daily, history, focus, current_change)
+    security_queue = build_security_review_queue(daily, current_change, market_scan)
+    focus = build_review_focus(readiness, daily, history, current_change, market_scan)
+    checklist = build_review_checklist(readiness, daily, history, focus, current_change, market_scan)
     state = briefing_state(readiness, daily, history)
-    next_commands = briefing_next_commands(readiness, daily, history, current_change)
+    next_commands = briefing_next_commands(readiness, daily, history, current_change, market_scan)
 
     return {
         "pool": pool,
         "state": state,
-        "summary": briefing_summary(state, readiness, daily, history, focus),
+        "summary": briefing_summary(state, readiness, daily, history, focus, market_scan),
         "runtime": {
             "readiness": readiness,
             "freshness": freshness,
@@ -78,13 +80,14 @@ def build_agent_briefing(
             "validation": compact_validation_summary(validation, validation_summary),
             "validation_summary": validation_summary,
         },
+        "market_scan": market_scan,
         "daily": daily,
         "history": history,
         "current_change": current_change,
         "security_review_queue": security_queue,
         "review_focus": focus,
         "review_checklist": checklist,
-        "questions": briefing_questions(daily, history, focus, current_change),
+        "questions": briefing_questions(daily, history, focus, current_change, market_scan),
         "journal_prompt": build_journal_prompt(daily, history, current_change, security_queue),
         "command_queue": build_command_queue(next_commands, focus, checklist),
         "next_commands": next_commands,
@@ -158,6 +161,102 @@ def compact_daily_payload(payload: Optional[Dict[str, object]]) -> Dict[str, obj
         "journal_actions": compact_daily_journal_actions(data.get("journal_actions", [])),
         "command_queue": compact_command_queue(data.get("command_queue", [])),
         "errors": [],
+    }
+
+
+def compact_market_scan(payload: Optional[Dict[str, object]]) -> Dict[str, object]:
+    if not isinstance(payload, dict) or not payload.get("ok"):
+        return {
+            "available": False,
+            "summary": "runtime 暂不可生成全市场扫描。",
+            "scan_mode": None,
+            "sector_groups": [],
+            "candidate_securities": [],
+            "errors": payload.get("errors", []) if isinstance(payload, dict) else [],
+        }
+    data = payload.get("data", {}) if isinstance(payload.get("data"), dict) else {}
+    groups = data.get("sector_groups", []) if isinstance(data.get("sector_groups"), list) else []
+    candidates = data.get("candidate_securities", []) if isinstance(data.get("candidate_securities"), list) else []
+    return {
+        "available": True,
+        "summary": data.get("summary"),
+        "scan_mode": data.get("scan_mode"),
+        "quote_count": data.get("quote_count", 0),
+        "matched_quote_count": data.get("matched_quote_count", 0),
+        "unmatched_quote_count": data.get("unmatched_quote_count", 0),
+        "sector_groups": [compact_scan_group(item) for item in groups[:5] if isinstance(item, dict)],
+        "candidate_securities": [compact_scan_candidate(item) for item in candidates[:8] if isinstance(item, dict)],
+        "questions": list(data.get("questions", []))[:5] if isinstance(data.get("questions"), list) else [],
+        "next_actions": [
+            {
+                "id": item.get("id"),
+                "command": item.get("command"),
+                "done_when": item.get("done_when"),
+            }
+            for item in (data.get("next_actions", []) if isinstance(data.get("next_actions"), list) else [])[:5]
+            if isinstance(item, dict)
+        ],
+        "errors": [],
+    }
+
+
+def compact_scan_group(item: Dict[str, object]) -> Dict[str, object]:
+    return {
+        "rank": item.get("rank"),
+        "key": item.get("key"),
+        "group_type": item.get("group_type"),
+        "layer": item.get("layer"),
+        "name": item.get("name"),
+        "score": item.get("score"),
+        "member_count": item.get("member_count"),
+        "active_member_count": item.get("active_member_count"),
+        "avg_change_pct": item.get("avg_change_pct"),
+        "avg_amount_ratio": item.get("avg_amount_ratio"),
+        "leaders": [
+            {
+                "symbol": leader.get("symbol"),
+                "name": leader.get("name"),
+                "change_pct": leader.get("change_pct"),
+                "coverage_state": leader.get("coverage_state"),
+            }
+            for leader in (item.get("leaders", []) if isinstance(item.get("leaders"), list) else [])[:3]
+            if isinstance(leader, dict)
+        ],
+        "signals": list(item.get("signals", []))[:6] if isinstance(item.get("signals"), list) else [],
+        "risks": list(item.get("risks", []))[:6] if isinstance(item.get("risks"), list) else [],
+    }
+
+
+def compact_scan_candidate(item: Dict[str, object]) -> Dict[str, object]:
+    quote = item.get("quote", {}) if isinstance(item.get("quote"), dict) else {}
+    return {
+        "rank": item.get("rank"),
+        "symbol": item.get("symbol"),
+        "name": item.get("name"),
+        "is_holding": bool(item.get("is_holding")),
+        "review_score": item.get("review_score"),
+        "priority": item.get("priority"),
+        "coverage_state": item.get("coverage_state"),
+        "coverage_state_reasons": list(item.get("coverage_state_reasons", []))[:5] if isinstance(item.get("coverage_state_reasons"), list) else [],
+        "research_status": compact_research_status(item.get("research_status", {})),
+        "change_pct": quote.get("change_pct"),
+        "amount_ratio": quote.get("amount_ratio"),
+        "intraday_fade_pct": quote.get("intraday_fade_pct"),
+        "sector_contexts": [
+            {
+                "group_type": context.get("group_type"),
+                "name": context.get("name"),
+                "score": context.get("score"),
+                "rank": context.get("rank"),
+            }
+            for context in (item.get("sector_contexts", []) if isinstance(item.get("sector_contexts"), list) else [])[:3]
+            if isinstance(context, dict)
+        ],
+        "risk_flags": list(item.get("risk_flags", []))[:8] if isinstance(item.get("risk_flags"), list) else [],
+        "why_now": item.get("why_now"),
+        "checklist": list(item.get("checklist", []))[:5] if isinstance(item.get("checklist"), list) else [],
+        "commands": list(item.get("commands", []))[:4] if isinstance(item.get("commands"), list) else [],
+        "done_when": item.get("done_when"),
     }
 
 
@@ -576,6 +675,7 @@ def build_review_focus(
     daily: Dict[str, object],
     history: Dict[str, object],
     current_change: Dict[str, object],
+    market_scan: Dict[str, object],
 ) -> List[Dict[str, object]]:
     focus = []
     validation = daily.get("validation", {}) if isinstance(daily.get("validation"), dict) else {}
@@ -607,6 +707,21 @@ def build_review_focus(
                 ["market-intel validate runtime --json", "market-intel status runtime --text"],
             )
         )
+
+    if market_scan.get("available"):
+        groups = market_scan.get("sector_groups", []) if isinstance(market_scan.get("sector_groups"), list) else []
+        candidates = market_scan.get("candidate_securities", []) if isinstance(market_scan.get("candidate_securities"), list) else []
+        if groups or candidates:
+            focus.append(
+                focus_item(
+                    18,
+                    "market_scan_review",
+                    "全市场扫描",
+                    "先看行业/概念/链路强弱，再进入持仓和单票复核。",
+                    compact_scan_evidence(groups[:3], candidates[:3]),
+                    ["market-intel scan --runtime --text"],
+                )
+            )
 
     top_hotspots = daily.get("top_hotspots", []) if isinstance(daily.get("top_hotspots"), list) else []
     if top_hotspots:
@@ -718,6 +833,7 @@ def build_review_checklist(
     history: Dict[str, object],
     focus: List[Dict[str, object]],
     current_change: Dict[str, object],
+    market_scan: Dict[str, object],
 ) -> List[Dict[str, object]]:
     if readiness.get("state") == "blocked" or not daily.get("available"):
         return [
@@ -748,6 +864,22 @@ def build_review_checklist(
                 "知道哪些行情或持仓字段缺失，并决定是否需要补数据后再解读。",
             )
         )
+
+    if market_scan.get("available"):
+        groups = market_scan.get("sector_groups", []) if isinstance(market_scan.get("sector_groups"), list) else []
+        candidates = market_scan.get("candidate_securities", []) if isinstance(market_scan.get("candidate_securities"), list) else []
+        if groups or candidates:
+            items.append(
+                checklist_item(
+                    18,
+                    "market_scan_context_review",
+                    "先扫全市场板块",
+                    "用 scan 判断今日强弱是否只来自种子链路，还是已有行业/概念/指数层面的扩散。",
+                    compact_scan_evidence(groups[:3], candidates[:3]),
+                    ["market-intel scan --runtime --text"],
+                    "能说清最强板块、候选标的、覆盖状态和仍需补证据的 foundation/draft 项。",
+                )
+            )
 
     top_hotspots = daily.get("top_hotspots", []) if isinstance(daily.get("top_hotspots"), list) else []
     if top_hotspots:
@@ -885,14 +1017,20 @@ def briefing_summary(
     daily: Dict[str, object],
     history: Dict[str, object],
     focus: List[Dict[str, object]],
+    market_scan: Optional[Dict[str, object]] = None,
 ) -> str:
     if state == "blocked":
         return "runtime 暂不可生成 briefing：%s" % (readiness.get("reason") or "需要先处理数据。")
     portfolio = daily.get("portfolio_review", {}) if isinstance(daily.get("portfolio_review"), dict) else {}
     validation = daily.get("validation", {}) if isinstance(daily.get("validation"), dict) else {}
     history_text = "已有历史对比" if history.get("can_compare") else "历史对比不足"
+    scan_text = ""
+    if isinstance(market_scan, dict) and market_scan.get("available"):
+        groups = market_scan.get("sector_groups", []) if isinstance(market_scan.get("sector_groups"), list) else []
+        candidates = market_scan.get("candidate_securities", []) if isinstance(market_scan.get("candidate_securities"), list) else []
+        scan_text = "；扫描板块 %s 个，候选 %s 个" % (len(groups), len(candidates))
     return (
-        "交易日 %s：风险 %s 个，观察 %s 个，持仓复核 %s 个，其中重点复核 %s 个；数据告警 %s 个；%s；复核焦点 %s 个。"
+        "交易日 %s：风险 %s 个，观察 %s 个，持仓复核 %s 个，其中重点复核 %s 个；数据告警 %s 个%s；%s；复核焦点 %s 个。"
         % (
             daily.get("trade_date") or "未知",
             len(daily.get("risk_flags", []) if isinstance(daily.get("risk_flags"), list) else []),
@@ -900,6 +1038,7 @@ def briefing_summary(
             portfolio.get("count", 0),
             portfolio.get("high_review_count", 0),
             validation.get("warning_count", 0),
+            scan_text,
             history_text,
             len(focus),
         )
@@ -911,8 +1050,11 @@ def briefing_questions(
     history: Dict[str, object],
     focus: List[Dict[str, object]],
     current_change: Dict[str, object],
+    market_scan: Optional[Dict[str, object]] = None,
 ) -> List[str]:
     questions = []
+    if isinstance(market_scan, dict):
+        questions.extend(str(question) for question in market_scan.get("questions", [])[:3] if question)
     questions.extend(str(question) for question in daily.get("next_questions", [])[:4] if question)
     if current_change.get("available"):
         questions.append("当前 runtime 相比最近留档，变化主要集中在热点、观察项还是持仓复核？")
@@ -1025,6 +1167,7 @@ def briefing_next_commands(
     daily: Dict[str, object],
     history: Dict[str, object],
     current_change: Dict[str, object],
+    market_scan: Optional[Dict[str, object]] = None,
 ) -> List[str]:
     if readiness.get("state") == "blocked" or not daily.get("available"):
         return [
@@ -1034,15 +1177,22 @@ def briefing_next_commands(
         ]
     commands = [
         "market-intel agent briefing --json",
+        "market-intel scan --runtime --text",
         "market-intel daily --runtime --text",
         "market-intel portfolio review --runtime --text",
         "market-intel watchlist --runtime --text",
     ]
+    first_scan_symbol = None
+    if isinstance(market_scan, dict) and market_scan.get("available"):
+        candidates = market_scan.get("candidate_securities", []) if isinstance(market_scan.get("candidate_securities"), list) else []
+        first_scan_symbol = first_symbol_from_items(candidates)
     portfolio = daily.get("portfolio_review", {}) if isinstance(daily.get("portfolio_review"), dict) else {}
     portfolio_items = portfolio.get("top_items", []) if isinstance(portfolio.get("top_items"), list) else []
     first_symbol = first_symbol_from_items(portfolio_items)
     if first_symbol:
         commands.append("market-intel portfolio explain %s --runtime --text" % first_symbol)
+    if first_scan_symbol:
+        commands.append("market-intel pool explain %s --runtime --text" % first_scan_symbol)
     if current_change.get("available"):
         commands.append("market-intel journal latest --text")
     if history.get("can_compare"):
@@ -1070,6 +1220,11 @@ def agent_briefing_contract(max_quote_age_days: int) -> Dict[str, object]:
             "data.state",
             "data.runtime.readiness",
             "data.runtime.validation",
+            "data.market_scan",
+            "data.market_scan.sector_groups",
+            "data.market_scan.candidate_securities",
+            "data.market_scan.candidate_securities[].why_now",
+            "data.market_scan.candidate_securities[].checklist",
             "data.daily.available",
             "data.daily.top_hotspots",
             "data.daily.watchlist",
@@ -1440,6 +1595,47 @@ def compact_watchlist_evidence(items: List[object]) -> List[str]:
     return evidence
 
 
+def compact_scan_evidence(groups: List[object], candidates: List[object]) -> List[str]:
+    evidence = []
+    for group in groups:
+        if not isinstance(group, dict):
+            continue
+        evidence.append(
+            "%s%s | 扫描分 %s | 活跃 %s/%s"
+            % (
+                scan_group_type_text(group.get("group_type")),
+                group.get("name"),
+                render_number(group.get("score")),
+                group.get("active_member_count", 0),
+                group.get("member_count", 0),
+            )
+        )
+    for candidate in candidates:
+        if not isinstance(candidate, dict):
+            continue
+        evidence.append(
+            "%s %s | %s | 覆盖 %s"
+            % (
+                candidate.get("symbol"),
+                candidate.get("name"),
+                render_number(candidate.get("review_score")),
+                candidate.get("coverage_state"),
+            )
+        )
+    return evidence[:5]
+
+
+def scan_group_type_text(value: object) -> str:
+    labels = {
+        "industry": "行业",
+        "concept": "概念",
+        "index": "指数",
+        "chain": "链路",
+        "unknown": "分组",
+    }
+    return labels.get(str(value), str(value or "分组"))
+
+
 def symbols_from_items(items: List[object]) -> List[str]:
     symbols = []
     for item in items:
@@ -1477,6 +1673,15 @@ def watchlist_item_commands(symbol: object, is_holding: bool = False) -> List[st
     ]
 
 
+def scan_item_commands(symbol: object) -> List[str]:
+    if not symbol:
+        return ["market-intel scan --runtime --text"]
+    return [
+        "market-intel pool explain %s --runtime --text" % symbol,
+        "market-intel scan --runtime --text",
+    ]
+
+
 def portfolio_item_commands(symbol: object) -> List[str]:
     if not symbol:
         return ["market-intel portfolio review --runtime --text"]
@@ -1486,10 +1691,16 @@ def portfolio_item_commands(symbol: object) -> List[str]:
     ]
 
 
-def build_security_review_queue(daily: Dict[str, object], current_change: Dict[str, object], limit: int = 8) -> List[Dict[str, object]]:
+def build_security_review_queue(
+    daily: Dict[str, object],
+    current_change: Dict[str, object],
+    market_scan: Optional[Dict[str, object]] = None,
+    limit: int = 8,
+) -> List[Dict[str, object]]:
     if not daily.get("available"):
         return []
     queue: Dict[str, Dict[str, object]] = {}
+    market_scan = market_scan if isinstance(market_scan, dict) else {}
     validation = daily.get("validation", {}) if isinstance(daily.get("validation"), dict) else {}
     for issue in validation.get("warnings", []) if isinstance(validation.get("warnings"), list) else []:
         if isinstance(issue, dict) and issue.get("symbol"):
@@ -1551,6 +1762,30 @@ def build_security_review_queue(daily: Dict[str, object], current_change: Dict[s
             [item.get("focus")] if item.get("focus") else [],
             item.get("commands", []) if isinstance(item.get("commands"), list) else watchlist_item_commands(item.get("symbol"), bool(item.get("is_holding"))),
             context=watchlist_context(item),
+        )
+
+    scan_candidates = market_scan.get("candidate_securities", []) if isinstance(market_scan.get("candidate_securities"), list) else []
+    for item in scan_candidates:
+        if not isinstance(item, dict) or not item.get("symbol"):
+            continue
+        score = 40 + int_value(item.get("review_score"))
+        if item.get("is_holding"):
+            score += 20
+        upsert_security_queue_item(
+            queue,
+            str(item.get("symbol")),
+            item.get("name"),
+            score,
+            "market_scan",
+            "%s | scan %s | 覆盖 %s" % (
+                item.get("priority"),
+                render_number(item.get("review_score")),
+                item.get("coverage_state"),
+            ),
+            item.get("risk_flags", []) if isinstance(item.get("risk_flags"), list) else [],
+            item.get("checklist", []) if isinstance(item.get("checklist"), list) else [],
+            item.get("commands", []) if isinstance(item.get("commands"), list) else scan_item_commands(item.get("symbol")),
+            context=scan_context(item),
         )
 
     add_current_change_symbols(queue, current_change)
@@ -1644,6 +1879,24 @@ def watchlist_context(item: Dict[str, object]) -> Dict[str, object]:
         "layer": item.get("layer"),
         "sub_sector": item.get("sub_sector"),
         "hotspot_score": item.get("hotspot_score"),
+    }
+
+
+def scan_context(item: Dict[str, object]) -> Dict[str, object]:
+    contexts = item.get("sector_contexts", []) if isinstance(item.get("sector_contexts"), list) else []
+    primary_context = contexts[0] if contexts and isinstance(contexts[0], dict) else {}
+    return {
+        "is_holding": bool(item.get("is_holding")),
+        "priority": item.get("priority"),
+        "coverage_state": item.get("coverage_state"),
+        "coverage_state_reasons": item.get("coverage_state_reasons"),
+        "research_status": compact_research_status(item.get("research_status", {})),
+        "change_pct": item.get("change_pct"),
+        "amount_ratio": item.get("amount_ratio"),
+        "intraday_fade_pct": item.get("intraday_fade_pct"),
+        "scan_group_type": primary_context.get("group_type"),
+        "scan_group": primary_context.get("name"),
+        "scan_score": primary_context.get("score"),
     }
 
 
@@ -1772,6 +2025,8 @@ def command_input_context(command: str) -> List[str]:
         return ["runtime_quotes", "runtime_holdings", "pool"]
     if "agent briefing" in command:
         return ["runtime_daily", "journal_timeline", "latest_archive_compare"]
+    if "scan" in command:
+        return ["runtime_quotes", "optional_runtime_holdings", "pool", "all_a_universe"]
     if "daily" in command:
         return ["runtime_quotes", "runtime_holdings", "pool"]
     if "portfolio review" in command:
@@ -1800,6 +2055,8 @@ def command_output_use(command: str) -> str:
         return "把错误和告警转成数据质量复核项。"
     if "agent briefing" in command:
         return "作为当天复盘的主工作台和后续命令来源。"
+    if "scan" in command:
+        return "读取全市场板块强弱、候选复盘标的、覆盖状态和证据缺口。"
     if "daily" in command:
         return "形成当日完整市场结构、观察项和持仓复核底稿。"
     if "portfolio review" in command:
@@ -1832,6 +2089,8 @@ def command_done_when(command: str) -> str:
         return "errors 已清空，或每个 warning/error 都有对应处理说明。"
     if "agent briefing" in command:
         return "已读取 review_focus、review_checklist、current_change 和 command_queue。"
+    if "scan" in command:
+        return "已记录 sector_groups、candidate_securities、coverage_state 和 next_actions。"
     if "daily" in command:
         return "已记录 summary、validation、portfolio_review 和 next_questions。"
     if "portfolio review" in command:
@@ -1872,6 +2131,11 @@ def command_read_contract(command: str) -> tuple:
         return (
             ["data.review_focus", "data.review_checklist", "data.current_change", "data.command_queue"],
             "读取 agent 可接力的复盘入口。",
+        )
+    if "scan" in command:
+        return (
+            ["data.sector_groups", "data.candidate_securities", "data.coverage_context"],
+            "读取全市场板块扫描和候选复盘标的。",
         )
     if "daily" in command:
         return (
@@ -2028,14 +2292,16 @@ def build_steps(
             [
                 step(30, "run_agent_briefing", "market-intel agent briefing --text", True, "生成日常复盘工作台。"),
                 step(40, "run_agent_briefing_json", "market-intel agent briefing --json", True, "给 agent 读取复盘焦点和下一步命令。"),
-                step(50, "run_daily_json", "market-intel daily --runtime --json", True, "生成完整结构化日报。"),
-                step(60, "run_daily_text", "market-intel daily --runtime --text", True, "生成完整可读复盘。"),
-                step(70, "save_daily_archive", "market-intel journal save --runtime --json", True, archive_reason),
-                step(80, "list_journal", "market-intel journal list --json", True, "查看留档历史。"),
+                step(45, "run_market_scan", "market-intel scan --runtime --text", True, "先看全市场板块强弱和候选复盘标的。"),
+                step(50, "run_market_scan_json", "market-intel scan --runtime --json", True, "给 agent 读取 sector_groups 和 candidate_securities。"),
+                step(60, "run_daily_json", "market-intel daily --runtime --json", True, "生成完整结构化日报。"),
+                step(70, "run_daily_text", "market-intel daily --runtime --text", True, "生成完整可读复盘。"),
+                step(80, "save_daily_archive", "market-intel journal save --runtime --json", True, archive_reason),
+                step(90, "list_journal", "market-intel journal list --json", True, "查看留档历史。"),
             ]
         )
         if len(entries) >= 2:
-            steps.append(step(90, "compare_latest_journals", "market-intel journal compare --json", True, "对比最近两份日报留档。"))
+            steps.append(step(100, "compare_latest_journals", "market-intel journal compare --json", True, "对比最近两份日报留档。"))
 
     return sorted(steps, key=lambda item: int(item.get("priority", 999)))
 
