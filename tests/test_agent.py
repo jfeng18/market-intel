@@ -9,6 +9,7 @@ from market_intel.cli import (
     handle_agent_run,
     handle_import_holdings,
     handle_import_quotes,
+    handle_import_universe,
     handle_journal_note,
     handle_journal_save,
 )
@@ -127,6 +128,33 @@ def test_agent_plan_ready_without_journal(monkeypatch, tmp_path):
     assert data["journal"]["can_compare"] is False
     assert data["execution"]["next_runnable_command"] == "market-intel agent briefing --text"
     assert "data.execution.next_runnable_command" in data["agent_contract"]["stable_fields"]
+
+
+def test_agent_plan_all_a_prompts_universe_import(monkeypatch, tmp_path):
+    import_runtime_examples(monkeypatch, tmp_path)
+
+    payload = handle_agent_plan("all-a", max_quote_age_days=9999)
+    data = payload["data"]
+
+    assert payload["ok"] is True
+    assert data["state"] == "degraded"
+    assert data["runtime"]["universe"]["state"] == "missing"
+    assert data["execution"]["next_runnable_command"] == "market-intel import universe examples/a_share_universe.csv.example --runtime --json"
+    assert any(step["id"] == "import_universe" for step in data["steps"])
+    assert "data.runtime.universe" in data["agent_contract"]["stable_fields"]
+
+
+def test_agent_plan_all_a_ready_after_universe_import(monkeypatch, tmp_path):
+    import_runtime_examples(monkeypatch, tmp_path)
+    handle_import_universe("examples/a_share_universe.csv.example", use_runtime=True)
+
+    payload = handle_agent_plan("all-a", max_quote_age_days=9999)
+    data = payload["data"]
+
+    assert payload["ok"] is True
+    assert data["runtime"]["universe"]["state"] == "ready"
+    assert data["state"] == "ready_needs_archive"
+    assert all(step["id"] != "import_universe" for step in data["steps"])
 
 
 def test_agent_briefing_ready_without_journal(monkeypatch, tmp_path):

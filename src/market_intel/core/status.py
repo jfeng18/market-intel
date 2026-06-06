@@ -4,6 +4,7 @@ from typing import Dict, List, Optional
 
 from .fixtures import load_quotes_file
 from .models import PoolItem, Quote
+from .pool_loader import DEFAULT_POOL
 from .runtime import runtime_holdings_path, runtime_missing_files, runtime_paths, runtime_quotes_path
 from .validation import validate_runtime
 
@@ -12,18 +13,21 @@ def build_runtime_status(
     items: List[PoolItem],
     max_quote_age_days: int = 3,
     today: Optional[date] = None,
+    pool: str = DEFAULT_POOL,
 ) -> Dict[str, object]:
     current_date = today or datetime.now().astimezone().date()
     validation = validate_runtime(items)
     files = runtime_file_status()
     freshness = build_freshness(max_quote_age_days, current_date) if not validation["errors"] else missing_freshness()
-    readiness = build_readiness(validation, freshness)
-    next_actions = build_next_actions(validation, freshness, readiness)
+    universe = build_universe_status(items, pool)
+    readiness = build_readiness(validation, freshness, universe)
+    next_actions = build_next_actions(validation, freshness, readiness, universe)
 
     return {
         "readiness": readiness,
         "validation": validation,
         "freshness": freshness,
+        "universe": universe,
         "files": files,
         "next_actions": next_actions,
         "agent_contract": {
@@ -39,6 +43,7 @@ def runtime_file_status() -> Dict[str, object]:
     return {
         "quotes": file_status(Path(paths["quotes"])),
         "holdings": file_status(Path(paths["holdings"])),
+        "universe": file_status(Path(paths["universe"])),
     }
 
 
@@ -46,11 +51,17 @@ def file_status(path: Path) -> Dict[str, object]:
     exists = path.exists()
     stat = path.stat() if exists else None
     return {
-        "path": str(path),
+        "path": display_path(path),
         "exists": exists,
         "size": stat.st_size if stat else None,
         "modified_at": datetime.fromtimestamp(stat.st_mtime).astimezone().isoformat() if stat else None,
     }
+
+
+def display_path(path: Path) -> str:
+    if path.is_absolute() and path.parent.name:
+        return "%s/%s" % (path.parent.name, path.name)
+    return str(path)
 
 
 def build_freshness(max_quote_age_days: int, today: date) -> Dict[str, object]:
@@ -143,17 +154,82 @@ def latest_trade_date(quotes: List[Quote]) -> Optional[date]:
     return max(dates) if dates else None
 
 
-def build_readiness(validation: Dict[str, object], freshness: Dict[str, object]) -> Dict[str, object]:
+def build_universe_status(items: List[PoolItem], pool: str) -> Dict[str, object]:
+    universe_items = [
+        item
+        for item in items
+        if str(item.raw.get("pool_source") or "").startswith("universe:") or item.raw.get("universe_schema")
+    ]
+    runtime_path = Path(runtime_paths()["universe"])
+    if pool != DEFAULT_POOL:
+        return {
+            "required": False,
+            "state": "not_applicable",
+            "record_count": len(universe_items),
+            "file": file_status(runtime_path),
+            "warnings": [],
+        }
+    if not runtime_path.exists() and not universe_items:
+        return {
+            "required": True,
+            "state": "missing",
+            "record_count": 0,
+            "file": file_status(runtime_path),
+            "warnings": [
+                {
+                    "code": "A_SHARE_UNIVERSE_MISSING",
+                    "message": "all-a 缺少 A 股基础清单，当前只能按种子覆盖解读。",
+                    "detail": {"path": runtime_path.name},
+                }
+            ],
+        }
+    if not universe_items:
+        return {
+            "required": True,
+            "state": "empty",
+            "record_count": 0,
+            "file": file_status(runtime_path),
+            "warnings": [
+                {
+                    "code": "A_SHARE_UNIVERSE_EMPTY",
+                    "message": "A 股基础清单文件存在，但未形成可用记录。",
+                    "detail": {"path": runtime_path.name},
+                }
+            ],
+        }
+    industries = {str(item.raw.get("universe_industry") or "").strip() for item in universe_items}
+    industries.discard("")
+    warnings = []
+    if not industries:
+        warnings.append(
+            {
+                "code": "A_SHARE_UNIVERSE_INDUSTRY_MISSING",
+                "message": "A 股基础清单缺少行业字段，行业复盘底座仍不完整。",
+                "detail": {"record_count": len(universe_items)},
+            }
+        )
+    return {
+        "required": True,
+        "state": "ready" if not warnings else "degraded",
+        "record_count": len(universe_items),
+        "industry_count": len(industries),
+        "file": file_status(runtime_path),
+        "warnings": warnings,
+    }
+
+
+def build_readiness(validation: Dict[str, object], freshness: Dict[str, object], universe: Dict[str, object]) -> Dict[str, object]:
     validation_error_count = (
         int(validation.get("summary", {}).get("error_count", 0)) if isinstance(validation.get("summary"), dict) else 0
     )
     warning_count = int(validation.get("summary", {}).get("warning_count", 0)) if isinstance(validation.get("summary"), dict) else 0
     freshness_error_count = len(freshness.get("errors", [])) if isinstance(freshness.get("errors"), list) else 0
     freshness_warning_count = len(freshness.get("warnings", [])) if isinstance(freshness.get("warnings"), list) else 0
+    universe_warning_count = len(universe.get("warnings", [])) if isinstance(universe.get("warnings"), list) else 0
     error_count = validation_error_count + freshness_error_count
     if error_count:
         state = "blocked"
-    elif warning_count or freshness_warning_count:
+    elif warning_count or freshness_warning_count or universe_warning_count:
         state = "degraded"
     else:
         state = "ready"
@@ -161,16 +237,26 @@ def build_readiness(validation: Dict[str, object], freshness: Dict[str, object])
         "state": state,
         "can_run_daily": state != "blocked",
         "error_count": error_count,
-        "warning_count": warning_count + freshness_warning_count,
-        "reason": readiness_reason(state, error_count, warning_count, freshness_warning_count),
+        "warning_count": warning_count + freshness_warning_count + universe_warning_count,
+        "reason": readiness_reason(state, error_count, warning_count, freshness_warning_count, universe_warning_count),
     }
 
 
-def readiness_reason(state: str, error_count: int, warning_count: int, freshness_warning_count: int) -> str:
+def readiness_reason(
+    state: str,
+    error_count: int,
+    warning_count: int,
+    freshness_warning_count: int,
+    universe_warning_count: int,
+) -> str:
     if state == "blocked":
         return "runtime 数据存在错误，先处理 errors。"
     if state == "degraded":
-        return "runtime 可生成报告，但有 %s 个数据告警和 %s 个新鲜度告警。" % (warning_count, freshness_warning_count)
+        return "runtime 可生成报告，但有 %s 个数据告警、%s 个新鲜度告警和 %s 个 universe 告警。" % (
+            warning_count,
+            freshness_warning_count,
+            universe_warning_count,
+        )
     return "runtime 数据可用，可以生成日报。"
 
 
@@ -178,6 +264,7 @@ def build_next_actions(
     validation: Dict[str, object],
     freshness: Dict[str, object],
     readiness: Dict[str, object],
+    universe: Dict[str, object],
 ) -> List[Dict[str, object]]:
     actions = []
     missing = runtime_missing_files()
@@ -235,6 +322,16 @@ def build_next_actions(
                 runnable=True,
             )
         )
+    if universe.get("required") and universe.get("state") in {"missing", "empty", "degraded"}:
+        actions.append(
+            action(
+                15,
+                "import_universe",
+                "market-intel import universe examples/a_share_universe.csv.example --runtime --json",
+                "补齐 all-a 的 A 股基础清单，减少种子覆盖偏差。",
+                runnable=True,
+            )
+        )
     actions.append(
         action(
             30,
@@ -253,7 +350,7 @@ def build_next_actions(
             runnable=bool(readiness.get("can_run_daily")),
         )
     )
-    return actions
+    return sorted(actions, key=lambda item: int(item.get("priority", 999)))
 
 
 def action(priority: int, action_id: str, command: str, reason: str, runnable: bool) -> Dict[str, object]:

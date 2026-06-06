@@ -2,7 +2,7 @@ import json
 import subprocess
 from datetime import date
 
-from market_intel.cli import handle_import_holdings, handle_import_quotes, handle_status_runtime
+from market_intel.cli import handle_import_holdings, handle_import_quotes, handle_import_universe, handle_status_runtime
 from market_intel.core.pool_loader import load_pool
 from market_intel.core.status import build_runtime_status
 from market_intel.core.text_report import render_runtime_status_text
@@ -23,7 +23,42 @@ def test_status_runtime_missing_files(monkeypatch, tmp_path):
     assert data["next_actions"][0]["runnable"] is True
 
 
-def test_status_runtime_ready_after_csv_import(monkeypatch, tmp_path):
+def test_status_runtime_all_a_degraded_without_universe(monkeypatch, tmp_path):
+    monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(tmp_path / "runtime"))
+    handle_import_quotes("examples/quotes.csv.example", use_runtime=True)
+    handle_import_holdings("examples/holdings.csv.example", use_runtime=True)
+
+    payload = handle_status_runtime("all-a", max_quote_age_days=9999)
+    data = payload["data"]
+
+    assert payload["ok"] is True
+    assert payload["errors"] == []
+    assert any(warning["code"] == "A_SHARE_UNIVERSE_MISSING" for warning in payload["warnings"])
+    assert data["readiness"]["state"] == "degraded"
+    assert data["freshness"]["is_stale"] is False
+    assert data["universe"]["state"] == "missing"
+    assert data["universe"]["required"] is True
+    assert any(action["id"] == "import_universe" for action in data["next_actions"])
+
+
+def test_status_runtime_ready_after_universe_import(monkeypatch, tmp_path):
+    monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(tmp_path / "runtime"))
+    handle_import_quotes("examples/quotes.csv.example", use_runtime=True)
+    handle_import_holdings("examples/holdings.csv.example", use_runtime=True)
+    handle_import_universe("examples/a_share_universe.csv.example", use_runtime=True)
+
+    payload = handle_status_runtime("all-a", max_quote_age_days=9999)
+    data = payload["data"]
+
+    assert payload["ok"] is True
+    assert payload["warnings"] == []
+    assert data["readiness"]["state"] == "ready"
+    assert data["universe"]["state"] == "ready"
+    assert data["universe"]["record_count"] == 3
+    assert data["next_actions"][0]["id"] == "run_daily_report"
+
+
+def test_status_runtime_theme_pool_does_not_require_universe(monkeypatch, tmp_path):
     monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(tmp_path / "runtime"))
     handle_import_quotes("examples/quotes.csv.example", use_runtime=True)
     handle_import_holdings("examples/holdings.csv.example", use_runtime=True)
@@ -32,11 +67,10 @@ def test_status_runtime_ready_after_csv_import(monkeypatch, tmp_path):
     data = payload["data"]
 
     assert payload["ok"] is True
-    assert payload["errors"] == []
     assert payload["warnings"] == []
     assert data["readiness"]["state"] == "ready"
-    assert data["freshness"]["is_stale"] is False
-    assert data["next_actions"][0]["id"] == "run_daily_report"
+    assert data["universe"]["required"] is False
+    assert all(action["id"] != "import_universe" for action in data["next_actions"])
 
 
 def test_status_runtime_degraded_when_quotes_are_stale(monkeypatch, tmp_path):
@@ -71,7 +105,7 @@ def test_status_runtime_degraded_when_quotes_are_stale(monkeypatch, tmp_path):
         encoding="utf-8",
     )
 
-    status = build_runtime_status(load_pool(), max_quote_age_days=3, today=date(2026, 6, 6))
+    status = build_runtime_status(load_pool("ai-energy"), max_quote_age_days=3, today=date(2026, 6, 6), pool="ai-energy")
 
     assert status["readiness"]["state"] == "degraded"
     assert status["readiness"]["can_run_daily"] is True
@@ -113,7 +147,7 @@ def test_status_runtime_blocked_when_freshness_has_errors(monkeypatch, tmp_path)
         encoding="utf-8",
     )
 
-    status = build_runtime_status(load_pool(), max_quote_age_days=3, today=date(2026, 6, 6))
+    status = build_runtime_status(load_pool("ai-energy"), max_quote_age_days=3, today=date(2026, 6, 6), pool="ai-energy")
 
     assert status["validation"]["errors"] == []
     assert status["freshness"]["errors"][0]["code"] == "QUOTE_TRADE_DATE_MISSING"
@@ -128,13 +162,15 @@ def test_status_runtime_text_renderer(monkeypatch, tmp_path):
     monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(tmp_path / "runtime"))
     handle_import_quotes("examples/quotes.csv.example", use_runtime=True)
     handle_import_holdings("examples/holdings.csv.example", use_runtime=True)
-    payload = handle_status_runtime("ai-energy", max_quote_age_days=9999)
+    payload = handle_status_runtime("all-a", max_quote_age_days=9999)
 
     text = render_runtime_status_text(payload)
 
     assert "market-intel status runtime" in text
+    assert "全 A 基础清单" in text
+    assert "A_SHARE_UNIVERSE_MISSING" in text
     assert "下一步" in text
-    assert "daily --runtime" in text
+    assert "import universe" in text
     assert "buy" not in text.lower()
     assert "sell" not in text.lower()
 

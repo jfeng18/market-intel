@@ -9,13 +9,14 @@ def build_agent_plan(
 ) -> Dict[str, object]:
     readiness = runtime_status.get("readiness", {}) if isinstance(runtime_status.get("readiness"), dict) else {}
     freshness = runtime_status.get("freshness", {}) if isinstance(runtime_status.get("freshness"), dict) else {}
+    universe = runtime_status.get("universe", {}) if isinstance(runtime_status.get("universe"), dict) else {}
     validation = runtime_status.get("validation", {}) if isinstance(runtime_status.get("validation"), dict) else {}
     validation_summary = validation.get("summary", {}) if isinstance(validation.get("summary"), dict) else {}
     files = runtime_status.get("files", {}) if isinstance(runtime_status.get("files"), dict) else {}
     entries = journal_list.get("entries", []) if isinstance(journal_list.get("entries"), list) else []
     journal_errors = journal_list.get("errors", []) if isinstance(journal_list.get("errors"), list) else []
     state = agent_state(readiness, entries)
-    steps = build_steps(readiness, freshness, entries)
+    steps = build_steps(readiness, freshness, universe, entries)
 
     return {
         "pool": pool,
@@ -24,6 +25,7 @@ def build_agent_plan(
         "runtime": {
             "readiness": readiness,
             "freshness": freshness,
+            "universe": universe,
             "validation": compact_validation_summary(validation, validation_summary),
             "validation_summary": validation_summary,
             "files": files,
@@ -53,6 +55,7 @@ def build_agent_briefing(
 ) -> Dict[str, object]:
     readiness = runtime_status.get("readiness", {}) if isinstance(runtime_status.get("readiness"), dict) else {}
     freshness = runtime_status.get("freshness", {}) if isinstance(runtime_status.get("freshness"), dict) else {}
+    universe = runtime_status.get("universe", {}) if isinstance(runtime_status.get("universe"), dict) else {}
     validation = runtime_status.get("validation", {}) if isinstance(runtime_status.get("validation"), dict) else {}
     validation_summary = validation.get("summary", {}) if isinstance(validation.get("summary"), dict) else {}
     daily = compact_daily_payload(daily_payload)
@@ -71,6 +74,7 @@ def build_agent_briefing(
         "runtime": {
             "readiness": readiness,
             "freshness": freshness,
+            "universe": universe,
             "validation": compact_validation_summary(validation, validation_summary),
             "validation_summary": validation_summary,
         },
@@ -1906,7 +1910,12 @@ def agent_summary(state: str, readiness: Dict[str, object], entries: List[object
     return "runtime 可生成日报；尚无日报留档，建议先保存一份。"
 
 
-def build_steps(readiness: Dict[str, object], freshness: Dict[str, object], entries: List[object]) -> List[Dict[str, object]]:
+def build_steps(
+    readiness: Dict[str, object],
+    freshness: Dict[str, object],
+    universe: Dict[str, object],
+    entries: List[object],
+) -> List[Dict[str, object]]:
     readiness_state = str(readiness.get("state") or "blocked")
     can_run_daily = bool(readiness.get("can_run_daily"))
     steps: List[Dict[str, object]] = []
@@ -1918,12 +1927,23 @@ def build_steps(readiness: Dict[str, object], freshness: Dict[str, object], entr
             step(30, "inspect_import_schema", "market-intel import schema --json", True, "查看 CSV 导入字段合同。"),
             step(40, "load_quotes", "market-intel import quotes <quotes.csv> --runtime --json", False, "导入当日行情。"),
             step(50, "load_holdings", "market-intel import holdings <holdings.csv> --runtime --json", False, "导入当前持仓。"),
+            step(60, "load_universe", "market-intel import universe <a_share_universe.csv> --runtime --json", False, "导入 A 股基础清单。"),
         ]
 
     if freshness.get("is_stale"):
         steps.append(step(10, "refresh_quotes", "market-intel import quotes <quotes.csv> --runtime --json", False, "行情日期过旧或缺失。"))
     if readiness_state == "degraded":
         steps.append(step(20, "review_runtime_warnings", "market-intel validate runtime --json", True, "复核数据告警。"))
+    if universe.get("required") and universe.get("state") in {"missing", "empty", "degraded"}:
+        steps.append(
+            step(
+                15,
+                "import_universe",
+                "market-intel import universe examples/a_share_universe.csv.example --runtime --json",
+                True,
+                "补齐 all-a 的 A 股基础清单，减少种子覆盖偏差。",
+            )
+        )
 
     if can_run_daily:
         archive_reason = archive_step_reason(len(entries))
@@ -1940,7 +1960,7 @@ def build_steps(readiness: Dict[str, object], freshness: Dict[str, object], entr
         if len(entries) >= 2:
             steps.append(step(90, "compare_latest_journals", "market-intel journal compare --json", True, "对比最近两份日报留档。"))
 
-    return steps
+    return sorted(steps, key=lambda item: int(item.get("priority", 999)))
 
 
 def archive_step_reason(entry_count: int) -> str:
@@ -1992,6 +2012,7 @@ def agent_contract(max_quote_age_days: int) -> Dict[str, object]:
         "stable_fields": [
             "data.state",
             "data.runtime.readiness",
+            "data.runtime.universe",
             "data.runtime.validation",
             "data.journal.entry_count",
             "data.journal.can_compare",

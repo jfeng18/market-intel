@@ -892,6 +892,7 @@ def render_runtime_status_text(payload: Dict[str, object]) -> str:
         return "market-intel status runtime\n\n无数据。"
     readiness = data.get("readiness", {}) if isinstance(data.get("readiness"), dict) else {}
     freshness = data.get("freshness", {}) if isinstance(data.get("freshness"), dict) else {}
+    universe = data.get("universe", {}) if isinstance(data.get("universe"), dict) else {}
     lines = [
         "market-intel status runtime",
         "",
@@ -915,6 +916,19 @@ def render_runtime_status_text(payload: Dict[str, object]) -> str:
         lines.append("   告警: %s" % render_issue_codes(freshness.get("warnings", [])))
     if freshness.get("errors"):
         lines.append("   错误: %s" % render_issue_codes(freshness.get("errors", [])))
+    if universe:
+        lines.extend(["", "全 A 基础清单"])
+        lines.append(
+            "- %s | 记录 %s | 行业 %s | required %s"
+            % (
+                universe.get("state"),
+                universe.get("record_count", 0),
+                universe.get("industry_count", 0),
+                universe.get("required"),
+            )
+        )
+        if universe.get("warnings"):
+            lines.append("   告警: %s" % render_issue_codes(universe.get("warnings", [])))
     lines.extend(["", "下一步"])
     lines.extend(render_next_actions(data.get("next_actions", [])))
     return "\n".join(lines)

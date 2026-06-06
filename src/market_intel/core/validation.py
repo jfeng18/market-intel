@@ -26,7 +26,7 @@ HOLDING_REQUIRED_FIELDS = {"symbol", "name"}
 def validate_runtime(items: List[PoolItem]) -> Dict[str, object]:
     missing = runtime_missing_files()
     errors = [
-        issue("MISSING_RUNTIME_FILE", "Runtime file is missing.", {"path": path})
+        issue("MISSING_RUNTIME_FILE", "Runtime file is missing.", {"path": display_path(Path(path))})
         for path in missing
     ]
     warnings: List[Dict[str, object]] = []
@@ -51,8 +51,8 @@ def validate_runtime(items: List[PoolItem]) -> Dict[str, object]:
             "warning_count": len(warnings),
         },
         "files": {
-            "quotes": str(runtime_quotes_path()),
-            "holdings": str(runtime_holdings_path()),
+            "quotes": display_path(runtime_quotes_path()),
+            "holdings": display_path(runtime_holdings_path()),
         },
         "errors": errors,
         "warnings": warnings,
@@ -111,13 +111,13 @@ def validate_json_records(
     errors: List[Dict[str, object]] = []
     warnings: List[Dict[str, object]] = []
     if not path.exists():
-        return [issue("MISSING_FILE", "File is missing.", {"path": str(path)})], warnings, []
+        return [issue("MISSING_FILE", "File is missing.", {"path": display_path(path)})], warnings, []
 
     try:
         with path.open(encoding="utf-8") as handle:
             data = json.load(handle)
     except Exception as exc:
-        return [issue("INVALID_JSON", str(exc), {"path": str(path)})], warnings, []
+        return [issue("INVALID_JSON", str(exc), {"path": display_path(path)})], warnings, []
 
     if isinstance(data, dict):
         records = data.get(key)
@@ -129,7 +129,7 @@ def validate_json_records(
             issue(
                 "INVALID_JSON_SHAPE",
                 "Expected a list or an object containing '%s' list." % key,
-                {"path": str(path)},
+                {"path": display_path(path)},
             )
         ], warnings, []
 
@@ -195,3 +195,8 @@ def normalize_symbol(value: object) -> str:
 def issue(code: str, message: str, detail: Dict[str, object]) -> Dict[str, object]:
     return {"code": code, "message": message, "detail": detail}
 
+
+def display_path(path: Path) -> str:
+    if path.is_absolute() and path.parent.name:
+        return "%s/%s" % (path.parent.name, path.name)
+    return str(path)

@@ -58,8 +58,8 @@ def save_daily_journal(payload: Dict[str, object]) -> Dict[str, object]:
 
     return {
         "saved": True,
-        "entry": {**entry, "path": str(path)},
-        "journal_dir": str(directory),
+        "entry": {**entry, "path": display_path(path)},
+        "journal_dir": display_path(directory),
         "next_commands": [
             "market-intel journal list --json",
             "market-intel journal latest --text",
@@ -101,20 +101,20 @@ def list_journal_entries(limit: int = 10) -> Dict[str, object]:
             try:
                 record = read_journal_record(path)
                 entry = record["entry"]
-                entry["path"] = str(path)
+                entry["path"] = display_path(path)
                 entries.append(entry)
             except Exception as exc:
                 errors.append(
                     {
                         "code": "JOURNAL_ENTRY_READ_ERROR",
                         "message": str(exc),
-                        "detail": {"path": str(path)},
+                        "detail": {"path": display_path(path)},
                     }
                 )
     entries.sort(key=lambda entry: (str(entry.get("generated_at") or ""), str(entry.get("id") or "")), reverse=True)
     limited = entries[:limit]
     return {
-        "journal_dir": str(directory),
+        "journal_dir": display_path(directory),
         "count": len(limited),
         "total_count": len(entries),
         "entries": limited,
@@ -144,14 +144,14 @@ def read_journal_by_id(entry_id: str) -> Dict[str, object]:
     if not path.exists():
         return {
             "found": False,
-            "journal_dir": str(journal_dir_path()),
+            "journal_dir": display_path(journal_dir_path()),
             "entry": None,
             "payload": None,
             "errors": [
                 {
                     "code": "JOURNAL_ENTRY_NOT_FOUND",
                     "message": "journal entry not found.",
-                    "detail": {"id": entry_id, "path": str(path)},
+                    "detail": {"id": entry_id, "path": display_path(path)},
                 }
             ],
             "warnings": [],
@@ -159,10 +159,10 @@ def read_journal_by_id(entry_id: str) -> Dict[str, object]:
         }
     record = read_journal_record(path)
     entry = record["entry"]
-    entry["path"] = str(path)
+    entry["path"] = display_path(path)
     return {
         "found": True,
-        "journal_dir": str(journal_dir_path()),
+        "journal_dir": display_path(journal_dir_path()),
         "entry": entry,
         "payload": record["payload"],
         "notes": record.get("notes", []),
@@ -190,7 +190,7 @@ def save_journal_note(entry_id: Optional[str], note_text: str, section: Optional
         return empty_note_result(target.get("errors", []) if isinstance(target.get("errors"), list) else [])
 
     entry = target.get("entry", {}) if isinstance(target.get("entry"), dict) else {}
-    path = Path(str(entry.get("path") or journal_dir_path() / ("%s.json" % safe_id(str(entry.get("id") or "")))))
+    path = journal_dir_path() / ("%s.json" % safe_id(str(entry.get("id") or "")))
     record = read_journal_record(path)
     notes = record.get("notes", []) if isinstance(record.get("notes"), list) else []
     note = build_journal_note(normalized, section)
@@ -202,10 +202,10 @@ def save_journal_note(entry_id: Optional[str], note_text: str, section: Optional
 
     return {
         "saved": True,
-        "entry": {**entry, "path": str(path)},
+        "entry": {**entry, "path": display_path(path)},
         "note": note,
         "note_count": len(notes),
-        "journal_dir": str(journal_dir_path()),
+        "journal_dir": display_path(journal_dir_path()),
         "next_commands": [
             "market-intel journal latest --text",
             "market-intel journal show %s --text" % entry.get("id"),
@@ -257,7 +257,7 @@ def list_journal_notes(limit: int = 10, section: Optional[str] = None, query: Op
     limited = notes[:safe_limit]
     return {
         "found": bool(notes),
-        "journal_dir": str(journal_dir_path()),
+        "journal_dir": display_path(journal_dir_path()),
         "limit": safe_limit,
         "filters": {"section": section_filter or None, "query": query or None},
         "count": len(limited),
@@ -293,7 +293,7 @@ def empty_note_result(errors: List[Dict[str, object]]) -> Dict[str, object]:
         "entry": None,
         "note": None,
         "note_count": 0,
-        "journal_dir": str(journal_dir_path()),
+        "journal_dir": display_path(journal_dir_path()),
         "next_commands": ["market-intel journal list --json", "market-intel journal latest --text"],
         "errors": errors,
         "warnings": [],
@@ -378,7 +378,7 @@ def compare_journal_entries(base_id: Optional[str] = None, current_id: Optional[
     return {
         "found": True,
         "mode": mode,
-        "journal_dir": str(journal_dir_path()),
+        "journal_dir": display_path(journal_dir_path()),
         "requested": requested,
         "base_entry": base_entry,
         "current_entry": current_entry,
@@ -417,7 +417,7 @@ def compare_latest_journal_to_payload(current_payload: Dict[str, object]) -> Dic
     return {
         "found": True,
         "mode": "latest_entry_to_runtime_current",
-        "journal_dir": str(journal_dir_path()),
+        "journal_dir": display_path(journal_dir_path()),
         "base_entry": base_entry,
         "current_entry": current_entry,
         "summary": summarize_journal_compare(base_entry, current_entry, changes),
@@ -440,7 +440,7 @@ def empty_current_compare_result(
     return {
         "found": False,
         "mode": "latest_entry_to_runtime_current",
-        "journal_dir": str(journal_dir_path()),
+        "journal_dir": display_path(journal_dir_path()),
         "base_entry": None,
         "current_entry": None,
         "summary": "需要至少一份日报留档和当前 runtime daily 才能对比。",
@@ -491,7 +491,7 @@ def build_journal_timeline(limit: int = 5) -> Dict[str, object]:
     return {
         "found": bool(points),
         "can_compare": len(points) >= 2,
-        "journal_dir": str(journal_dir_path()),
+        "journal_dir": display_path(journal_dir_path()),
         "limit": safe_limit,
         "count": len(points),
         "total_count": listed.get("total_count", len(points)),
@@ -1334,7 +1334,7 @@ def empty_compare_result(
     return {
         "found": False,
         "mode": mode,
-        "journal_dir": str(journal_dir_path()),
+        "journal_dir": display_path(journal_dir_path()),
         "requested": requested,
         "base_entry": None,
         "current_entry": None,
@@ -1493,6 +1493,12 @@ def read_journal_record(path: Path) -> Dict[str, object]:
     if not isinstance(record, dict) or not isinstance(record.get("entry"), dict) or not isinstance(record.get("payload"), dict):
         raise ValueError("Invalid journal record shape.")
     return record
+
+
+def display_path(path: Path) -> str:
+    if path.is_absolute() and path.parent.name:
+        return "%s/%s" % (path.parent.name, path.name)
+    return str(path)
 
 
 def infer_trade_date(data: Dict[str, object]) -> Optional[str]:

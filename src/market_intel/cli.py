@@ -1361,11 +1361,14 @@ def status_errors(data: Dict[str, object]) -> List[Dict[str, Any]]:
 def status_warnings(data: Dict[str, object]) -> List[Dict[str, Any]]:
     validation = data.get("validation", {}) if isinstance(data.get("validation"), dict) else {}
     freshness = data.get("freshness", {}) if isinstance(data.get("freshness"), dict) else {}
+    universe = data.get("universe", {}) if isinstance(data.get("universe"), dict) else {}
     warnings = []
     if isinstance(validation.get("warnings"), list):
         warnings.extend(validation["warnings"])
     if isinstance(freshness.get("warnings"), list):
         warnings.extend(freshness["warnings"])
+    if isinstance(universe.get("warnings"), list):
+        warnings.extend(universe["warnings"])
     return warnings
 
 
@@ -1397,21 +1400,25 @@ def handle_validate_runtime(pool: str = DEFAULT_POOL) -> Dict[str, Any]:
 
 def handle_status_runtime(pool: str = DEFAULT_POOL, max_quote_age_days: int = 3) -> Dict[str, Any]:
     items = load_pool(pool)
-    data = build_runtime_status(items, max_quote_age_days=max_quote_age_days)
+    data = build_runtime_status(items, max_quote_age_days=max_quote_age_days, pool=pool)
     data["pool"] = pool
     return envelope(
         command="status.runtime",
         data=data,
         warnings=status_warnings(data),
         errors=status_errors(data),
-        source="%s;%s" % (data["files"]["quotes"]["path"], data["files"]["holdings"]["path"]),
+        source="%s;%s;%s" % (
+            data["files"]["quotes"]["path"],
+            data["files"]["holdings"]["path"],
+            data["files"]["universe"]["path"],
+        ),
         ok=True,
     )
 
 
 def handle_agent_plan(pool: str = DEFAULT_POOL, max_quote_age_days: int = 3) -> Dict[str, Any]:
     items = load_pool(pool)
-    status_data = build_runtime_status(items, max_quote_age_days=max_quote_age_days)
+    status_data = build_runtime_status(items, max_quote_age_days=max_quote_age_days, pool=pool)
     journal_data = list_journal_entries(limit=2)
     data = build_agent_plan(pool, status_data, journal_data, max_quote_age_days=max_quote_age_days)
     return envelope(
@@ -1431,7 +1438,7 @@ def handle_agent_briefing(
     max_quote_age_days: int = 3,
 ) -> Dict[str, Any]:
     items = load_pool(pool)
-    status_data = build_runtime_status(items, max_quote_age_days=max_quote_age_days)
+    status_data = build_runtime_status(items, max_quote_age_days=max_quote_age_days, pool=pool)
     daily_payload = None
     if status_data.get("readiness", {}).get("can_run_daily") if isinstance(status_data.get("readiness"), dict) else False:
         daily_payload = handle_daily(
