@@ -1705,6 +1705,7 @@ def handle_agent_next(
     handoff = digest.get("review_handoff", {}) if isinstance(digest.get("review_handoff"), dict) else {}
     completion = digest.get("review_completion", {}) if isinstance(digest.get("review_completion"), dict) else {}
     cards = digest.get("security_cards", {}) if isinstance(digest.get("security_cards"), dict) else {}
+    coverage_context = digest.get("coverage_context", {}) if isinstance(digest.get("coverage_context"), dict) else {}
     if symbol:
         handoff = filter_agent_next_handoff_for_symbol(handoff, symbol)
         cards = filter_agent_next_cards_for_symbol(cards, symbol)
@@ -1718,6 +1719,7 @@ def handle_agent_next(
                     "symbol": symbol,
                     "source_agent_run_state": run_data.get("state"),
                     "run_limits": run_data.get("run_limits", {}),
+                    "coverage_context": coverage_context,
                     "review_handoff": handoff,
                     "review_completion": completion,
                     "security_cards": cards,
@@ -1734,6 +1736,7 @@ def handle_agent_next(
         "summary": handoff.get("summary") or run_data.get("summary"),
         "source_agent_run_state": run_data.get("state"),
         "run_limits": run_data.get("run_limits", {}),
+        "coverage_context": coverage_context,
         "review_handoff": handoff,
         "review_completion": completion,
         "security_cards": cards,
@@ -2051,6 +2054,7 @@ def build_agent_run_review_digest(
             "manual_followup_count": len(manual_followups),
         },
         "data_quality": agent_run_digest_data_quality(validation, results),
+        "coverage_context": agent_run_digest_coverage_context(daily),
         "market_structure": agent_run_digest_market_structure(daily),
         "portfolio_pressure": portfolio_pressure,
         "holding_dashboard": holding_dashboard,
@@ -2074,6 +2078,58 @@ def build_agent_run_review_digest(
     digest["review_handoff"] = agent_run_digest_review_handoff(digest, manual_followups)
     digest["security_cards"] = agent_run_digest_security_cards(digest, manual_followups)
     return digest
+
+
+def agent_run_digest_coverage_context(daily: Dict[str, object]) -> Dict[str, object]:
+    coverage = daily.get("coverage_context", {}) if isinstance(daily.get("coverage_context"), dict) else {}
+    if not coverage.get("available"):
+        return {"available": False, "summary": "暂无复盘池覆盖上下文。"}
+    universe = coverage.get("universe", {}) if isinstance(coverage.get("universe"), dict) else {}
+    profile = universe.get("sector_profile", {}) if isinstance(universe.get("sector_profile"), dict) else {}
+    gaps = coverage.get("gaps", []) if isinstance(coverage.get("gaps"), list) else []
+    actions = coverage.get("next_actions", []) if isinstance(coverage.get("next_actions"), list) else []
+    return {
+        "available": True,
+        "pool": coverage.get("pool"),
+        "scope": coverage.get("scope"),
+        "status": coverage.get("status"),
+        "summary": coverage.get("summary"),
+        "universe": {
+            "available": bool(universe.get("available")),
+            "record_count": universe.get("record_count", 0),
+            "industry_count": universe.get("industry_count", 0),
+            "concept_count": universe.get("concept_count", 0),
+            "index_membership_count": universe.get("index_membership_count", 0),
+            "sector_profile": {
+                "industry_coverage_ratio": profile.get("industry_coverage_ratio", 0),
+                "concept_coverage_ratio": profile.get("concept_coverage_ratio", 0),
+                "index_coverage_ratio": profile.get("index_coverage_ratio", 0),
+                "top_industries": list(profile.get("top_industries", []))[:5] if isinstance(profile.get("top_industries"), list) else [],
+                "missing_field_counts": profile.get("missing_field_counts", {}) if isinstance(profile.get("missing_field_counts"), dict) else {},
+                "missing_field_samples": list(profile.get("missing_field_samples", []))[:5] if isinstance(profile.get("missing_field_samples"), list) else [],
+                "coverage_flags": list(profile.get("coverage_flags", [])) if isinstance(profile.get("coverage_flags"), list) else [],
+            },
+        },
+        "gap_count": len(gaps),
+        "top_gaps": [
+            {
+                "id": item.get("id"),
+                "severity": item.get("severity"),
+                "message": item.get("message"),
+            }
+            for item in gaps[:5]
+            if isinstance(item, dict)
+        ],
+        "next_actions": [
+            {
+                "id": item.get("id"),
+                "command": item.get("command"),
+                "done_when": item.get("done_when"),
+            }
+            for item in actions[:5]
+            if isinstance(item, dict)
+        ],
+    }
 
 
 def agent_run_digest_headline(briefing_data: Dict[str, object]) -> str:
@@ -5529,6 +5585,9 @@ def agent_run_contract() -> Dict[str, object]:
             "data.summary",
             "data.source_briefing",
             "data.review_digest",
+            "data.review_digest.coverage_context",
+            "data.review_digest.coverage_context.universe.sector_profile",
+            "data.review_digest.coverage_context.next_actions",
             "data.review_digest.data_repair_plan",
             "data.review_digest.data_repair_plan.items",
             "data.review_digest.data_repair_plan.groups",
@@ -5659,6 +5718,9 @@ def agent_next_contract() -> Dict[str, object]:
             "data.summary",
             "data.symbol",
             "data.source_agent_run_state",
+            "data.coverage_context",
+            "data.coverage_context.universe.sector_profile",
+            "data.coverage_context.next_actions",
             "data.review_handoff",
             "data.review_handoff.handoff_state",
             "data.review_handoff.resume_prompt",

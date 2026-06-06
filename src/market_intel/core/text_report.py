@@ -1165,6 +1165,10 @@ def render_agent_next_text(payload: Dict[str, object]) -> str:
     ]
     if data.get("symbol"):
         lines.append("- 聚焦标的: %s" % data.get("symbol"))
+    coverage = data.get("coverage_context", {}) if isinstance(data.get("coverage_context"), dict) else {}
+    if coverage:
+        lines.extend(["", "覆盖底座"])
+        lines.extend(render_focus_coverage_context(coverage))
     handoff = data.get("review_handoff", {}) if isinstance(data.get("review_handoff"), dict) else {}
     if handoff:
         lines.extend(["", "交接"])
@@ -1206,6 +1210,10 @@ def render_agent_run_digest(value: object) -> List[str]:
     data_quality = digest.get("data_quality", {}) if isinstance(digest.get("data_quality"), dict) else {}
     if data_quality:
         lines.append("- 数据质量: %s" % (data_quality.get("summary") or "暂无。"))
+    coverage = digest.get("coverage_context", {}) if isinstance(digest.get("coverage_context"), dict) else {}
+    if coverage:
+        lines.append("- 覆盖底座:")
+        lines.extend("   %s" % line.lstrip("- ") for line in render_focus_coverage_context(coverage)[:6])
     repair = digest.get("data_repair_plan", {}) if isinstance(digest.get("data_repair_plan"), dict) else {}
     if repair and repair.get("available"):
         lines.extend(render_agent_run_data_repair_plan(repair))

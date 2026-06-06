@@ -391,6 +391,11 @@ def test_agent_run_ready_executes_read_only_and_skips_writes(monkeypatch, tmp_pa
     digest = data["review_digest"]
     assert digest["available"] is True
     assert digest["headline"]
+    assert digest["coverage_context"]["available"] is True
+    assert digest["coverage_context"]["pool"] == "ai-energy"
+    assert digest["coverage_context"]["universe"]["available"] is False
+    assert "data.review_digest.coverage_context" in data["agent_contract"]["stable_fields"]
+    assert "data.review_digest.coverage_context.universe.sector_profile" in data["agent_contract"]["stable_fields"]
     assert digest["market_structure"]["top_chains"]
     assert digest["portfolio_pressure"]["has_concentration"] is True
     assert digest["portfolio_pressure"]["groups"]
@@ -912,12 +917,17 @@ def test_agent_next_returns_compact_handoff(monkeypatch, tmp_path):
     assert payload["ok"] is True
     assert payload["command"] == "agent.next"
     assert data["state"] == data["review_handoff"]["handoff_state"]
+    assert data["coverage_context"]["available"] is True
+    assert data["coverage_context"]["pool"] == "ai-energy"
     assert data["review_handoff"]["command_chain"]
     assert data["review_handoff"]["command_chain"][0]["json_command"].endswith("--json")
     assert data["security_cards"]["cards"]
     assert data["review_completion"]["checks"]
+    assert "data.coverage_context" in data["agent_contract"]["stable_fields"]
+    assert "data.coverage_context.universe.sector_profile" in data["agent_contract"]["stable_fields"]
     assert "data.review_handoff.command_chain[].json_command" in data["agent_contract"]["stable_fields"]
     assert "market-intel agent next" in text
+    assert "覆盖底座" in text
     assert "命令链" in text
     assert "单票卡片" in text
     assert "buy" not in text.lower()
@@ -954,6 +964,9 @@ def test_agent_next_surfaces_foundation_holding_review(monkeypatch, tmp_path):
 
     assert payload["ok"] is True
     assert card["symbol"] == "000001"
+    assert data["coverage_context"]["pool"] == "all-a"
+    assert data["coverage_context"]["universe"]["available"] is True
+    assert data["coverage_context"]["universe"]["sector_profile"]["industry_coverage_ratio"] == 1
     assert card["coverage_state"] == "foundation"
     assert "a_share_universe_foundation" in card["coverage_state_reasons"]
     assert "foundation_pool_match" in card["risk_flags"]
@@ -996,6 +1009,8 @@ def test_agent_next_surfaces_foundation_holding_review(monkeypatch, tmp_path):
     assert "data.security_cards.cards[].research_workflow" in data["agent_contract"]["stable_fields"]
     assert "data.review_handoff.manual_items[].workflow_steps" in data["agent_contract"]["stable_fields"]
     assert "覆盖: foundation" in text or "覆盖: 基础" in text
+    assert "覆盖底座" in text
+    assert "字段覆盖: 行业 100.0%" in text
     assert "研究流程" in text
     assert "证伪风险" in text
     assert "buy" not in text.lower()
