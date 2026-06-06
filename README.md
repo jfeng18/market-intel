@@ -252,6 +252,15 @@ market-intel holdings impact --runtime --json
 
 `pool coverage` 是复盘池覆盖度自检：给出 pool 范围、状态、A 股数量、市场分布、层级分布、数据质量标记、覆盖缺口和下一步命令。当前 `all-a` 会明确标记为 seed 覆盖，提醒 agent 和人不要把它当作完整全 A 结论。
 
+传入持仓源后，它还会检查个人持仓是否已被复盘池覆盖：
+
+```bash
+market-intel pool coverage --runtime --text
+market-intel pool coverage --holdings-file data/runtime/holdings.json --json
+```
+
+未覆盖持仓会进入 `data.expansion_queue`，每项包含 `symbol/name`、候选补池行、必填字段、复核问题、后续命令和完成标准。这个队列是“补池任务”，不会自动写入池子文件；补入前需要人工或 agent 先确认行业/主题链路、角色和核心逻辑。
+
 `watchlist` 是盘中盯盘清单：把热点领涨标的和持仓标的合并去重，标出链路、涨幅、成交放大、回落、风险和是否持仓。
 
 `portfolio review` 是从持仓出发的复盘清单：逐个持仓汇总链路暴露、行情、热点上下文、风险标签和待复核问题，并展开重复链路/重复主题涉及的持仓，适合盘后检查“我手上的票今天需要看什么”。

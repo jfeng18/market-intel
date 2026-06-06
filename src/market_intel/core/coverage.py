@@ -32,6 +32,7 @@ def build_pool_coverage(
     data_quality = data_quality_summary(items)
     scope = str(definition.get("scope") or "")
     holdings_coverage = build_holdings_coverage(items, holdings)
+    expansion_queue = build_expansion_queue(pool, scope, holdings_coverage)
     return {
         "pool": pool,
         "scope": scope,
@@ -51,8 +52,9 @@ def build_pool_coverage(
         "cn_a_board_distribution": counter_rows(cn_a_board(item.symbol) for item in cn_a),
         "data_quality": data_quality,
         "holdings_coverage": holdings_coverage,
+        "expansion_queue": expansion_queue,
         "gaps": coverage_gaps(scope, items, cn_a, data_quality, holdings_coverage),
-        "next_actions": coverage_next_actions(pool, scope, holdings_coverage),
+        "next_actions": coverage_next_actions(pool, scope, holdings_coverage, expansion_queue),
         "agent_contract": coverage_contract(),
         "guardrails": coverage_guardrails(scope),
     }
@@ -206,6 +208,64 @@ def build_holdings_coverage_summary(
     return "持仓覆盖率 %.1f%%，当前持仓均已匹配复盘池。" % (ratio * 100)
 
 
+def build_expansion_queue(
+    pool: str,
+    scope: str,
+    holdings_coverage: Dict[str, object],
+) -> List[Dict[str, object]]:
+    if not holdings_coverage.get("available"):
+        return []
+    unmatched = holdings_coverage.get("unmatched", [])
+    if not isinstance(unmatched, list):
+        return []
+
+    queue = []
+    for rank, row in enumerate(unmatched, start=1):
+        if not isinstance(row, dict):
+            continue
+        symbol = str(row.get("symbol") or "").strip().upper()
+        if not symbol:
+            continue
+        name = str(row.get("name") or symbol).strip()
+        queue.append(
+            {
+                "rank": rank,
+                "id": "expand_pool_%s" % symbol,
+                "symbol": symbol,
+                "name": name,
+                "reason": "holding_not_in_pool",
+                "pool": pool,
+                "scope": scope,
+                "candidate_pool_row": candidate_pool_row(symbol, name),
+                "required_fields": ["section", "level", "desc"],
+                "review_questions": [
+                    "这只持仓属于哪个行业、主题或产业链位置？",
+                    "它在该链路里是龙头、梯队、后排、弹性还是待确认？",
+                    "当前纳入复盘池的核心逻辑和主要证伪风险是什么？",
+                ],
+                "commands": [
+                    "market-intel portfolio explain %s --runtime --text" % symbol,
+                    "market-intel pool coverage --runtime --json%s" % pool_arg(pool),
+                ],
+                "done_when": "补入并确认复盘池后，重新运行 pool coverage --runtime，未覆盖持仓不再包含 %s。" % symbol,
+            }
+        )
+    return queue
+
+
+def candidate_pool_row(symbol: str, name: str) -> Dict[str, object]:
+    return {
+        "status": "candidate",
+        "priority": "P2",
+        "section": "待确认 / 持仓补充",
+        "level": "待确认",
+        "company": name,
+        "code": symbol,
+        "desc": "持仓未匹配当前复盘池；需补行业/主题链路、公司逻辑和风险证据。",
+        "notes": "source=holdings_coverage; manual_review_required=true",
+    }
+
+
 def coverage_gaps(
     scope: str,
     items: List[PoolItem],
@@ -253,13 +313,13 @@ def coverage_next_actions(
     pool: str,
     scope: str,
     holdings_coverage: Dict[str, object],
+    expansion_queue: List[Dict[str, object]],
 ) -> List[Dict[str, object]]:
-    pool_arg = "" if pool == "all-a" else " --pool %s" % pool
     actions = [
         {
             "rank": 1,
             "id": "inspect_coverage",
-            "command": "market-intel pool coverage --text%s" % pool_arg,
+            "command": "market-intel pool coverage --text%s" % pool_arg(pool),
             "done_when": "已确认当前复盘池的覆盖边界、市场分布、层级分布和数据质量短板。",
         }
     ]
@@ -277,16 +337,24 @@ def coverage_next_actions(
             {
                 "rank": len(actions) + 1,
                 "id": "check_holdings_coverage",
-                "command": "market-intel pool coverage --runtime --text%s" % pool_arg,
+                "command": "market-intel pool coverage --runtime --text%s" % pool_arg(pool),
                 "done_when": "已确认个人持仓是否被当前复盘池覆盖。",
             }
         )
-    elif holdings_coverage.get("unmatched_count"):
+    elif expansion_queue:
+        actions.append(
+            {
+                "rank": len(actions) + 1,
+                "id": "review_expansion_queue",
+                "command": "market-intel pool coverage --runtime --json%s" % pool_arg(pool),
+                "done_when": "已逐项确认 expansion_queue 中的候选补池行、必填字段和复核问题。",
+            }
+        )
         actions.append(
             {
                 "rank": len(actions) + 1,
                 "id": "review_unmatched_holdings",
-                "command": "market-intel portfolio review --runtime --text%s" % pool_arg,
+                "command": "market-intel portfolio review --runtime --text%s" % pool_arg(pool),
                 "done_when": "已确认未覆盖持仓是否补入复盘池、暂列池外，或修正代码/名称。",
             }
         )
@@ -294,7 +362,7 @@ def coverage_next_actions(
         {
             "rank": len(actions) + 1,
             "id": "run_focus",
-            "command": "market-intel focus --runtime --text%s" % pool_arg,
+            "command": "market-intel focus --runtime --text%s" % pool_arg(pool),
             "done_when": "已用当前复盘池生成日常第一屏，并理解其覆盖边界。",
         }
     )
@@ -314,12 +382,17 @@ def coverage_contract() -> Dict[str, object]:
             "data.cn_a_board_distribution",
             "data.data_quality",
             "data.holdings_coverage",
+            "data.expansion_queue",
             "data.gaps",
             "data.next_actions",
             "data.guardrails",
         ],
         "boundary": "覆盖度报告只说明复盘池边界，不生成交易动作、目标价或仓位建议。",
     }
+
+
+def pool_arg(pool: str) -> str:
+    return "" if pool == "all-a" else " --pool %s" % pool
 
 
 def coverage_guardrails(scope: str) -> List[str]:

@@ -41,9 +41,11 @@ def test_pool_coverage_all_a_reports_seed_boundaries():
     assert data["holdings_coverage"]["available"] is False
     assert any(gap["id"] == "all_a_seed_only" for gap in data["gaps"])
     assert "data.holdings_coverage" in data["agent_contract"]["stable_fields"]
+    assert "data.expansion_queue" in data["agent_contract"]["stable_fields"]
     assert "data.gaps" in data["agent_contract"]["stable_fields"]
     assert data["next_actions"][0]["command"] == "market-intel pool coverage --text"
     assert data["holdings_source"] == {"provided": False}
+    assert data["expansion_queue"] == []
 
 
 def test_pool_coverage_mock_holdings_reports_personal_coverage():
@@ -56,6 +58,7 @@ def test_pool_coverage_mock_holdings_reports_personal_coverage():
     assert coverage["matched_count"] == 5
     assert coverage["unmatched_count"] == 0
     assert coverage["matched_ratio"] == 1
+    assert payload["data"]["expansion_queue"] == []
     assert payload["data"]["holdings_source"]["mode"] == "mock"
     assert payload["meta"]["source"] == "pool:all-a"
 
@@ -85,8 +88,35 @@ def test_pool_coverage_file_holdings_reports_unmatched_gap(tmp_path):
     assert coverage["unmatched_count"] == 1
     assert coverage["unmatched"][0]["symbol"] == "000001"
     assert any(gap["id"] == "holding_coverage_gap" for gap in data["gaps"])
+    assert data["expansion_queue"][0]["symbol"] == "000001"
+    assert data["expansion_queue"][0]["candidate_pool_row"]["status"] == "candidate"
+    assert data["expansion_queue"][0]["candidate_pool_row"]["code"] == "000001"
+    assert data["expansion_queue"][0]["required_fields"] == ["section", "level", "desc"]
+    assert data["next_actions"][2]["id"] == "review_expansion_queue"
     assert data["holdings_source"]["source"] == "holdings_file"
     assert str(holdings_file) not in json.dumps(payload, ensure_ascii=False)
+
+
+def test_pool_coverage_text_renders_expansion_queue(tmp_path):
+    holdings_file = tmp_path / "holdings.json"
+    holdings_file.write_text(
+        json.dumps(
+            {
+                "holdings": [
+                    {"symbol": "000001", "name": "平安银行", "quantity": 100},
+                ]
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    text = render_pool_coverage_text(handle_pool_coverage("all-a", holdings_file=str(holdings_file)))
+
+    assert "补池任务" in text
+    assert "000001 平安银行" in text
+    assert "候选行" in text
+    assert "待确认 / 持仓补充" in text
 
 
 def test_pool_coverage_theme_pool_stays_explicit():

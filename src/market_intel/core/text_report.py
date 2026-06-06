@@ -176,6 +176,8 @@ def render_pool_coverage_text(payload: Dict[str, object]) -> str:
     lines.extend(render_coverage_layers(data.get("layer_distribution", [])))
     lines.extend(["", "持仓覆盖"])
     lines.extend(render_holdings_coverage(data.get("holdings_coverage", {})))
+    lines.extend(["", "补池任务"])
+    lines.extend(render_expansion_queue(data.get("expansion_queue", [])))
     lines.extend(["", "覆盖缺口"])
     lines.extend(render_coverage_gaps(data.get("gaps", [])))
     lines.extend(["", "数据质量"])
@@ -252,6 +254,44 @@ def render_holdings_coverage(value: object) -> List[str]:
                 rendered.append("%s %s/%s" % (row.get("symbol"), row.get("primary_layer"), row.get("primary_sub_sector")))
         if rendered:
             lines.append("   已覆盖样例: %s" % "；".join(rendered))
+    return lines
+
+
+def render_expansion_queue(value: object) -> List[str]:
+    rows = value if isinstance(value, list) else []
+    if not rows:
+        return ["- 暂无补池任务。"]
+    lines = []
+    for row in rows[:8]:
+        if not isinstance(row, dict):
+            continue
+        candidate = row.get("candidate_pool_row", {}) if isinstance(row.get("candidate_pool_row"), dict) else {}
+        lines.append(
+            "- #%s %s %s | %s | 必填: %s"
+            % (
+                row.get("rank"),
+                row.get("symbol"),
+                row.get("name"),
+                row.get("reason"),
+                "、".join(str(field) for field in row.get("required_fields", [])[:5])
+                if isinstance(row.get("required_fields"), list)
+                else "待确认",
+            )
+        )
+        lines.append(
+            "   候选行: %s,%s,%s,%s,%s,%s"
+            % (
+                candidate.get("status"),
+                candidate.get("priority"),
+                candidate.get("section"),
+                candidate.get("level"),
+                candidate.get("company"),
+                candidate.get("code"),
+            )
+        )
+        questions = row.get("review_questions", []) if isinstance(row.get("review_questions"), list) else []
+        if questions:
+            lines.append("   复核: %s" % "；".join(str(question) for question in questions[:3]))
     return lines
 
 
