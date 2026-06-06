@@ -2894,6 +2894,13 @@ def dashboard_coverage_plan_command(pool: str, mode: str, actions: List[object])
         if not isinstance(action, dict):
             continue
         command = str(action.get("command") or "")
+        if "pool quality" not in command:
+            continue
+        return with_pool_arg(digest_json_variant(command), pool)
+    for action in actions:
+        if not isinstance(action, dict):
+            continue
+        command = str(action.get("command") or "")
         if "pool coverage" not in command:
             continue
         command = digest_json_variant(command)
@@ -2913,6 +2920,7 @@ def dashboard_coverage_plan_evidence(coverage: Dict[str, object]) -> List[object
     rows = []
     universe = coverage.get("universe", {}) if isinstance(coverage.get("universe"), dict) else {}
     profile = universe.get("sector_profile", {}) if isinstance(universe.get("sector_profile"), dict) else {}
+    quality_queue = coverage.get("top_data_quality_queue", []) if isinstance(coverage.get("top_data_quality_queue"), list) else []
     if universe:
         rows.append(
             "全 A %s | 记录 %s | 行业/概念/指数 %.0f%%/%.0f%%/%.0f%%"
@@ -2922,6 +2930,16 @@ def dashboard_coverage_plan_evidence(coverage: Dict[str, object]) -> List[object
                 float(profile.get("industry_coverage_ratio") or 0) * 100,
                 float(profile.get("concept_coverage_ratio") or 0) * 100,
                 float(profile.get("index_coverage_ratio") or 0) * 100,
+            )
+        )
+    if quality_queue and isinstance(quality_queue[0], dict):
+        rows.append(
+            "数据质量 #%s %s | %s | 影响 %s"
+            % (
+                quality_queue[0].get("rank"),
+                quality_queue[0].get("flag"),
+                quality_queue[0].get("severity"),
+                quality_queue[0].get("affected_count", 0),
             )
         )
     for gap in coverage.get("top_gaps", []) if isinstance(coverage.get("top_gaps"), list) else []:

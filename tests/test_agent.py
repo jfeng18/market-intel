@@ -1012,11 +1012,11 @@ def test_dashboard_returns_one_screen_workbench(monkeypatch, tmp_path):
     assert data["review_plan"]["available"] is True
     assert data["review_plan"]["items"]
     assert data["review_plan"]["items"][0]["item_type"] == "coverage_review"
-    assert data["review_plan"]["items"][0]["json_command"] == "market-intel pool coverage --runtime --json"
+    assert data["review_plan"]["items"][0]["json_command"] == "market-intel pool quality invalid_symbol --json"
     assert data["review_plan"]["items"][1]["item_type"] == "market_scan"
     assert data["review_plan"]["items"][0]["done_when"]
     assert data["action_lane"]["items"][0]["item_type"] == "coverage_review"
-    assert data["action_lane"]["items"][0]["json_command"] == "market-intel pool coverage --runtime --json"
+    assert data["action_lane"]["items"][0]["json_command"] == "market-intel pool quality invalid_symbol --json"
     assert data["handoff"]["next_read"]
     assert data["guardrails"]
     assert "data.coverage_context" in data["agent_contract"]["stable_fields"]
@@ -1039,13 +1039,12 @@ def test_dashboard_returns_one_screen_workbench(monkeypatch, tmp_path):
     assert "buy" not in text.lower()
     assert "sell" not in text.lower()
 
-    coverage_command = data["review_plan"]["items"][0]["json_command"]
-    coverage_payload = run_agent_read_command(coverage_command, "all-a", 5, 2, 9999)
-    assert coverage_payload["ok"] is True
-    assert coverage_payload["command"] == "pool.coverage"
-    assert coverage_payload["data"]["pool"] == "all-a"
-    assert coverage_payload["data"]["universe"]["available"] is True
-    assert coverage_payload["data"]["holdings_source"]["mode"] == "runtime"
+    first_command = data["review_plan"]["items"][0]["json_command"]
+    first_payload = run_agent_read_command(first_command, "all-a", 5, 2, 9999)
+    assert first_payload["ok"] is True
+    assert first_payload["command"] == "pool.quality"
+    assert first_payload["data"]["pool"] == "all-a"
+    assert first_payload["data"]["flag"] == "invalid_symbol"
     quality_command = data["coverage_context"]["top_data_quality_queue"][0]["review_command"]
     quality_payload = run_agent_read_command(quality_command, "all-a", 5, 2, 9999)
     assert quality_payload["ok"] is True
@@ -1077,7 +1076,7 @@ def test_dashboard_mock_returns_demo_workbench_without_runtime(monkeypatch, tmp_
     assert data["portfolio_pulse"]["top_holdings"][0]["primary_json_command"].endswith("--mock --json")
     assert data["evidence_gaps"]["items"]
     assert data["review_plan"]["items"][0]["item_type"] == "coverage_review"
-    assert data["review_plan"]["items"][0]["json_command"] == "market-intel pool coverage --mock --json"
+    assert data["review_plan"]["items"][0]["json_command"] == "market-intel pool quality invalid_symbol --json"
     assert data["review_plan"]["items"][1]["json_command"] == "market-intel scan --mock --json"
     assert data["action_lane"]["items"]
     assert data["action_lane"]["items"][0]["item_type"] == "coverage_review"
@@ -1095,9 +1094,9 @@ def test_dashboard_mock_returns_demo_workbench_without_runtime(monkeypatch, tmp_
     coverage_command = data["review_plan"]["items"][0]["json_command"]
     coverage_payload = run_agent_read_command(coverage_command, "all-a", 5, 2, 9999)
     assert coverage_payload["ok"] is True
-    assert coverage_payload["command"] == "pool.coverage"
+    assert coverage_payload["command"] == "pool.quality"
     assert coverage_payload["data"]["pool"] == "all-a"
-    assert coverage_payload["data"]["holdings_source"]["mode"] == "mock"
+    assert coverage_payload["data"]["flag"] == "invalid_symbol"
 
 
 def test_dashboard_mock_preserves_non_default_pool(monkeypatch, tmp_path):
@@ -1116,8 +1115,9 @@ def test_dashboard_mock_preserves_non_default_pool(monkeypatch, tmp_path):
 
     coverage_payload = run_agent_read_command(data["review_plan"]["items"][0]["json_command"], "all-a", 5, 2, 9999)
     assert coverage_payload["ok"] is True
-    assert coverage_payload["command"] == "pool.coverage"
+    assert coverage_payload["command"] == "pool.quality"
     assert coverage_payload["data"]["pool"] == "ai-energy"
+    assert coverage_payload["data"]["flag"] == "invalid_symbol"
 
 
 def test_agent_next_can_focus_symbol(monkeypatch, tmp_path):
@@ -1457,7 +1457,7 @@ def test_dashboard_mock_cli_smoke(monkeypatch, tmp_path, cli_cmd):
     assert data["command"] == "dashboard"
     assert data["data"]["state"] == "demo_ready"
     assert data["data"]["run_limits"]["mode"] == "mock"
-    assert data["data"]["review_plan"]["items"][0]["json_command"] == "market-intel pool coverage --mock --json"
+    assert data["data"]["review_plan"]["items"][0]["json_command"] == "market-intel pool quality invalid_symbol --json"
     assert data["data"]["review_plan"]["items"][1]["json_command"] == "market-intel scan --mock --json"
     assert "mock 示例" in text_result.stdout
     assert "先确认覆盖底座" in text_result.stdout
