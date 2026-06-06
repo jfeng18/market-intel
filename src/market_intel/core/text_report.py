@@ -186,6 +186,8 @@ def render_pool_coverage_text(payload: Dict[str, object]) -> str:
     lines.extend(render_holdings_coverage(data.get("holdings_coverage", {})))
     lines.extend(["", "补池任务"])
     lines.extend(render_expansion_queue(data.get("expansion_queue", [])))
+    lines.extend(["", "研究证据任务"])
+    lines.extend(render_research_queue(data.get("research_queue", [])))
     lines.extend(["", "覆盖缺口"])
     lines.extend(render_coverage_gaps(data.get("gaps", [])))
     lines.extend(["", "数据质量"])
@@ -235,6 +237,42 @@ def render_pool_expansion_text(payload: Dict[str, object]) -> str:
     lines.extend(["", "下一步"])
     lines.extend(render_command_list(data.get("next_commands", [])))
     lines.extend(["", "边界", "- 只导出或审查候选补池 CSV，不自动修改主复盘池。", "- 通过 review 后仍建议用 overlay 跑 coverage/focus 复核。"])
+    return "\n".join(lines)
+
+
+def render_pool_research_text(payload: Dict[str, object]) -> str:
+    data = payload.get("data", {})
+    if not isinstance(data, dict):
+        return "market-intel pool research\n\n无数据。"
+
+    lines = [
+        "market-intel pool research",
+        "",
+        "状态",
+        "- export | 行 %s | written %s | dry_run %s | output %s"
+        % (
+            data.get("record_count", 0),
+            data.get("written"),
+            data.get("dry_run"),
+            data.get("output"),
+        ),
+        "",
+        "研究草稿",
+    ]
+    rows = data.get("rows", []) if isinstance(data.get("rows"), list) else []
+    if not rows:
+        lines.append("- 暂无 foundation 持仓需要导出研究证据草稿。")
+    else:
+        for row in rows[:8]:
+            if not isinstance(row, dict):
+                continue
+            lines.append(
+                "- %s %s | %s | 待补: 核心逻辑、关键证据、证伪风险"
+                % (row.get("symbol"), row.get("name"), row.get("status"))
+            )
+    lines.extend(["", "下一步"])
+    lines.extend(render_command_list(data.get("next_commands", [])))
+    lines.extend(["", "边界", "- 只导出研究证据草稿，不自动生成结论。", "- 导入前需要人工补齐三项证据并设置 status=reviewed。"])
     return "\n".join(lines)
 
 
@@ -441,6 +479,31 @@ def render_expansion_queue(value: object) -> List[str]:
         questions = row.get("review_questions", []) if isinstance(row.get("review_questions"), list) else []
         if questions:
             lines.append("   复核: %s" % "；".join(str(question) for question in questions[:3]))
+    return lines
+
+
+def render_research_queue(value: object) -> List[str]:
+    rows = value if isinstance(value, list) else []
+    if not rows:
+        return ["- 暂无研究证据任务。"]
+    lines = []
+    for row in rows[:8]:
+        if not isinstance(row, dict):
+            continue
+        required = row.get("required_fields", []) if isinstance(row.get("required_fields"), list) else []
+        lines.append(
+            "- #%s %s %s | %s | 必填: %s"
+            % (
+                row.get("rank"),
+                row.get("symbol"),
+                row.get("name"),
+                row.get("reason"),
+                "、".join(str(field) for field in required[:5]) if required else "核心逻辑、关键证据、证伪风险",
+            )
+        )
+        commands = row.get("commands", []) if isinstance(row.get("commands"), list) else []
+        if commands:
+            lines.append("   命令: %s" % "；".join(str(command) for command in commands[:2]))
     return lines
 
 

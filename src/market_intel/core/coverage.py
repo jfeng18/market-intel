@@ -23,6 +23,7 @@ CN_A_PREFIXES = {
 }
 
 POOL_CSV_FIELDS = ["status", "priority", "section", "level", "company", "code", "desc", "notes"]
+RESEARCH_CSV_FIELDS = ["symbol", "name", "status", "thesis", "evidence", "invalidation", "updated_at", "source"]
 
 
 def build_pool_coverage(
@@ -38,6 +39,7 @@ def build_pool_coverage(
     scope = str(definition.get("scope") or "")
     holdings_coverage = build_holdings_coverage(items, holdings)
     expansion_queue = build_expansion_queue(pool, scope, holdings_coverage)
+    research_queue = build_research_queue(pool, holdings_coverage)
     return {
         "pool": pool,
         "scope": scope,
@@ -59,8 +61,9 @@ def build_pool_coverage(
         "universe": universe,
         "holdings_coverage": holdings_coverage,
         "expansion_queue": expansion_queue,
+        "research_queue": research_queue,
         "gaps": coverage_gaps(scope, items, cn_a, data_quality, holdings_coverage, universe),
-        "next_actions": coverage_next_actions(pool, scope, holdings_coverage, expansion_queue, universe),
+        "next_actions": coverage_next_actions(pool, scope, holdings_coverage, expansion_queue, research_queue, universe),
         "agent_contract": coverage_contract(),
         "guardrails": coverage_guardrails(scope, universe),
     }
@@ -89,6 +92,32 @@ def export_expansion_queue_csv(
         "rows": rows,
         "warnings": expansion_export_warnings(rows),
         "next_commands": expansion_export_next_commands(output_path, written, rows),
+    }
+
+
+def export_research_queue_csv(
+    research_queue: List[Dict[str, object]],
+    output_path: Path,
+    dry_run: bool = False,
+) -> Dict[str, object]:
+    rows = research_candidate_rows(research_queue)
+    written = False
+    if rows and not dry_run:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        with output_path.open("w", encoding="utf-8", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=RESEARCH_CSV_FIELDS)
+            writer.writeheader()
+            writer.writerows(rows)
+        written = True
+    return {
+        "output": command_path(output_path),
+        "record_count": len(rows),
+        "written": written,
+        "dry_run": dry_run,
+        "fields": list(RESEARCH_CSV_FIELDS),
+        "rows": rows,
+        "warnings": research_export_warnings(rows),
+        "next_commands": research_export_next_commands(output_path, written, rows),
     }
 
 
@@ -257,6 +286,32 @@ def expansion_candidate_rows(expansion_queue: List[Dict[str, object]]) -> List[D
     return rows
 
 
+def research_candidate_rows(research_queue: List[Dict[str, object]]) -> List[Dict[str, object]]:
+    rows = []
+    seen = set()
+    for item in research_queue:
+        if not isinstance(item, dict):
+            continue
+        symbol = str(item.get("symbol") or "").strip().upper()
+        if not symbol or symbol in seen:
+            continue
+        seen.add(symbol)
+        candidate = item.get("candidate_research_row", {}) if isinstance(item.get("candidate_research_row"), dict) else {}
+        rows.append(
+            {
+                "symbol": symbol,
+                "name": str(candidate.get("name") or item.get("name") or symbol),
+                "status": str(candidate.get("status") or "draft"),
+                "thesis": str(candidate.get("thesis") or ""),
+                "evidence": str(candidate.get("evidence") or ""),
+                "invalidation": str(candidate.get("invalidation") or ""),
+                "updated_at": str(candidate.get("updated_at") or ""),
+                "source": str(candidate.get("source") or "pool_research_queue"),
+            }
+        )
+    return rows
+
+
 def expansion_export_warnings(rows: List[Dict[str, object]]) -> List[Dict[str, object]]:
     if not rows:
         return []
@@ -265,6 +320,18 @@ def expansion_export_warnings(rows: List[Dict[str, object]]) -> List[Dict[str, o
             "code": "POOL_EXPANSION_NEEDS_REVIEW",
             "message": "Expansion CSV is a draft. Confirm section, level, desc, and notes before using it as a pool source.",
             "detail": {"record_count": len(rows), "required_fields": ["section", "level", "desc"]},
+        }
+    ]
+
+
+def research_export_warnings(rows: List[Dict[str, object]]) -> List[Dict[str, object]]:
+    if not rows:
+        return []
+    return [
+        {
+            "code": "RESEARCH_NOTES_NEED_REVIEW",
+            "message": "Research CSV is a draft. Fill thesis, evidence, invalidation, then set status=reviewed before import.",
+            "detail": {"record_count": len(rows), "required_fields": ["thesis", "evidence", "invalidation"]},
         }
     ]
 
@@ -284,6 +351,25 @@ def expansion_export_next_commands(
     else:
         commands.append("market-intel pool expansion --runtime --output data/runtime/pool_expansion.csv --json")
     return commands
+
+
+def research_export_next_commands(
+    output_path: Path,
+    written: bool,
+    rows: List[Dict[str, object]],
+) -> List[str]:
+    if not rows:
+        return []
+    path_text = command_path(output_path)
+    if written:
+        return [
+            "market-intel import research %s --dry-run --json" % path_text,
+            "market-intel import research %s --runtime --json" % path_text,
+            "market-intel pool coverage --runtime --text",
+        ]
+    return [
+        "market-intel pool research --runtime --output data/runtime/research_notes.todo.csv --json",
+    ]
 
 
 def command_path(path: Path) -> str:
@@ -660,6 +746,59 @@ def build_expansion_queue(
     return queue
 
 
+def build_research_queue(
+    pool: str,
+    holdings_coverage: Dict[str, object],
+) -> List[Dict[str, object]]:
+    if not holdings_coverage.get("available"):
+        return []
+    review_queue = holdings_coverage.get("review_queue", [])
+    if not isinstance(review_queue, list):
+        return []
+    queue = []
+    seen = set()
+    for row in review_queue:
+        if not isinstance(row, dict) or row.get("coverage_state") != "foundation":
+            continue
+        symbol = str(row.get("symbol") or "").strip().upper()
+        if not symbol or symbol in seen:
+            continue
+        seen.add(symbol)
+        name = str(row.get("name") or symbol).strip()
+        queue.append(
+            {
+                "rank": len(queue) + 1,
+                "id": "research_notes_%s" % symbol,
+                "symbol": symbol,
+                "name": name,
+                "reason": "foundation_research_missing",
+                "pool": pool,
+                "required_fields": ["thesis", "evidence", "invalidation"],
+                "candidate_research_row": candidate_research_row(symbol, name),
+                "commands": [
+                    "market-intel portfolio explain %s --runtime --text" % symbol,
+                    "market-intel pool research --runtime --output data/runtime/research_notes.todo.csv --json%s" % pool_arg(pool),
+                    "market-intel import research data/runtime/research_notes.todo.csv --runtime --json",
+                ],
+                "done_when": "已补齐核心逻辑、关键证据和证伪风险，设置 status=reviewed，并导入 runtime research_notes。",
+            }
+        )
+    return queue
+
+
+def candidate_research_row(symbol: str, name: str) -> Dict[str, object]:
+    return {
+        "symbol": symbol,
+        "name": name,
+        "status": "draft",
+        "thesis": "",
+        "evidence": "",
+        "invalidation": "",
+        "updated_at": "",
+        "source": "pool_research_queue",
+    }
+
+
 def candidate_pool_row(symbol: str, name: str) -> Dict[str, object]:
     return {
         "status": "candidate",
@@ -755,6 +894,7 @@ def coverage_next_actions(
     scope: str,
     holdings_coverage: Dict[str, object],
     expansion_queue: List[Dict[str, object]],
+    research_queue: List[Dict[str, object]],
     universe: Dict[str, object],
 ) -> List[Dict[str, object]]:
     actions = [
@@ -801,21 +941,21 @@ def coverage_next_actions(
                 "done_when": "已逐项确认 expansion_queue 中的候选补池行、必填字段和复核问题。",
             }
         )
-    elif holdings_coverage.get("foundation_matched_count"):
+    elif research_queue:
         actions.append(
             {
                 "rank": len(actions) + 1,
-                "id": "import_research_notes",
-                "command": "market-intel import research examples/research_notes.csv.example --runtime --json",
-                "done_when": "已为 foundation 持仓导入 reviewed research_notes，且 coverage 的 foundation_matched_count 降为 0。",
+                "id": "export_research_queue",
+                "command": "market-intel pool research --runtime --output data/runtime/research_notes.todo.csv --json",
+                "done_when": "已导出 foundation 持仓的 research_notes 草稿，并补齐核心逻辑、关键证据和证伪风险。",
             }
         )
         actions.append(
             {
                 "rank": len(actions) + 1,
                 "id": "review_foundation_holdings",
-                "command": "market-intel pool coverage --runtime --json%s" % pool_arg(pool),
-                "done_when": "已逐项确认 holdings_coverage.review_queue 中 foundation 持仓的核心逻辑、关键证据和证伪风险。",
+                "command": "market-intel import research data/runtime/research_notes.todo.csv --runtime --json",
+                "done_when": "已导入 reviewed research_notes，且 coverage 的 foundation_matched_count 降为 0。",
             }
         )
     elif holdings_coverage.get("draft_matched_count"):
@@ -861,6 +1001,7 @@ def coverage_contract() -> Dict[str, object]:
             "data.universe",
             "data.holdings_coverage",
             "data.expansion_queue",
+            "data.research_queue",
             "data.gaps",
             "data.next_actions",
             "data.guardrails",

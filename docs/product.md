@@ -59,6 +59,8 @@ market-intel 是面向全 A 的个人复盘操作系统，不是行情 App、交
 
 当前实现用 `research_notes_v1` 作为轻量研究证据层：一只基础清单标的只有在 `status=reviewed` 且核心逻辑、关键证据、证伪风险三项齐全时，才会从 `foundation` 升级为 `confirmed`。这让“覆盖率提升”不是因为股票被导入了，而是因为研究证据闭环完成了。
 
+`pool research` 则把 foundation 持仓导出成可编辑的 research notes 待办 CSV。它不替用户写结论，只把缺口变成明确的 `symbol/name/status/thesis/evidence/invalidation` 工作项，方便人补证据、agent 校验导入、coverage 复跑验证。
+
 ### 3.3 agent-native
 
 每个核心输出都必须给 agent 稳定读取路径：
@@ -157,6 +159,7 @@ import/runtime -> status/readiness -> pool coverage -> pool expansion review
 - journal 不只保存日报，还要追踪上次假设、本次验证结果和未完成 follow-up。
 - 把“缺证据”作为一等对象输出，而不是隐藏在自然语言里。
 - 让 `import research`、`pool coverage`、`portfolio review` 和 `agent next` 共用同一套 research status，使人和 agent 都能看到证据是否足以关闭基础覆盖缺口。
+- 用 `pool research` 把 foundation 缺口导出成可编辑队列，形成“发现缺口 -> 补证据 -> dry-run 校验 -> runtime 导入 -> coverage 复跑”的闭环。
 
 ### P3：轻量 GUI
 

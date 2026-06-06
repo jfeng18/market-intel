@@ -276,6 +276,17 @@ market-intel agent next --text
 
 需要临时叠加研究证据时，可使用 `MARKET_INTEL_RESEARCH_NOTES_PATHS=...`，不会改主复盘池。
 
+如果 coverage 里出现 `foundation_research_missing`，可以先导出待办草稿，再人工补齐三项证据后导入：
+
+```bash
+market-intel pool research --runtime --output data/runtime/research_notes.todo.csv --json
+market-intel import research data/runtime/research_notes.todo.csv --dry-run --json
+market-intel import research data/runtime/research_notes.todo.csv --runtime --json
+market-intel pool coverage --runtime --text
+```
+
+`pool research` 只导出 foundation 持仓的研究证据草稿，不自动生成研究结论。
+
 传入持仓源后，它还会检查个人持仓是否已被复盘池覆盖：
 
 ```bash

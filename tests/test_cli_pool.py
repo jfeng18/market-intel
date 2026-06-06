@@ -8,8 +8,9 @@ from market_intel.cli import (
     handle_pool_expansion,
     handle_pool_explain,
     handle_pool_list,
+    handle_pool_research,
 )
-from market_intel.core.text_report import render_pool_coverage_text, render_pool_expansion_text, render_pool_explain_text
+from market_intel.core.text_report import render_pool_coverage_text, render_pool_expansion_text, render_pool_explain_text, render_pool_research_text
 
 
 def test_pool_list_returns_json_envelope():
@@ -49,6 +50,7 @@ def test_pool_coverage_all_a_reports_seed_boundaries():
     assert any(gap["id"] == "all_a_seed_only" for gap in data["gaps"])
     assert "data.holdings_coverage" in data["agent_contract"]["stable_fields"]
     assert "data.expansion_queue" in data["agent_contract"]["stable_fields"]
+    assert "data.research_queue" in data["agent_contract"]["stable_fields"]
     assert "data.gaps" in data["agent_contract"]["stable_fields"]
     assert data["next_actions"][0]["command"] == "market-intel pool coverage --text"
     assert data["holdings_source"] == {"provided": False}
@@ -101,9 +103,11 @@ def test_pool_coverage_reports_a_share_universe(monkeypatch, tmp_path):
     assert coverage["foundation_matched_count"] == 1
     assert coverage["matched"][0]["coverage_state"] == "foundation"
     assert "a_share_universe_foundation" in coverage["matched"][0]["coverage_state_reasons"]
+    assert data["research_queue"][0]["symbol"] == "000001"
+    assert data["research_queue"][0]["candidate_research_row"]["status"] == "draft"
     assert "foundation_pool_matches" in coverage["coverage_flags"]
     assert any(gap["id"] == "foundation_research_missing" for gap in data["gaps"])
-    assert any(action["id"] == "import_research_notes" for action in data["next_actions"])
+    assert any(action["id"] == "export_research_queue" for action in data["next_actions"])
     assert all(gap["id"] != "all_a_seed_only" for gap in data["gaps"])
     assert "data.universe" in data["agent_contract"]["stable_fields"]
     assert str(universe_file) not in json.dumps(payload, ensure_ascii=False)
@@ -124,6 +128,59 @@ def test_pool_coverage_text_renders_a_share_universe(monkeypatch, tmp_path):
     assert "a_share_universe_v1" in text
     assert "来源文件: a_share_universe.csv" in text
     assert "000001 平安银行" in text
+    assert "研究证据任务" in text
+
+
+def test_pool_research_exports_foundation_research_draft(monkeypatch, tmp_path):
+    universe_file = tmp_path / "a_share_universe.csv"
+    universe_file.write_text(
+        "证券代码,证券名称,行业,概念,指数成分,上市状态\n"
+        "000001,平安银行,银行,股份行;金融科技,沪深300;深证100,listed\n",
+        encoding="utf-8",
+    )
+    holdings_file = tmp_path / "holdings.json"
+    holdings_file.write_text(
+        json.dumps({"holdings": [{"symbol": "000001", "name": "平安银行"}]}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    output_file = tmp_path / "research_notes.todo.csv"
+    monkeypatch.setenv("MARKET_INTEL_A_SHARE_UNIVERSE_PATHS", str(universe_file))
+
+    payload = handle_pool_research("all-a", holdings_file=str(holdings_file), output=str(output_file))
+
+    assert payload["ok"] is True
+    assert payload["command"] == "pool.research"
+    assert payload["data"]["written"] is True
+    assert payload["data"]["record_count"] == 1
+    assert payload["data"]["rows"][0]["symbol"] == "000001"
+    assert payload["data"]["rows"][0]["status"] == "draft"
+    assert payload["data"]["rows"][0]["thesis"] == ""
+    assert "market-intel import research research_notes.todo.csv --dry-run --json" in payload["data"]["next_commands"]
+    with output_file.open(encoding="utf-8") as handle:
+        rows = list(csv.DictReader(handle))
+    assert rows[0]["symbol"] == "000001"
+    assert str(output_file) not in json.dumps(payload, ensure_ascii=False)
+
+
+def test_pool_research_text_renders_foundation_draft(monkeypatch, tmp_path):
+    universe_file = tmp_path / "a_share_universe.csv"
+    universe_file.write_text(
+        "证券代码,证券名称,行业,概念,指数成分,上市状态\n"
+        "000001,平安银行,银行,股份行;金融科技,沪深300;深证100,listed\n",
+        encoding="utf-8",
+    )
+    holdings_file = tmp_path / "holdings.json"
+    holdings_file.write_text(
+        json.dumps({"holdings": [{"symbol": "000001", "name": "平安银行"}]}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("MARKET_INTEL_A_SHARE_UNIVERSE_PATHS", str(universe_file))
+
+    text = render_pool_research_text(handle_pool_research("all-a", holdings_file=str(holdings_file), dry_run=True))
+
+    assert "market-intel pool research" in text
+    assert "000001 平安银行" in text
+    assert "核心逻辑、关键证据、证伪风险" in text
 
 
 def test_pool_coverage_file_holdings_reports_unmatched_gap(tmp_path):
@@ -507,6 +564,40 @@ def test_pool_expansion_cli_smoke(tmp_path, cli_cmd):
     payload = json.loads(result.stdout)
     assert payload["command"] == "pool.expansion"
     assert payload["data"]["rows"][0]["code"] == "000001"
+
+
+def test_pool_research_cli_smoke(monkeypatch, tmp_path, cli_cmd):
+    universe_file = tmp_path / "a_share_universe.csv"
+    universe_file.write_text(
+        "证券代码,证券名称,行业,概念,指数成分,上市状态\n"
+        "000001,平安银行,银行,股份行;金融科技,沪深300;深证100,listed\n",
+        encoding="utf-8",
+    )
+    holdings_file = tmp_path / "holdings.json"
+    holdings_file.write_text(
+        json.dumps({"holdings": [{"symbol": "000001", "name": "平安银行"}]}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("MARKET_INTEL_A_SHARE_UNIVERSE_PATHS", str(universe_file))
+
+    result = subprocess.run(
+        cli_cmd(
+            "pool",
+            "research",
+            "--holdings-file",
+            str(holdings_file),
+            "--dry-run",
+            "--json",
+        ),
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+
+    payload = json.loads(result.stdout)
+    assert payload["command"] == "pool.research"
+    assert payload["data"]["rows"][0]["symbol"] == "000001"
+    assert payload["data"]["fields"] == ["symbol", "name", "status", "thesis", "evidence", "invalidation", "updated_at", "source"]
 
 
 def test_pool_expansion_review_cli_smoke(tmp_path, cli_cmd):
