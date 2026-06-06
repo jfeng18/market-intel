@@ -199,6 +199,25 @@ def test_pool_expansion_review_accepts_reviewed_rows(tmp_path):
     assert str(expansion_file) not in json.dumps(payload, ensure_ascii=False)
 
 
+def test_pool_expansion_review_keeps_safe_relative_commands(tmp_path, monkeypatch):
+    runtime_dir = tmp_path / "data" / "runtime"
+    runtime_dir.mkdir(parents=True)
+    expansion_file = runtime_dir / "pool_expansion.csv"
+    expansion_file.write_text(
+        "status,priority,section,level,company,code,desc,notes\n"
+        "reviewed,P2,银行 / 银行,股份行,平安银行,000001,股份行龙头；用于持仓覆盖补充,source=test\n",
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    payload = handle_pool_expansion("all-a", review_file="data/runtime/pool_expansion.csv")
+    commands = payload["data"]["next_commands"]
+
+    assert payload["ok"] is True
+    assert "MARKET_INTEL_POOL_EXTRA_PATHS=data/runtime/pool_expansion.csv" in commands[0]
+    assert "data/runtime/pool_expansion.csv" in commands[1]
+
+
 def test_pool_expansion_text_renderer_for_review(tmp_path):
     expansion_file = tmp_path / "pool_expansion.csv"
     expansion_file.write_text(

@@ -231,14 +231,15 @@ def expansion_review_result(
 
 
 def expansion_review_next_commands(csv_path: Path, state: str) -> List[str]:
+    path_text = command_path(csv_path)
     if state == "ready":
         return [
-            "MARKET_INTEL_POOL_EXTRA_PATHS=%s market-intel pool coverage --runtime --text" % csv_path.name,
-            "MARKET_INTEL_POOL_EXTRA_PATHS=%s market-intel focus --runtime --text" % csv_path.name,
+            "MARKET_INTEL_POOL_EXTRA_PATHS=%s market-intel pool coverage --runtime --text" % path_text,
+            "MARKET_INTEL_POOL_EXTRA_PATHS=%s market-intel focus --runtime --text" % path_text,
         ]
     return [
         "Edit %s and resolve blockers." % csv_path.name,
-        "market-intel pool expansion --review-file %s --json" % csv_path.name,
+        "market-intel pool expansion --review-file %s --json" % path_text,
     ]
 
 
@@ -273,13 +274,18 @@ def expansion_export_next_commands(
 ) -> List[str]:
     if not rows:
         return []
+    path_text = command_path(output_path)
     commands = []
     if written:
-        commands.append("MARKET_INTEL_POOL_EXTRA_PATHS=%s market-intel pool list --json" % output_path)
-        commands.append("MARKET_INTEL_POOL_EXTRA_PATHS=%s market-intel pool coverage --runtime --text" % output_path)
+        commands.append("MARKET_INTEL_POOL_EXTRA_PATHS=%s market-intel pool list --json" % path_text)
+        commands.append("MARKET_INTEL_POOL_EXTRA_PATHS=%s market-intel pool coverage --runtime --text" % path_text)
     else:
         commands.append("market-intel pool expansion --runtime --output data/runtime/pool_expansion.csv --json")
     return commands
+
+
+def command_path(path: Path) -> str:
+    return str(path) if not path.is_absolute() else path.name
 
 
 def coverage_status(scope: str, data_quality: Dict[str, object]) -> str:
