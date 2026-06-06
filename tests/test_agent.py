@@ -912,10 +912,23 @@ def test_agent_next_surfaces_foundation_holding_review(monkeypatch, tmp_path):
     assert card["coverage_state"] == "foundation"
     assert "a_share_universe_foundation" in card["coverage_state_reasons"]
     assert "foundation_pool_match" in card["risk_flags"]
+    assert card["research_workflow"][0]["json_command"].startswith("market-intel pool research")
+    assert any(step["json_command"].startswith("market-intel import research") for step in card["research_workflow"])
+    assert any(item["source"] == "foundation_research" for item in data["review_handoff"]["manual_items"])
+    research_steps = [
+        item
+        for item in data["review_handoff"]["command_chain"]
+        if item["source"] == "foundation_research"
+    ]
+    assert research_steps
+    assert all(item["step_type"] == "manual" for item in research_steps)
+    assert all(item["requires_manual"] is True for item in research_steps)
     assert any("全 A 基础清单" in gap for gap in card["open_gaps"])
     assert card["next_json_command"].startswith("market-intel portfolio explain 000001")
     assert "data.security_cards.cards[].coverage_state" in data["agent_contract"]["stable_fields"]
+    assert "data.security_cards.cards[].research_workflow" in data["agent_contract"]["stable_fields"]
     assert "覆盖: foundation" in text or "覆盖: 基础" in text
+    assert "研究流程" in text
     assert "证伪风险" in text
     assert "buy" not in text.lower()
     assert "sell" not in text.lower()
@@ -935,6 +948,7 @@ def test_agent_next_closes_foundation_gap_with_reviewed_research(monkeypatch, tm
     assert card["coverage_state"] == "confirmed"
     assert card["coverage_state_reasons"] == ["reviewed_research"]
     assert card["research_status"]["confirmed"] is True
+    assert card["research_workflow"] == []
     assert "foundation_pool_match" not in card["risk_flags"]
     assert not any("全 A 基础清单" in gap for gap in card["open_gaps"])
     assert "data.security_cards.cards[].research_status" in data["agent_contract"]["stable_fields"]

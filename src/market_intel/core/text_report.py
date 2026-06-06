@@ -1261,6 +1261,13 @@ def render_agent_run_attention_queue(value: Dict[str, object]) -> List[str]:
     return lines
 
 
+def render_workflow_step(step: Dict[str, object]) -> str:
+    command = step.get("json_command")
+    if command:
+        return "%s: %s" % (step.get("title"), command)
+    return "%s: %s" % (step.get("title"), step.get("done_when"))
+
+
 def render_agent_run_security_cards(value: Dict[str, object]) -> List[str]:
     cards = value.get("cards", []) if isinstance(value.get("cards"), list) else []
     if not cards:
@@ -1289,6 +1296,9 @@ def render_agent_run_security_cards(value: Dict[str, object]) -> List[str]:
         research_text = render_research_status(item.get("research_status", {}))
         if research_text:
             lines.append("      研究: %s" % research_text)
+        workflow = item.get("research_workflow", []) if isinstance(item.get("research_workflow"), list) else []
+        if workflow:
+            lines.append("      研究流程: %s" % "；".join(render_workflow_step(step) for step in workflow[:3] if isinstance(step, dict)))
         hotspot = item.get("hotspot", {}) if isinstance(item.get("hotspot"), dict) else {}
         if hotspot:
             lines.append("      热点: %s | 分 %s" % (hotspot.get("chain"), hotspot.get("score")))

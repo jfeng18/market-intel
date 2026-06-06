@@ -215,6 +215,7 @@ market-intel journal timeline --text
 - 它复用 `agent run` 的只读复核结果，只返回 `review_handoff`、`review_completion` 和 `security_cards`。
 - `data.review_handoff.command_chain` 给出去重后的继续复盘命令链，区分只读步骤和人工确认步骤。
 - `--symbol <代码>` 可以只输出某只持仓的单票卡片和相关命令链，适合快速接手单票复核。
+- foundation 持仓会在 `security_cards.cards[].research_workflow` 和 `review_handoff.manual_items` 中给出 `pool research -> import research --dry-run -> import research --runtime -> coverage` 的补证据路径；它仍要求人工填写核心逻辑、关键证据和证伪风险。
 - 适合外部 agent 或用户在上一次复盘后快速接手，不必从完整 digest 里重新拼命令。
 
 也可以手工编辑：

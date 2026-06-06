@@ -1750,7 +1750,11 @@ def filter_agent_next_handoff_for_symbol(handoff: Dict[str, object], symbol: str
     wanted = str(symbol)
     command_signature = "portfolio.explain:%s" % wanted
     next_read = filter_handoff_symbol_commands(handoff.get("next_read", []), command_signature)
-    chain = filter_handoff_symbol_commands(handoff.get("command_chain", []), command_signature)
+    chain = filter_handoff_symbol_commands(
+        handoff.get("command_chain", []),
+        command_signature,
+        include_sources={"foundation_research"},
+    )
     if not next_read:
         default_command = "market-intel portfolio explain %s --runtime --json" % wanted
         next_read = [
@@ -1794,13 +1798,18 @@ def filter_handoff_watch_items_for_symbol(value: object, symbol: str) -> List[Di
     return rows
 
 
-def filter_handoff_symbol_commands(value: object, command_signature: str) -> List[Dict[str, object]]:
+def filter_handoff_symbol_commands(
+    value: object,
+    command_signature: str,
+    include_sources: Optional[set] = None,
+) -> List[Dict[str, object]]:
     rows = []
+    included = include_sources or set()
     for item in value if isinstance(value, list) else []:
         if not isinstance(item, dict):
             continue
         command = str(item.get("json_command") or "")
-        if attention_command_signature(command) == command_signature:
+        if attention_command_signature(command) == command_signature or item.get("source") in included:
             row = dict(item)
             row["rank"] = len(rows) + 1
             rows.append(row)
@@ -4587,6 +4596,14 @@ def review_handoff_manual_items(
 ) -> List[Dict[str, object]]:
     rows = []
     seen = set()
+    for item in foundation_research_manual_items(digest):
+        command = str(item.get("json_command") or "")
+        key = digest_json_variant(command) or str(item.get("source") or "")
+        if key in seen:
+            continue
+        seen.add(key)
+        rows.append(item)
+
     completion = digest.get("review_completion", {}) if isinstance(digest.get("review_completion"), dict) else {}
     checks = completion.get("checks", []) if isinstance(completion.get("checks"), list) else []
     for check in checks:
@@ -4629,6 +4646,41 @@ def review_handoff_manual_items(
             }
         )
     return rows[:6]
+
+
+def foundation_research_manual_items(digest: Dict[str, object]) -> List[Dict[str, object]]:
+    dashboard = digest.get("holding_dashboard", {}) if isinstance(digest.get("holding_dashboard"), dict) else {}
+    holdings = dashboard.get("top_holdings", []) if isinstance(dashboard.get("top_holdings"), list) else []
+    foundation = [
+        item
+        for item in holdings
+        if isinstance(item, dict) and item.get("coverage_state") == "foundation" and item.get("symbol")
+    ]
+    if not foundation:
+        return []
+    symbols = "、".join(str(item.get("symbol")) for item in foundation[:4])
+    export_command = "market-intel pool research --runtime --output data/runtime/research_notes.todo.csv --json"
+    import_command = "market-intel import research data/runtime/research_notes.todo.csv --runtime --json"
+    return [
+        {
+            "rank": 0,
+            "source": "foundation_research",
+            "title": "导出研究证据待办",
+            "reason": "foundation 持仓需要补 reviewed research_notes：%s。" % symbols,
+            "json_command": export_command,
+            "requires_manual": True,
+            "done_when": "已导出 research_notes.todo.csv，并由人工补齐核心逻辑、关键证据和证伪风险。",
+        },
+        {
+            "rank": 0,
+            "source": "foundation_research",
+            "title": "导入研究证据",
+            "reason": "人工补齐并设置 status=reviewed 后再导入 runtime research_notes。",
+            "json_command": import_command,
+            "requires_manual": True,
+            "done_when": "已导入 research_notes，重新运行 coverage 后 foundation_matched_count 降为 0。",
+        },
+    ]
 
 
 def review_handoff_record_templates(digest: Dict[str, object]) -> List[Dict[str, object]]:
@@ -4800,6 +4852,7 @@ def security_card_item(
         else []
     )
     research = compact_digest_research_status(holding.get("research_status", {}))
+    research_workflow = foundation_research_workflow(symbol, coverage_state)
     supporting = dedupe_queue_texts(
         list(holding.get("review_points", []) if isinstance(holding.get("review_points"), list) else [])
         + list(workbench.get("evidence", []) if isinstance(workbench.get("evidence"), list) else [])
@@ -4820,6 +4873,7 @@ def security_card_item(
     commands = dedupe_queue_texts(
         handoff_commands
         + [holding.get("primary_json_command") or holding.get("primary_command")]
+        + [step.get("json_command") for step in research_workflow if isinstance(step, dict)]
         + list(workbench.get("commands", []) if isinstance(workbench.get("commands"), list) else [])
         + [item.get("json_command") for item in evidence_items if isinstance(item, dict)]
         + [item.get("json_command") for item in hypothesis_items if isinstance(item, dict)]
@@ -4845,6 +4899,7 @@ def security_card_item(
         "coverage_state": coverage_state,
         "coverage_state_reasons": [str(reason) for reason in coverage_state_reasons[:6] if reason],
         "research_status": research,
+        "research_workflow": research_workflow,
         "change_priority": holding.get("change_priority"),
         "has_quote": bool(holding.get("has_quote")),
         "in_hotspot": bool(holding.get("in_hotspot")),
@@ -4878,6 +4933,41 @@ def security_card_item(
             "write_policy": "仅生成记录模板，不自动写入 journal。",
         },
     }
+
+
+def foundation_research_workflow(symbol: str, coverage_state: str) -> List[Dict[str, object]]:
+    if coverage_state != "foundation":
+        return []
+    return [
+        {
+            "rank": 1,
+            "step_type": "manual",
+            "title": "导出 research notes 待办",
+            "json_command": "market-intel pool research --runtime --output data/runtime/research_notes.todo.csv --json",
+            "done_when": "已生成可编辑的 research_notes.todo.csv。",
+        },
+        {
+            "rank": 2,
+            "step_type": "manual",
+            "title": "补齐三项证据",
+            "json_command": "",
+            "done_when": "已为 %s 补齐核心逻辑、关键证据、证伪风险，并设置 status=reviewed。" % symbol,
+        },
+        {
+            "rank": 3,
+            "step_type": "manual",
+            "title": "校验研究证据",
+            "json_command": "market-intel import research data/runtime/research_notes.todo.csv --dry-run --json",
+            "done_when": "dry-run 返回 ok=true 且 errors=[]。",
+        },
+        {
+            "rank": 4,
+            "step_type": "manual",
+            "title": "导入并复跑覆盖",
+            "json_command": "market-intel import research data/runtime/research_notes.todo.csv --runtime --json",
+            "done_when": "重新运行 pool coverage 后该标的 coverage_state=confirmed。",
+        },
+    ]
 
 
 def security_cards_group_by_symbol(value: object, symbol_key: str) -> Dict[str, List[Dict[str, object]]]:
@@ -5312,7 +5402,9 @@ def digest_command_is_read_only(command: str) -> bool:
     padded = " %s " % command
     if " journal save " in padded or " journal note " in padded:
         return False
-    if " import quotes " in padded or " import holdings " in padded or " init runtime " in padded:
+    if " import quotes " in padded or " import holdings " in padded or " import research " in padded or " init runtime " in padded:
+        return False
+    if " pool research " in padded and " --output " in padded:
         return False
     return True
 
@@ -5414,6 +5506,8 @@ def agent_run_contract() -> Dict[str, object]:
             "data.review_digest.security_cards.cards[].coverage_state",
             "data.review_digest.security_cards.cards[].coverage_state_reasons",
             "data.review_digest.security_cards.cards[].research_status",
+            "data.review_digest.security_cards.cards[].research_workflow",
+            "data.review_digest.security_cards.cards[].research_workflow[].json_command",
             "data.review_digest.security_cards.cards[].open_gaps",
             "data.review_digest.security_cards.cards[].next_json_command",
             "data.review_digest.security_cards.cards[].journal_note.prefilled_note_command",
@@ -5519,6 +5613,8 @@ def agent_next_contract() -> Dict[str, object]:
             "data.security_cards.cards[].coverage_state",
             "data.security_cards.cards[].coverage_state_reasons",
             "data.security_cards.cards[].research_status",
+            "data.security_cards.cards[].research_workflow",
+            "data.security_cards.cards[].research_workflow[].json_command",
             "data.security_cards.cards[].next_json_command",
             "data.security_cards.cards[].open_gaps",
         ],

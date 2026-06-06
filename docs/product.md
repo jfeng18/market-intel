@@ -160,6 +160,7 @@ import/runtime -> status/readiness -> pool coverage -> pool expansion review
 - 把“缺证据”作为一等对象输出，而不是隐藏在自然语言里。
 - 让 `import research`、`pool coverage`、`portfolio review` 和 `agent next` 共用同一套 research status，使人和 agent 都能看到证据是否足以关闭基础覆盖缺口。
 - 用 `pool research` 把 foundation 缺口导出成可编辑队列，形成“发现缺口 -> 补证据 -> dry-run 校验 -> runtime 导入 -> coverage 复跑”的闭环。
+- 让 `agent next` 的单票卡片和交接命令链直接承接 research workflow，避免 agent 只报告缺口却不给可执行路径。
 
 ### P3：轻量 GUI
 
