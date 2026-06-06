@@ -11,8 +11,17 @@ def test_pool_list_returns_json_envelope():
     assert payload["command"] == "pool.list"
     assert payload["version"] == "0.1.0"
     assert payload["data"]["count"] > 0
+    assert {pool["id"] for pool in payload["data"]["available_pools"]} >= {"all-a", "ai-energy"}
     assert payload["errors"] == []
     assert payload["meta"]["schema_version"] == "0.1"
+
+
+def test_all_a_pool_list_uses_seed_universe():
+    payload = handle_pool_list("all-a")
+
+    assert payload["ok"] is True
+    assert payload["data"]["pool"] == "all-a"
+    assert payload["data"]["items"][0]["raw"]["pool_scope"] == "all_a_seed"
 
 
 def test_pool_explain_acceptance_sample_shape():

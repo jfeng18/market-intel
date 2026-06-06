@@ -1,5 +1,7 @@
+import pytest
+
 from market_intel.core.normalize import find_pool_item, normalize_row
-from market_intel.core.pool_loader import load_pool
+from market_intel.core.pool_loader import list_pools, load_pool
 
 
 def test_load_pool_contains_acceptance_samples():
@@ -11,6 +13,27 @@ def test_load_pool_contains_acceptance_samples():
     assert by_symbol["002281"].name == "光迅科技"
     assert by_symbol["300604"].name == "长川科技"
     assert by_symbol["603881"].name == "数据港"
+
+
+def test_all_a_pool_is_supported_as_seed_universe():
+    items = load_pool("all-a")
+    pools = {item["id"]: item for item in list_pools()}
+    by_symbol = {item.symbol: item for item in items if item.symbol}
+
+    assert "all-a" in pools
+    assert pools["all-a"]["scope"] == "all_a_seed"
+    assert by_symbol["002837"].name == "英维克"
+    assert by_symbol["002837"].raw["pool"] == "all-a"
+    assert by_symbol["002837"].raw["pool_scope"] == "all_a_seed"
+
+
+def test_unknown_pool_lists_supported_pools():
+    with pytest.raises(ValueError) as exc:
+        load_pool("unknown")
+
+    assert "Unsupported pool: unknown" in str(exc.value)
+    assert "all-a" in str(exc.value)
+    assert "ai-energy" in str(exc.value)
 
 
 def test_pool_item_exposures_are_merged():

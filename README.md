@@ -1,12 +1,14 @@
 # market-intel
 
-独立市场情报系统：以 AI 能量公式大池子为起点，构建“宏观 → 行业 → 个股 → 消息 → 资金行为”的全链路投研雷达。
+独立市场情报系统：面向全 A 复盘，构建“市场 → 行业/主题 → 个股 → 持仓 → 复盘留痕”的个人投研工作流。
 
-定位：不是自动交易系统，不输出买卖指令；它是给人和 agent 共用的市场雷达、投研地图、风险识别器。
+定位：不是自动交易系统，不输出买卖指令；它是给人和 agent 共用的市场雷达、投研地图、风险识别器和复盘中枢。
 
 - CLI：给自动化流程和人工复盘使用，输出稳定 JSON。
 - GUI：后续可选界面，展示热点、异动、资金追捧、宏观/行业/个股/消息联动。
 - 独立项目：不依赖外部私有系统，默认只读取本仓库数据、示例数据和用户提供的 runtime 文件。
+
+竞争力不放在替代行情/交易/社区 App，而放在“个人复盘操作系统”：把全 A 热点、主题池、个人持仓、风险暴露、复核清单、agent 命令队列和 journal 留痕串成每天可执行的闭环。
 
 首版设计文档：`docs/design.md`
 
@@ -44,9 +46,10 @@ PYTHONPATH=src python3 -m market_intel.cli focus --mock --text
 
 ## 当前 P0 用法
 
-本仓库已实现离线池子查询的最小 CLI/core：
+本仓库已实现离线复盘池查询的最小 CLI/core。`all-a` 是面向全 A 的默认目标 universe，目前以种子覆盖运行；`ai-energy` 保留为可用主题池，后续会逐步接入行业/概念/指数成分数据扩展全 A 覆盖。
 
 ```bash
+PYTHONPATH=src python3 -m market_intel.cli pool list --pool all-a --json
 PYTHONPATH=src python3 -m market_intel.cli pool list --pool ai-energy --json
 PYTHONPATH=src python3 -m market_intel.cli pool explain 002837 --json
 PYTHONPATH=src python3 -m market_intel.cli pool explain 002837 --text
@@ -78,6 +81,7 @@ market-intel watchlist --mock --text
 market-intel map --mock --text
 market-intel daily --mock --text
 market-intel focus --mock --text
+market-intel focus --mock --text --pool ai-energy
 ```
 
 日常使用建议先初始化 runtime 文件：
@@ -220,7 +224,7 @@ market-intel holdings impact --runtime --json
 - runtime 文件是否存在。
 - JSON 结构是否正确。
 - 行情/持仓必填字段是否完整。
-- symbol 是否能匹配到 AI 能量池。
+- symbol 是否能匹配到当前复盘池。
 - 是否有重复 symbol。
 - 持仓是否缺行情，行情是否不在持仓里。
 
@@ -230,7 +234,7 @@ market-intel holdings impact --runtime --json
 
 `portfolio explain <symbol>` 是单票持仓复核：针对某个持仓代码展开行情、热点、链路、风险、相关持仓和复核问题。它和 `pool explain` 的区别是：`pool explain` 解释公司在池子里的定位，`portfolio explain` 解释当前持仓上下文。
 
-`map` 是链路地图：按算力、运力、存力、电力、人才密度等层级聚合热点、持仓暴露、重复暴露和风险复核点，适合复盘时先看结构。
+`map` 是链路地图：按行业/主题层级聚合热点、持仓暴露、重复暴露和风险复核点，适合复盘时先看结构。当前种子池包含算力、运力、存力、电力、人才密度等 AI 相关层级，后续会扩展到全 A 行业和概念层级。
 
 `daily` 是复盘总入口：先做数据检查，再合并 `brief`、`map`、`watchlist`、组合暴露和 `portfolio review`，并生成今日复核任务，输出一份适合每天留档和 agent 读取的报告。
 

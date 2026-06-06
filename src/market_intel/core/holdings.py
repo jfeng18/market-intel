@@ -67,7 +67,7 @@ def build_holding_impact(items: List[PoolItem], holding: Holding) -> Dict[str, o
                 "pressure_hotspots": [],
                 "risk_flags": ["not_in_pool"],
             },
-            "explain": "%s 未匹配到 AI 能量池。" % holding.symbol,
+            "explain": "%s 未匹配到当前复盘池。" % holding.symbol,
         }
 
     exposures = [

@@ -26,7 +26,7 @@ from .core.journal import (
 from .core.json_output import envelope, error
 from .core.map_view import build_market_map
 from .core.normalize import explain_pool_item, find_pool_item
-from .core.pool_loader import DEFAULT_POOL, default_pool_path, load_pool
+from .core.pool_loader import DEFAULT_POOL, default_pool_path, list_pools, load_pool
 from .core.portfolio import build_portfolio_explain, build_portfolio_review
 from .core.runtime import init_runtime, runtime_missing_files, runtime_paths
 from .core.scoring import calculate_hotspots
@@ -490,6 +490,7 @@ def handle_pool_list(pool: str) -> Dict[str, Any]:
     items = load_pool(pool)
     data = {
         "pool": pool,
+        "available_pools": list_pools(),
         "count": len(items),
         "items": [item.to_dict() for item in items],
     }
@@ -498,7 +499,7 @@ def handle_pool_list(pool: str) -> Dict[str, Any]:
         command="pool.list",
         data=data,
         warnings=warnings,
-        source=str(default_pool_path()),
+        source=str(default_pool_path(pool)),
     )
 
 
@@ -515,7 +516,7 @@ def handle_pool_explain(pool: str, symbol: str, use_runtime: bool = False) -> Di
                     {"symbol": symbol, "pool": pool},
                 )
             ],
-            source=str(default_pool_path()),
+            source=str(default_pool_path(pool)),
             ok=False,
         )
     data = explain_pool_item(item)
@@ -528,7 +529,7 @@ def handle_pool_explain(pool: str, symbol: str, use_runtime: bool = False) -> Di
         command="pool.explain",
         data=data,
         warnings=pool_warnings([item]),
-        source=str(default_pool_path()),
+        source=str(default_pool_path(pool)),
     )
 
 
@@ -555,7 +556,7 @@ def handle_hotspots(
                     {"pool": pool},
                 )
             ],
-            source=str(default_pool_path()),
+            source=str(default_pool_path(pool)),
             ok=False,
         )
     items = load_pool(pool)
@@ -597,7 +598,7 @@ def handle_holdings_impact(
                     {"pool": pool},
                 )
             ],
-            source=str(default_pool_path()),
+            source=str(default_pool_path(pool)),
             ok=False,
         )
     items = load_pool(pool)
@@ -638,7 +639,7 @@ def handle_portfolio_review(
                     {"pool": pool},
                 )
             ],
-            source=str(default_pool_path()),
+            source=str(default_pool_path(pool)),
             ok=False,
         )
     items = load_pool(pool)
@@ -684,7 +685,7 @@ def handle_portfolio_explain(
                     {"pool": pool, "symbol": symbol},
                 )
             ],
-            source=str(default_pool_path()),
+            source=str(default_pool_path(pool)),
             ok=False,
         )
     items = load_pool(pool)
@@ -733,7 +734,7 @@ def handle_brief(
                     {"pool": pool},
                 )
             ],
-            source=str(default_pool_path()),
+            source=str(default_pool_path(pool)),
             ok=False,
         )
     items = load_pool(pool)
@@ -779,7 +780,7 @@ def handle_watchlist(
                     {"pool": pool},
                 )
             ],
-            source=str(default_pool_path()),
+            source=str(default_pool_path(pool)),
             ok=False,
         )
     items = load_pool(pool)
@@ -825,7 +826,7 @@ def handle_map(
                     {"pool": pool},
                 )
             ],
-            source=str(default_pool_path()),
+            source=str(default_pool_path(pool)),
             ok=False,
         )
     items = load_pool(pool)
@@ -872,7 +873,7 @@ def handle_daily(
                     {"pool": pool},
                 )
             ],
-            source=str(default_pool_path()),
+            source=str(default_pool_path(pool)),
             ok=False,
         )
 
@@ -1245,7 +1246,7 @@ def handle_agent_briefing(
             command="daily",
             data={"summary": "runtime 暂不可生成日报。"},
             errors=status_errors(status_data),
-            source=str(default_pool_path()),
+            source=str(default_pool_path(pool)),
             ok=False,
         )
 

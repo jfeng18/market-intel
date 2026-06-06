@@ -24,8 +24,8 @@ def test_focus_mock_shape():
     assert data["priority_securities"][0]["journal_ready"]
     assert data["priority_securities"][0]["done_when"]
     assert all("_" not in item for row in data["priority_securities"] for item in row["checklist"])
-    assert data["priority_securities"][0]["commands"][0] == "market-intel portfolio explain 300308 --mock --text"
-    assert data["first_runnable_command"] == "market-intel portfolio review --mock --text"
+    assert data["priority_securities"][0]["commands"][0] == "market-intel portfolio explain 300308 --mock --text --pool ai-energy"
+    assert data["first_runnable_command"] == "market-intel portfolio review --mock --text --pool ai-energy"
     assert "data.priority_securities[].why_now" in data["agent_contract"]["stable_fields"]
     assert "data.priority_securities[].checklist" in data["agent_contract"]["stable_fields"]
     assert "data.priority_securities[].commands" in data["agent_contract"]["stable_fields"]
@@ -41,7 +41,16 @@ def test_focus_top_only_limits_priority_securities():
 
     assert len(data["priority_securities"]) == 1
     assert len(data["next_steps"]) > 1
+    assert data["first_runnable_command"] == "market-intel portfolio review --mock --text --pool ai-energy"
+
+
+def test_focus_default_pool_is_all_a():
+    payload = handle_focus("all-a", use_mock=True, top=1)
+    data = payload["data"]
+
+    assert data["pool"] == "all-a"
     assert data["first_runnable_command"] == "market-intel portfolio review --mock --text"
+    assert data["priority_securities"][0]["commands"][0] == "market-intel portfolio explain 300308 --mock --text"
 
 
 def test_focus_requires_source_has_text_guidance():
@@ -72,7 +81,7 @@ def test_focus_text_renderer():
     assert "记录: market-intel journal note --section security_review" in text
     assert "留痕:" in text
     assert "完成:" in text
-    assert "先跑: market-intel portfolio review --mock --text" in text
+    assert "先跑: market-intel portfolio review --mock --text --pool ai-energy" in text
     assert "buy" not in text.lower()
     assert "sell" not in text.lower()
 

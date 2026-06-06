@@ -115,7 +115,7 @@ def fallback_impact(holding: Holding) -> Dict[str, object]:
         "exposures": [],
         "overlap_groups": [],
         "impact": {"risk_flags": ["not_in_pool"]},
-        "explain": "%s 未匹配到 AI 能量池。" % holding.symbol,
+        "explain": "%s 未匹配到当前复盘池。" % holding.symbol,
     }
 
 
@@ -268,7 +268,7 @@ def review_points(
     if "holding_missing_quote" in risk_flags:
         points.append("补齐该持仓行情，否则无法判断今日链路上下文。")
     if "not_in_pool" in risk_flags:
-        points.append("确认该持仓是否应加入 AI 能量池，或单独标记为池外持仓。")
+        points.append("确认该持仓是否应加入当前复盘池，或单独标记为池外持仓。")
     if "theme_overlap" in risk_flags or "multi_chain_exposure" in risk_flags:
         points.append("复核多链路或主题重叠是否导致同涨同跌暴露。")
     if "no_hotspot_context" in risk_flags:

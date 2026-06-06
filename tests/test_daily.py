@@ -42,15 +42,15 @@ def test_daily_mock_shape():
     assert concentration["severity"] == "high"
     assert concentration["affected_count"] >= 2
     assert concentration["affected_symbols"]
-    assert concentration["commands"][0] == "market-intel portfolio review --mock --text"
+    assert concentration["commands"][0] == "market-intel portfolio review --mock --text --pool ai-energy"
     data_quality = next(item for item in data["risk_register"] if item["risk_id"] == "data_quality_warnings")
     assert data_quality["affected_symbols"]
-    assert data_quality["commands"][0] == "market-intel daily --mock --json"
+    assert data_quality["commands"][0] == "market-intel daily --mock --json --pool ai-energy"
     assert "data.review_path" in data["agent_contract"]["stable_fields"]
     assert "data.review_path[].runnable" in data["agent_contract"]["stable_fields"]
     assert data["review_path"]
     assert data["review_path"][0]["id"] == "data_quality"
-    assert data["review_path"][0]["commands"][0] == "market-intel daily --mock --json"
+    assert data["review_path"][0]["commands"][0] == "market-intel daily --mock --json --pool ai-energy"
     assert data["review_path"][-1]["id"] == "archive_review"
     assert data["review_path"][-1]["runnable"] is False
     assert data["review_path"][-1]["commands"] == ["market-intel journal save --runtime --json"]
@@ -62,7 +62,7 @@ def test_daily_mock_shape():
     assert first_profile["symbol"] == "300308"
     assert first_profile["related_risks"]
     assert "theme_concentration" in first_profile["risk_ids"]
-    assert first_profile["commands"][0] == "market-intel portfolio explain 300308 --mock --text"
+    assert first_profile["commands"][0] == "market-intel portfolio explain 300308 --mock --text --pool ai-energy"
     assert first_profile["note_prerequisite"]["archive_runnable"] is False
     assert "data.review_tasks" in data["agent_contract"]["stable_fields"]
     assert data["portfolio_review"]["agent_contract"]["stable_fields"]
@@ -91,7 +91,7 @@ def test_daily_mock_shape():
     assert "data.command_queue" in data["agent_contract"]["stable_fields"]
     assert "data.command_queue[].runnable" in data["agent_contract"]["stable_fields"]
     assert data["command_queue"]
-    assert data["command_queue"][0]["command"] == "market-intel daily --mock --json"
+    assert data["command_queue"][0]["command"] == "market-intel daily --mock --json --pool ai-energy"
     assert all("pool explain" not in item["command"] or " --mock" not in item["command"] for item in data["command_queue"])
     archive_item = next(item for item in data["command_queue"] if item["command"] == "market-intel journal save --runtime --json")
     note_item = next(item for item in data["command_queue"] if item["command"].startswith("market-intel journal note --section"))

@@ -71,3 +71,12 @@ def test_repeated_exposures_count_distinct_holdings():
     assert data["holding_count"] == 1
     assert data["repeated_exposures"] == []
     assert "theme_concentration" not in data["risk_flags"]
+
+
+def test_unmatched_holding_copy_is_pool_neutral():
+    data = calculate_holding_impacts([], [Holding(symbol="000001", name="测试")])
+    impact = data["impacts"][0]
+
+    assert impact["matched_pool_item"] is False
+    assert "当前复盘池" in impact["explain"]
+    assert "AI 能量池" not in impact["explain"]
