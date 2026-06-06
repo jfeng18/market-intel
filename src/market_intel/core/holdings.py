@@ -1,6 +1,7 @@
 from collections import Counter
 from typing import Dict, List
 
+from .coverage import matched_coverage_state
 from .models import Holding, PoolItem
 from .normalize import find_pool_item
 
@@ -9,6 +10,8 @@ RISK_LABELS = {
     "multi_chain_exposure": "多链路暴露",
     "theme_overlap": "主题重叠",
     "not_in_pool": "未匹配池子",
+    "foundation_pool_match": "基础清单覆盖",
+    "draft_pool_match": "草稿池覆盖",
 }
 
 
@@ -60,6 +63,8 @@ def build_holding_impact(items: List[PoolItem], holding: Holding) -> Dict[str, o
             "holding_name": holding.name,
             "market": "UNKNOWN",
             "matched_pool_item": False,
+            "coverage_state": "missing",
+            "coverage_state_reasons": ["not_in_pool"],
             "exposures": [],
             "overlap_groups": [],
             "impact": {
@@ -84,12 +89,19 @@ def build_holding_impact(items: List[PoolItem], holding: Holding) -> Dict[str, o
         risk_flags.append("multi_chain_exposure")
     if overlap_groups:
         risk_flags.append("theme_overlap")
+    coverage_state = matched_coverage_state(item)
+    if coverage_state["state"] == "foundation":
+        risk_flags.append("foundation_pool_match")
+    elif coverage_state["state"] == "draft":
+        risk_flags.append("draft_pool_match")
 
     return {
         "holding_symbol": holding.symbol,
         "holding_name": holding.name or item.name,
         "market": item.market,
         "matched_pool_item": True,
+        "coverage_state": coverage_state["state"],
+        "coverage_state_reasons": coverage_state["reasons"],
         "exposures": exposures,
         "overlap_groups": overlap_groups,
         "impact": {

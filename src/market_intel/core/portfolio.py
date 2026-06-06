@@ -166,6 +166,12 @@ def build_review_item(
     if hotspot is None and quote is not None:
         risk_flags.append("no_hotspot_context")
         risk_flags = sorted(set(risk_flags))
+    coverage_state = impact.get("coverage_state") or ("confirmed" if impact.get("matched_pool_item") else "missing")
+    coverage_state_reasons = (
+        list(impact.get("coverage_state_reasons", []))
+        if isinstance(impact.get("coverage_state_reasons"), list)
+        else []
+    )
 
     priority_score = calculate_priority_score(risk_flags, quote, hotspot, exposure_rows)
     return {
@@ -175,6 +181,8 @@ def build_review_item(
         "has_quote": quote is not None,
         "quote": quote.to_dict() if quote else None,
         "matched_pool_item": bool(impact.get("matched_pool_item")),
+        "coverage_state": coverage_state,
+        "coverage_state_reasons": coverage_state_reasons,
         "exposure_count": len(exposure_rows),
         "exposures": exposure_rows,
         "overlap_groups": impact.get("overlap_groups", []) if isinstance(impact.get("overlap_groups"), list) else [],
@@ -228,6 +236,8 @@ def calculate_priority_score(
     weights = {
         "holding_missing_quote": 35,
         "not_in_pool": 35,
+        "foundation_pool_match": 18,
+        "draft_pool_match": 18,
         "theme_overlap": 20,
         "multi_chain_exposure": 20,
         "theme_concentration": 15,
@@ -269,6 +279,10 @@ def review_points(
         points.append("补齐该持仓行情，否则无法判断今日链路上下文。")
     if "not_in_pool" in risk_flags:
         points.append("确认该持仓是否应加入当前复盘池，或单独标记为池外持仓。")
+    if "foundation_pool_match" in risk_flags:
+        points.append("该持仓只命中全 A 基础清单，需补行业/主题逻辑、证据和证伪风险。")
+    if "draft_pool_match" in risk_flags:
+        points.append("该持仓来自候选或待复核补池行，需确认链路、角色和公司逻辑。")
     if "theme_overlap" in risk_flags or "multi_chain_exposure" in risk_flags:
         points.append("复核多链路或主题重叠是否导致同涨同跌暴露。")
     if "no_hotspot_context" in risk_flags:
@@ -317,11 +331,13 @@ def build_portfolio_summary(
     high_count = sum(1 for row in rows if row.get("priority") == "high_review")
     missing_quote_count = sum(1 for row in rows if not row.get("has_quote"))
     unmatched_count = sum(1 for row in rows if "not_in_pool" in row.get("risk_flags", []))
+    foundation_count = sum(1 for row in rows if row.get("coverage_state") == "foundation")
+    draft_count = sum(1 for row in rows if row.get("coverage_state") == "draft")
     repeated = holding_impact.get("repeated_exposures", []) if isinstance(holding_impact.get("repeated_exposures"), list) else []
     overlap = holding_impact.get("repeated_overlap_groups", []) if isinstance(holding_impact.get("repeated_overlap_groups"), list) else []
     return (
-        "持仓 %s 个，需重点复核 %s 个，缺行情 %s 个，池外或未匹配 %s 个；重复链路 %s 组，重复主题 %s 组，风险标签 %s 个。"
-        % (len(rows), high_count, missing_quote_count, unmatched_count, len(repeated), len(overlap), len(risk_flags))
+        "持仓 %s 个，需重点复核 %s 个，缺行情 %s 个，池外或未匹配 %s 个，基础/草稿覆盖 %s 个；重复链路 %s 组，重复主题 %s 组，风险标签 %s 个。"
+        % (len(rows), high_count, missing_quote_count, unmatched_count, foundation_count + draft_count, len(repeated), len(overlap), len(risk_flags))
     )
 
 
@@ -337,6 +353,10 @@ def build_portfolio_questions(rows: List[Dict[str, object]], holding_impact: Dic
         questions.append("%s 的高复核优先级来自行情、热点还是主题重叠？" % names)
     if any(row.get("hotspot_context") is None and row.get("has_quote") for row in rows):
         questions.append("哪些持仓有行情但没有热点上下文，是否需要降权解读？")
+    foundation = [row for row in rows if row.get("coverage_state") == "foundation"]
+    if foundation:
+        symbols = "、".join(str(row.get("symbol")) for row in foundation[:4])
+        questions.append("%s 只命中全 A 基础清单，是否需要补行业/主题逻辑和证伪风险？" % symbols)
     return dedupe(questions)
 
 
@@ -347,6 +367,8 @@ def portfolio_contract() -> Dict[str, object]:
             "data.summary",
             "data.items",
             "data.items[].priority",
+            "data.items[].coverage_state",
+            "data.items[].coverage_state_reasons",
             "data.items[].risk_flags",
             "data.items[].review_points",
             "data.repeated_exposures",

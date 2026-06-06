@@ -2311,6 +2311,12 @@ def holding_dashboard_row(item: Dict[str, object], change_tracking: Dict[str, ob
     risk_flags = list(item.get("risk_flags", [])) if isinstance(item.get("risk_flags"), list) else []
     review_points = list(item.get("review_points", [])) if isinstance(item.get("review_points"), list) else []
     commands = list(item.get("commands", [])) if isinstance(item.get("commands"), list) else []
+    coverage_state = str(item.get("coverage_state") or "confirmed")
+    coverage_state_reasons = (
+        list(item.get("coverage_state_reasons", []))
+        if isinstance(item.get("coverage_state_reasons"), list)
+        else []
+    )
     primary_command = first_digest_read_command(commands, "market-intel portfolio explain %s --runtime --json" % symbol) if symbol else "market-intel portfolio review --runtime --json"
     change = security_change_context(symbol, change_tracking) if symbol else {"available": False, "reasons": []}
     return {
@@ -2318,6 +2324,8 @@ def holding_dashboard_row(item: Dict[str, object], change_tracking: Dict[str, ob
         "name": item.get("name"),
         "priority": item.get("priority"),
         "review_score": item.get("priority_score"),
+        "coverage_state": coverage_state,
+        "coverage_state_reasons": [str(reason) for reason in coverage_state_reasons[:6] if reason],
         "has_quote": bool(quote),
         "in_hotspot": bool(hotspot),
         "quote": {
@@ -2347,7 +2355,14 @@ def holding_dashboard_row(item: Dict[str, object], change_tracking: Dict[str, ob
         "review_points": [str(point) for point in review_points[:4] if point],
         "change": change,
         "change_priority": holding_change_priority(change),
-        "primary_question": holding_dashboard_primary_question(review_points, risk_flags, quote, hotspot, change),
+        "primary_question": holding_dashboard_primary_question(
+            review_points,
+            risk_flags,
+            quote,
+            hotspot,
+            change,
+            coverage_state,
+        ),
         "primary_command": primary_command,
         "primary_json_command": digest_json_variant(primary_command),
         "commands": [str(command) for command in commands[:4] if command],
@@ -2398,6 +2413,8 @@ def holding_dashboard_buckets(rows: List[Dict[str, object]]) -> Dict[str, int]:
         "high_review": sum(1 for row in rows if row.get("priority") == "high_review"),
         "medium_review": sum(1 for row in rows if row.get("priority") == "medium_review"),
         "normal_review": sum(1 for row in rows if row.get("priority") == "normal_review"),
+        "foundation_coverage": sum(1 for row in rows if row.get("coverage_state") == "foundation"),
+        "draft_coverage": sum(1 for row in rows if row.get("coverage_state") == "draft"),
         "missing_quote": sum(1 for row in rows if not row.get("has_quote")),
         "without_hotspot": sum(1 for row in rows if row.get("has_quote") and not row.get("in_hotspot")),
         "with_overlap": sum(1 for row in rows if row.get("overlap_groups")),
@@ -2413,7 +2430,7 @@ def holding_dashboard_summary(
         return "暂无持仓复盘数据。"
     changed_count = sum(1 for row in rows if isinstance(row.get("change"), dict) and row.get("change", {}).get("available"))
     return (
-        "持仓 %s 个，重点复核 %s 个；变化持仓 %s 个，缺行情 %s 个，缺热点上下文 %s 个，主题重叠 %s 个。"
+        "持仓 %s 个，重点复核 %s 个；变化持仓 %s 个，缺行情 %s 个，缺热点上下文 %s 个，主题重叠 %s 个，基础/草稿覆盖 %s 个。"
         % (
             portfolio.get("count", buckets.get("total", 0)),
             portfolio.get("high_review_count", buckets.get("high_review", 0)),
@@ -2421,6 +2438,7 @@ def holding_dashboard_summary(
             buckets.get("missing_quote", 0),
             buckets.get("without_hotspot", 0),
             buckets.get("with_overlap", 0),
+            buckets.get("foundation_coverage", 0) + buckets.get("draft_coverage", 0),
         )
     )
 
@@ -2431,10 +2449,16 @@ def holding_dashboard_primary_question(
     quote: Dict[str, object],
     hotspot: Dict[str, object],
     change: Dict[str, object],
+    coverage_state: object = "",
 ) -> str:
     change_reasons = change.get("reasons", []) if isinstance(change.get("reasons"), list) else []
     if change_reasons:
         return "先核对变化：%s。" % "、".join(str(reason) for reason in change_reasons[:3])
+    coverage_text = str(coverage_state or "")
+    if coverage_text == "foundation":
+        return "先补齐全 A 基础清单命中的行业/主题逻辑、关键证据和证伪风险。"
+    if coverage_text == "draft":
+        return "先确认候选补池行的链路、角色、公司逻辑和证伪风险。"
     if review_points:
         return str(review_points[0])
     if not quote:
@@ -2463,6 +2487,9 @@ def holding_dashboard_questions(rows: List[Dict[str, object]]) -> List[str]:
     changed = [row for row in rows if isinstance(row.get("change"), dict) and row.get("change", {}).get("available")]
     if changed:
         questions.insert(0, "先看相对留档发生变化的持仓：%s。" % "、".join(str(row.get("symbol")) for row in changed[:4]))
+    foundation = [row for row in rows if row.get("coverage_state") == "foundation"]
+    if foundation:
+        questions.append("基础清单覆盖持仓需要补研究证据：%s。" % "、".join(str(row.get("symbol")) for row in foundation[:4]))
     return dedupe_queue_texts(questions)[:5]
 
 
@@ -2794,6 +2821,9 @@ def evidence_change_gaps(change: Dict[str, object]) -> List[object]:
 
 def evidence_holding_rows(holding: Dict[str, object]) -> List[object]:
     rows = attention_holding_evidence(holding)
+    coverage_state = str(holding.get("coverage_state") or "")
+    if coverage_state and coverage_state != "confirmed":
+        rows.append("覆盖状态 %s" % coverage_state)
     quote = holding.get("quote", {}) if isinstance(holding.get("quote"), dict) else {}
     if quote:
         rows.append(
@@ -2812,6 +2842,11 @@ def evidence_holding_rows(holding: Dict[str, object]) -> List[object]:
 
 def evidence_holding_gaps(holding: Dict[str, object]) -> List[object]:
     gaps = []
+    coverage_state = str(holding.get("coverage_state") or "")
+    if coverage_state == "foundation":
+        gaps.append("只命中全 A 基础清单，需补行业/主题逻辑、关键证据和证伪风险。")
+    elif coverage_state == "draft":
+        gaps.append("来自候选或待复核补池行，需确认链路、角色、公司逻辑和证伪风险。")
     if not holding.get("has_quote"):
         gaps.append("缺少当日行情，先补齐或确认不纳入今日复盘。")
     if holding.get("has_quote") and not holding.get("in_hotspot"):
@@ -4594,6 +4629,12 @@ def security_card_item(
     archive_prerequisite: Dict[str, object],
 ) -> Dict[str, object]:
     symbol = str(holding.get("symbol") or "")
+    coverage_state = str(holding.get("coverage_state") or "confirmed")
+    coverage_state_reasons = (
+        list(holding.get("coverage_state_reasons", []))
+        if isinstance(holding.get("coverage_state_reasons"), list)
+        else []
+    )
     supporting = dedupe_queue_texts(
         list(holding.get("review_points", []) if isinstance(holding.get("review_points"), list) else [])
         + list(workbench.get("evidence", []) if isinstance(workbench.get("evidence"), list) else [])
@@ -4635,6 +4676,8 @@ def security_card_item(
         "name": holding.get("name"),
         "priority": holding.get("priority"),
         "review_score": holding.get("review_score"),
+        "coverage_state": coverage_state,
+        "coverage_state_reasons": [str(reason) for reason in coverage_state_reasons[:6] if reason],
         "change_priority": holding.get("change_priority"),
         "has_quote": bool(holding.get("has_quote")),
         "in_hotspot": bool(holding.get("in_hotspot")),
@@ -5180,6 +5223,8 @@ def agent_run_contract() -> Dict[str, object]:
             "data.review_digest.holding_dashboard.buckets",
             "data.review_digest.holding_dashboard.changed_holdings",
             "data.review_digest.holding_dashboard.top_holdings",
+            "data.review_digest.holding_dashboard.top_holdings[].coverage_state",
+            "data.review_digest.holding_dashboard.top_holdings[].coverage_state_reasons",
             "data.review_digest.holding_dashboard.top_holdings[].change",
             "data.review_digest.holding_dashboard.top_holdings[].change_priority",
             "data.review_digest.holding_dashboard.top_holdings[].primary_question",
@@ -5198,6 +5243,8 @@ def agent_run_contract() -> Dict[str, object]:
             "data.review_digest.security_cards.cards",
             "data.review_digest.security_cards.cards[].symbol",
             "data.review_digest.security_cards.cards[].priority",
+            "data.review_digest.security_cards.cards[].coverage_state",
+            "data.review_digest.security_cards.cards[].coverage_state_reasons",
             "data.review_digest.security_cards.cards[].open_gaps",
             "data.review_digest.security_cards.cards[].next_json_command",
             "data.review_digest.security_cards.cards[].journal_note.prefilled_note_command",
@@ -5300,6 +5347,8 @@ def agent_next_contract() -> Dict[str, object]:
             "data.security_cards",
             "data.security_cards.cards",
             "data.security_cards.cards[].symbol",
+            "data.security_cards.cards[].coverage_state",
+            "data.security_cards.cards[].coverage_state_reasons",
             "data.security_cards.cards[].next_json_command",
             "data.security_cards.cards[].open_gaps",
         ],

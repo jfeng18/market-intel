@@ -38,6 +38,31 @@ def write_changed_quotes(tmp_path):
     return path
 
 
+def import_foundation_runtime(monkeypatch, tmp_path):
+    monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(tmp_path / "runtime"))
+    universe_path = tmp_path / "a_share_universe.csv"
+    universe_path.write_text(
+        "证券代码,证券名称,行业,概念,指数成分,上市状态\n"
+        "000001,平安银行,银行,股份行;金融科技,沪深300;深证100,listed\n",
+        encoding="utf-8",
+    )
+    quotes_path = tmp_path / "quotes.csv"
+    quotes_path.write_text(
+        "证券代码,证券名称,交易日期,最新价,涨跌幅,成交额,量比,换手率,振幅,涨停,阶段新高,日内回落\n"
+        "000001,平安银行,2026-06-07,11.20,1.2%,9.8亿,1.4,0.8%,2.1%,否,否,0.4%\n",
+        encoding="utf-8",
+    )
+    holdings_path = tmp_path / "holdings.csv"
+    holdings_path.write_text(
+        "证券代码,证券名称,持仓数量\n"
+        "000001,平安银行,100\n",
+        encoding="utf-8",
+    )
+    handle_import_universe(str(universe_path), use_runtime=True)
+    handle_import_quotes(str(quotes_path), use_runtime=True)
+    handle_import_holdings(str(holdings_path), use_runtime=True)
+
+
 def test_agent_plan_blocked_when_runtime_missing(monkeypatch, tmp_path):
     monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(tmp_path / "runtime"))
 
@@ -859,6 +884,28 @@ def test_agent_next_can_focus_symbol(monkeypatch, tmp_path):
     assert data["security_cards"]["cards"][0]["symbol"] == "300308"
     assert "data.symbol" in data["agent_contract"]["stable_fields"]
     assert "聚焦标的: 300308" in text
+    assert "buy" not in text.lower()
+    assert "sell" not in text.lower()
+
+
+def test_agent_next_surfaces_foundation_holding_review(monkeypatch, tmp_path):
+    import_foundation_runtime(monkeypatch, tmp_path)
+
+    payload = handle_agent_next("all-a", max_quote_age_days=9999, max_steps=5, symbol="000001")
+    data = payload["data"]
+    text = render_agent_next_text(payload)
+    card = data["security_cards"]["cards"][0]
+
+    assert payload["ok"] is True
+    assert card["symbol"] == "000001"
+    assert card["coverage_state"] == "foundation"
+    assert "a_share_universe_foundation" in card["coverage_state_reasons"]
+    assert "foundation_pool_match" in card["risk_flags"]
+    assert any("全 A 基础清单" in gap for gap in card["open_gaps"])
+    assert card["next_json_command"].startswith("market-intel portfolio explain 000001")
+    assert "data.security_cards.cards[].coverage_state" in data["agent_contract"]["stable_fields"]
+    assert "覆盖: foundation" in text or "覆盖: 基础" in text
+    assert "证伪风险" in text
     assert "buy" not in text.lower()
     assert "sell" not in text.lower()
 

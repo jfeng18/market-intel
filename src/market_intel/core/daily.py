@@ -258,6 +258,18 @@ RISK_DEFINITIONS = {
         "scope": "data",
         "question": "该持仓是池子缺漏，还是不属于当前复盘主题？",
     },
+    "foundation_pool_match": {
+        "label": "基础清单覆盖",
+        "severity_score": 78,
+        "scope": "coverage",
+        "question": "该持仓是否只命中全 A 基础清单，尚缺行业/主题逻辑、证据和证伪风险？",
+    },
+    "draft_pool_match": {
+        "label": "草稿池覆盖",
+        "severity_score": 76,
+        "scope": "coverage",
+        "question": "候选或待复核补池行是否已经确认链路、角色和公司逻辑？",
+    },
     "chase_high_risk": {
         "label": "追高风险",
         "severity_score": 72,
@@ -684,6 +696,8 @@ def risk_done_when(item: Dict[str, object]) -> str:
     affected = item.get("affected_count", 0)
     if item.get("scope") == "data":
         return "已确认每个数据告警是否需要补数据，且知道哪些结论需要降权解读。"
+    if item.get("scope") == "coverage":
+        return "已确认基础/草稿覆盖标的的行业归属、主题逻辑、关键证据和证伪风险。"
     if item.get("scope") == "portfolio":
         return "已核对涉及标的、重复链路或重复主题，并记录是否受同一风险驱动。"
     if item.get("scope") == "price_context":
@@ -1013,6 +1027,8 @@ def portfolio_security_context(item: Dict[str, object]) -> Dict[str, object]:
     return {
         "is_holding": True,
         "priority": item.get("priority"),
+        "coverage_state": item.get("coverage_state"),
+        "coverage_state_reasons": item.get("coverage_state_reasons"),
         "change_pct": quote.get("change_pct") if quote else None,
         "amount_ratio": quote.get("amount_ratio") if quote else None,
         "intraday_fade_pct": quote.get("intraday_fade_pct") if quote else None,

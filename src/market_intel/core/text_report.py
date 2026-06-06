@@ -30,6 +30,12 @@ LABELS = {
     "not_tradable": "不可交易或待确认",
     "no_hotspot_context": "缺少热点上下文",
     "not_in_pool": "未匹配池子",
+    "foundation_pool_match": "基础清单覆盖",
+    "draft_pool_match": "草稿池覆盖",
+    "a_share_universe_foundation": "全 A 基础清单",
+    "candidate_status": "候选状态",
+    "extra_pool_overlay": "扩展池叠加",
+    "pending_fields": "字段待补",
     "unmatched_holdings": "持仓未匹配池子",
     "turnover_expansion_watch": "成交放大待复核",
     "weak_price_context": "价格上下文偏弱",
@@ -1210,6 +1216,11 @@ def render_agent_run_security_cards(value: Dict[str, object]) -> List[str]:
         )
         if item.get("next_json_command"):
             lines.append("      命令: %s" % item.get("next_json_command"))
+        coverage_state = item.get("coverage_state")
+        if coverage_state and coverage_state != "confirmed":
+            reasons = item.get("coverage_state_reasons", []) if isinstance(item.get("coverage_state_reasons"), list) else []
+            reason_text = " | 原因: %s" % render_labels(reasons) if reasons else ""
+            lines.append("      覆盖: %s%s" % (label(coverage_state), reason_text))
         hotspot = item.get("hotspot", {}) if isinstance(item.get("hotspot"), dict) else {}
         if hotspot:
             lines.append("      热点: %s | 分 %s" % (hotspot.get("chain"), hotspot.get("score")))
@@ -1427,7 +1438,7 @@ def render_agent_run_holding_dashboard(value: Dict[str, object]) -> List[str]:
     buckets = value.get("buckets", {}) if isinstance(value.get("buckets"), dict) else {}
     if buckets:
         lines.append(
-            "   分布: 重点 %s | 中等 %s | 常规 %s | 变化 %s | 缺行情 %s | 缺热点 %s | 主题重叠 %s"
+            "   分布: 重点 %s | 中等 %s | 常规 %s | 变化 %s | 缺行情 %s | 缺热点 %s | 主题重叠 %s | 基础/草稿 %s"
             % (
                 buckets.get("high_review", 0),
                 buckets.get("medium_review", 0),
@@ -1436,6 +1447,7 @@ def render_agent_run_holding_dashboard(value: Dict[str, object]) -> List[str]:
                 buckets.get("missing_quote", 0),
                 buckets.get("without_hotspot", 0),
                 buckets.get("with_overlap", 0),
+                buckets.get("foundation_coverage", 0) + buckets.get("draft_coverage", 0),
             )
         )
     holdings = value.get("top_holdings", []) if isinstance(value.get("top_holdings"), list) else []
@@ -1465,6 +1477,11 @@ def render_agent_run_holding_dashboard(value: Dict[str, object]) -> List[str]:
         reasons = change.get("reasons", []) if isinstance(change.get("reasons"), list) else []
         if reasons:
             lines.append("      变化: %s" % "；".join(str(reason) for reason in reasons[:4]))
+        coverage_state = item.get("coverage_state")
+        if coverage_state and coverage_state != "confirmed":
+            coverage_reasons = item.get("coverage_state_reasons", []) if isinstance(item.get("coverage_state_reasons"), list) else []
+            reason_text = " | 原因: %s" % render_labels(coverage_reasons) if coverage_reasons else ""
+            lines.append("      覆盖: %s%s" % (label(coverage_state), reason_text))
         if item.get("primary_question"):
             lines.append("      问题: %s" % item.get("primary_question"))
         if item.get("primary_json_command") or item.get("primary_command"):
@@ -2169,6 +2186,11 @@ def render_portfolio_item(item: Dict[str, object]) -> List[str]:
     risks = item.get("risk_flags", []) if isinstance(item.get("risk_flags"), list) else []
     if risks:
         lines.append("   风险: %s" % render_labels(risks))
+    coverage_state = item.get("coverage_state")
+    if coverage_state and coverage_state != "confirmed":
+        reasons = item.get("coverage_state_reasons", []) if isinstance(item.get("coverage_state_reasons"), list) else []
+        reason_text = " | 原因: %s" % render_labels(reasons) if reasons else ""
+        lines.append("   覆盖: %s%s" % (label(coverage_state), reason_text))
     exposures = item.get("exposures", []) if isinstance(item.get("exposures"), list) else []
     if exposures:
         lines.append("   链路: %s" % render_portfolio_exposures(exposures))
@@ -2835,6 +2857,11 @@ def render_security_review_queue(value: object) -> List[str]:
         risks = item.get("risk_flags", []) if isinstance(item.get("risk_flags"), list) else []
         if risks:
             lines.append("   风险: %s" % render_labels(risks[:5]))
+        coverage_state = context.get("coverage_state")
+        if coverage_state and coverage_state != "confirmed":
+            coverage_reasons = context.get("coverage_state_reasons", []) if isinstance(context.get("coverage_state_reasons"), list) else []
+            reason_text = " | 原因: %s" % render_labels(coverage_reasons) if coverage_reasons else ""
+            lines.append("   覆盖: %s%s" % (label(coverage_state), reason_text))
         points = item.get("review_points", []) if isinstance(item.get("review_points"), list) else []
         if points:
             lines.append("   复核: %s" % "；".join(label(point) for point in points[:2]))
@@ -2854,6 +2881,8 @@ def render_security_context(value: Dict[str, object]) -> str:
         parts.append("涨幅 %s" % render_signed_percent(value.get("change_pct")))
     if value.get("hotspot_score") is not None:
         parts.append("热点 %s" % value.get("hotspot_score"))
+    if value.get("coverage_state") and value.get("coverage_state") != "confirmed":
+        parts.append("覆盖 %s" % label(value.get("coverage_state")))
     return " | ".join(parts)
 
 
