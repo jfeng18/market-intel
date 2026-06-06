@@ -10,6 +10,7 @@ from .core.fixtures import load_holdings_file, load_mock_holdings, load_mock_quo
 from .core.brief import build_daily_brief
 from .core.csv_importer import import_holdings_csv, import_quotes_csv, import_schema
 from .core.daily import build_daily_report, validate_daily_files
+from .core.focus import build_focus_report
 from .core.holdings import calculate_holding_impacts
 from .core.journal import (
     build_journal_timeline,
@@ -37,6 +38,7 @@ from .core.text_report import (
     render_agent_plan_text,
     render_agent_run_text,
     render_daily_report_text,
+    render_focus_text,
     render_market_map_text,
     render_pool_explain_text,
     render_journal_entry_text,
@@ -149,6 +151,17 @@ def build_parser() -> argparse.ArgumentParser:
     daily_parser.add_argument("--pool", default=DEFAULT_POOL)
     daily_parser.add_argument("--json", action="store_true", dest="as_json")
     daily_parser.add_argument("--text", action="store_true")
+
+    focus_parser = subparsers.add_parser("focus")
+    focus_parser.add_argument("--mock", action="store_true")
+    focus_parser.add_argument("--runtime", action="store_true")
+    focus_parser.add_argument("--quotes-file")
+    focus_parser.add_argument("--holdings-file")
+    focus_parser.add_argument("--top", type=int, default=5)
+    focus_parser.add_argument("--map-top", type=int, default=2)
+    focus_parser.add_argument("--pool", default=DEFAULT_POOL)
+    focus_parser.add_argument("--json", action="store_true", dest="as_json")
+    focus_parser.add_argument("--text", action="store_true")
 
     import_parser = subparsers.add_parser("import")
     import_subparsers = import_parser.add_subparsers(dest="action")
@@ -356,6 +369,19 @@ def main(argv: Optional[List[str]] = None) -> int:
             if args.text and result["ok"]:
                 print(render_daily_report_text(result))
                 return 0
+        elif args.resource == "focus":
+            result = handle_focus(
+                args.pool,
+                args.mock,
+                args.top,
+                args.map_top,
+                args.quotes_file,
+                args.holdings_file,
+                args.runtime,
+            )
+            if args.text:
+                print(render_focus_text(result))
+                return 0 if result["ok"] else 1
         elif args.resource == "import" and args.action == "schema":
             result = handle_import_schema()
         elif args.resource == "import" and args.action == "quotes":
@@ -937,6 +963,82 @@ def handle_daily(
         command="daily",
         data=data,
         source="%s;%s" % (quote_source, holdings_source),
+    )
+
+
+def handle_focus(
+    pool: str,
+    use_mock: bool,
+    top: int = 5,
+    map_top: int = 2,
+    quotes_file: Optional[str] = None,
+    holdings_file: Optional[str] = None,
+    use_runtime: bool = False,
+) -> Dict[str, Any]:
+    daily_payload = handle_daily(
+        pool,
+        use_mock,
+        top,
+        map_top,
+        quotes_file,
+        holdings_file,
+        use_runtime,
+    )
+    if not daily_payload.get("ok"):
+        daily_data = daily_payload.get("data", {}) if isinstance(daily_payload.get("data"), dict) else {}
+        validation = daily_data.get("validation", {}) if isinstance(daily_data.get("validation"), dict) else {}
+        daily_errors = daily_payload.get("errors", []) if isinstance(daily_payload.get("errors"), list) else []
+        if not validation and daily_errors:
+            validation = {
+                "summary": {
+                    "quote_count": 0,
+                    "holding_count": 0,
+                    "error_count": len(daily_errors),
+                    "warning_count": 0,
+                },
+                "errors": daily_errors,
+                "warnings": [],
+            }
+        focus_seed = {"validation": validation, "mode": brief_mode(use_mock, use_runtime, quotes_file, holdings_file)}
+        focus_status = build_focus_report(focus_seed).get("data_status", {})
+        next_command = focus_status.get("command") if isinstance(focus_status, dict) else None
+        return envelope(
+            command="focus",
+            data={
+                "pool": pool,
+                "mode": brief_mode(use_mock, use_runtime, quotes_file, holdings_file),
+                "headline": "数据未就绪，先处理校验错误。",
+                "data_status": focus_status,
+                "market_focus": {"strongest_chain": None, "top_chains": [], "layers": []},
+                "portfolio_pressure": {"summary": None, "repeated_exposure_count": 0, "repeated_overlap_count": 0},
+                "priority_securities": [],
+                "next_steps": [
+                    {
+                        "rank": 1,
+                        "id": "data_quality",
+                        "title": "先处理数据错误",
+                        "reason": "focus 需要可用的行情和持仓数据。",
+                        "runnable": bool(next_command),
+                        "command": next_command,
+                        "done_when": "数据校验 errors 清空后再生成 focus。",
+                    }
+                ],
+                "first_runnable_command": "",
+                "agent_contract": build_focus_report({}).get("agent_contract"),
+                "guardrails": ["这是复盘聚焦，不是交易指令。"],
+            },
+            errors=daily_errors,
+            source=daily_payload.get("meta", {}).get("source") if isinstance(daily_payload.get("meta"), dict) else None,
+            ok=False,
+        )
+
+    daily_data = daily_payload.get("data", {}) if isinstance(daily_payload.get("data"), dict) else {}
+    data = build_focus_report(daily_data, limit=top)
+    return envelope(
+        command="focus",
+        data=data,
+        warnings=daily_payload.get("warnings", []) if isinstance(daily_payload.get("warnings"), list) else [],
+        source=daily_payload.get("meta", {}).get("source") if isinstance(daily_payload.get("meta"), dict) else None,
     )
 
 

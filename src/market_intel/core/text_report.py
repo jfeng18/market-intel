@@ -377,6 +377,171 @@ def render_daily_report_text(payload: Dict[str, object]) -> str:
     return "\n".join(lines)
 
 
+def render_focus_text(payload: Dict[str, object]) -> str:
+    data = payload.get("data", {})
+    if not isinstance(data, dict):
+        return "market-intel focus\n\n无数据。"
+    lines = [
+        "market-intel focus",
+        "",
+        "总览",
+        str(data.get("headline") or "暂无聚焦摘要。"),
+        "",
+        "数据状态",
+    ]
+    lines.extend(render_focus_data_status(data.get("data_status", {})))
+    lines.extend(["", "市场焦点"])
+    lines.extend(render_focus_market(data.get("market_focus", {})))
+    lines.extend(["", "组合压力"])
+    lines.extend(render_focus_portfolio_pressure(data.get("portfolio_pressure", {})))
+    lines.extend(["", "优先标的"])
+    lines.extend(render_focus_securities(data.get("priority_securities", [])))
+    lines.extend(["", "下一步"])
+    first = data.get("first_runnable_command")
+    if first:
+        lines.append("- 先跑: %s" % first)
+    lines.extend(render_focus_steps(data.get("next_steps", [])))
+    lines.extend(["", "边界"])
+    lines.extend(render_list(data.get("guardrails", []), empty="无。"))
+    return "\n".join(lines)
+
+
+def render_focus_data_status(value: object) -> List[str]:
+    status = value if isinstance(value, dict) else {}
+    state_label = {"ok": "可用", "warning": "有告警", "blocked": "阻塞"}.get(str(status.get("state")), str(status.get("state") or "未知"))
+    lines = [
+        "- %s | 行情 %s | 持仓 %s | 错误 %s | 告警 %s"
+        % (
+            state_label,
+            status.get("quote_count", 0),
+            status.get("holding_count", 0),
+            status.get("error_count", 0),
+            status.get("warning_count", 0),
+        )
+    ]
+    issues = status.get("top_errors") or status.get("top_warnings")
+    if isinstance(issues, list) and issues:
+        rendered = []
+        for issue in issues[:4]:
+            if not isinstance(issue, dict):
+                continue
+            target = issue.get("symbol") or issue.get("path") or ""
+            rendered.append("%s:%s" % (issue.get("code"), target) if target else str(issue.get("code")))
+        lines.append("   重点: %s" % "；".join(rendered))
+    if status.get("command"):
+        lines.append("   命令: %s" % status.get("command"))
+    return lines
+
+
+def render_focus_market(value: object) -> List[str]:
+    market = value if isinstance(value, dict) else {}
+    strongest = market.get("strongest_chain", {}) if isinstance(market.get("strongest_chain"), dict) else {}
+    lines = []
+    if strongest:
+        lines.append(
+            "- 最强: %s / %s | 热点 %s | 活跃 %s/%s"
+            % (
+                strongest.get("layer"),
+                strongest.get("sub_sector"),
+                strongest.get("score"),
+                strongest.get("active_member_count"),
+                strongest.get("member_count"),
+            )
+        )
+        leaders = strongest.get("leaders", []) if isinstance(strongest.get("leaders"), list) else []
+        if leaders:
+            lines.append("   领涨: %s" % "；".join(str(item) for item in leaders[:3]))
+        risks = strongest.get("risks", []) if isinstance(strongest.get("risks"), list) else []
+        if risks:
+            lines.append("   风险: %s" % render_labels(risks))
+    else:
+        lines.append("- 暂无强链路。")
+    chains = market.get("top_chains", []) if isinstance(market.get("top_chains"), list) else []
+    if len(chains) > 1:
+        lines.append("- 备选链路:")
+        for item in chains[1:3]:
+            if isinstance(item, dict):
+                lines.append("   %s / %s | 热点 %s" % (item.get("layer"), item.get("sub_sector"), item.get("score")))
+    return lines
+
+
+def render_focus_portfolio_pressure(value: object) -> List[str]:
+    pressure = value if isinstance(value, dict) else {}
+    lines = [
+        "- 重复链路 %s 组 | 重复主题 %s 组 | 高风险 %s 项"
+        % (
+            pressure.get("repeated_exposure_count", 0),
+            pressure.get("repeated_overlap_count", 0),
+            pressure.get("high_risk_count", 0),
+        )
+    ]
+    groups = []
+    if isinstance(pressure.get("repeated_exposures"), list):
+        groups.extend(("链路", item) for item in pressure["repeated_exposures"][:2])
+    if isinstance(pressure.get("repeated_overlap_groups"), list):
+        groups.extend(("主题", item) for item in pressure["repeated_overlap_groups"][:2])
+    for group_type, item in groups[:3]:
+        if not isinstance(item, dict):
+            continue
+        symbols = item.get("symbols", []) if isinstance(item.get("symbols"), list) else []
+        lines.append(
+            "   %s: %s(%s) | %s"
+            % (group_type, item.get("group"), item.get("holding_count"), "；".join(str(symbol) for symbol in symbols[:4]) or "无标的")
+        )
+    questions = pressure.get("questions", []) if isinstance(pressure.get("questions"), list) else []
+    if questions:
+        lines.append("   核对: %s" % questions[0])
+    return lines
+
+
+def render_focus_securities(value: object) -> List[str]:
+    items = value if isinstance(value, list) else []
+    if not items:
+        return ["- 暂无优先标的。"]
+    lines = []
+    for item in items[:5]:
+        if not isinstance(item, dict):
+            continue
+        marker = "持仓" if item.get("is_holding") else "观察"
+        lines.append(
+            "- #%s %s %s | %s | 分 %s | 涨幅 %s%% | 热点 %s"
+            % (
+                item.get("rank"),
+                item.get("symbol"),
+                item.get("name") or "",
+                marker,
+                item.get("priority_score"),
+                item.get("change_pct"),
+                item.get("hotspot_score"),
+            )
+        )
+        if item.get("chain"):
+            lines.append("   链路: %s" % item.get("chain"))
+        risks = item.get("risk_flags", []) if isinstance(item.get("risk_flags"), list) else []
+        if risks:
+            lines.append("   风险: %s" % render_labels(risks))
+        commands = item.get("commands", []) if isinstance(item.get("commands"), list) else []
+        if commands:
+            lines.append("   命令: %s" % commands[0])
+    return lines
+
+
+def render_focus_steps(value: object) -> List[str]:
+    steps = value if isinstance(value, list) else []
+    if not steps:
+        return ["- 暂无下一步。"]
+    lines = []
+    for item in steps[:5]:
+        if not isinstance(item, dict):
+            continue
+        runnable = "可执行" if item.get("runnable") else "需前置"
+        lines.append(
+            "- #%s %s | %s | %s"
+            % (item.get("rank"), runnable, item.get("title"), item.get("command") or "暂无命令")
+        )
+    return lines
+
+
 def render_runtime_status_text(payload: Dict[str, object]) -> str:
     data = payload.get("data", {})
     if not isinstance(data, dict):

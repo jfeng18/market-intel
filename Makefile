@@ -21,6 +21,7 @@ smoke:
 	$(PYTHON) -m market_intel.cli --help >/dev/null
 	$(PYTHON) -m market_intel.cli pool explain 002837 --json >/dev/null
 	$(PYTHON) -m market_intel.cli daily --mock --text >/dev/null
+	$(PYTHON) -m market_intel.cli focus --mock --text >/dev/null
 
 console-smoke:
 	$(CLI) --help >/dev/null

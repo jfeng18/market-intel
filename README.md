@@ -39,7 +39,7 @@ make ci PYTHON=python3.10
 未安装时仍可用模块入口快速运行：
 
 ```bash
-PYTHONPATH=src python3 -m market_intel.cli daily --mock --text
+PYTHONPATH=src python3 -m market_intel.cli focus --mock --text
 ```
 
 ## 当前 P0 用法
@@ -59,6 +59,7 @@ PYTHONPATH=src python3 -m market_intel.cli brief --mock --text
 PYTHONPATH=src python3 -m market_intel.cli watchlist --mock --text
 PYTHONPATH=src python3 -m market_intel.cli map --mock --text
 PYTHONPATH=src python3 -m market_intel.cli daily --mock --text
+PYTHONPATH=src python3 -m market_intel.cli focus --mock --text
 ```
 
 正式安装 console script 需要 Python 3.10+：
@@ -76,6 +77,7 @@ market-intel brief --mock --text
 market-intel watchlist --mock --text
 market-intel map --mock --text
 market-intel daily --mock --text
+market-intel focus --mock --text
 ```
 
 日常使用建议先初始化 runtime 文件：
@@ -201,6 +203,7 @@ market-intel agent briefing --json
 market-intel agent run --text
 market-intel agent run --json
 market-intel status runtime --text
+market-intel focus --runtime --text
 market-intel daily --runtime --text
 market-intel portfolio review --runtime --text
 market-intel portfolio explain 002837 --runtime --text
@@ -231,6 +234,8 @@ market-intel holdings impact --runtime --json
 
 `daily` 是复盘总入口：先做数据检查，再合并 `brief`、`map`、`watchlist`、组合暴露和 `portfolio review`，并生成今日复核任务，输出一份适合每天留档和 agent 读取的报告。
 
+`focus` 是日常第一屏入口：复用 `daily` 的完整计算，但只保留最强链路、数据状态、组合压力、优先标的和下一步命令，适合快速回答“今天先看什么”。它同时提供稳定 JSON 字段，方便 agent 直接读取 `data.data_status`、`data.market_focus`、`data.portfolio_pressure`、`data.priority_securities` 和 `data.first_runnable_command`。
+
 `journal` 是日报留档：保存完整 `daily` JSON，并提供列表、最近一次读取和两份日报对比入口，方便后续做历史复盘和趋势对比。
 
 当前本机 `python3` 若低于 3.10，可先使用 `PYTHONPATH=src python3 -m market_intel.cli ...` 跑测试和验证。
@@ -247,6 +252,7 @@ market-intel brief --quotes-file data/runtime/quotes.json --holdings-file data/r
 market-intel watchlist --quotes-file data/runtime/quotes.json --holdings-file data/runtime/holdings.json --text
 market-intel map --quotes-file data/runtime/quotes.json --holdings-file data/runtime/holdings.json --text
 market-intel daily --quotes-file data/runtime/quotes.json --holdings-file data/runtime/holdings.json --text
+market-intel focus --quotes-file data/runtime/quotes.json --holdings-file data/runtime/holdings.json --text
 ```
 
 日报留档：
