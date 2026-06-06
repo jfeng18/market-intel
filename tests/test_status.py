@@ -139,21 +139,20 @@ def test_status_runtime_text_renderer(monkeypatch, tmp_path):
     assert "sell" not in text.lower()
 
 
-def test_status_runtime_cli_smoke(monkeypatch, tmp_path):
+def test_status_runtime_cli_smoke(monkeypatch, tmp_path, cli_cmd):
     runtime = tmp_path / "runtime"
     monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(runtime))
     handle_import_quotes("examples/quotes.csv.example", use_runtime=True)
     handle_import_holdings("examples/holdings.csv.example", use_runtime=True)
 
     result = subprocess.run(
-        [
-            ".venv/bin/market-intel",
+        cli_cmd(
             "status",
             "runtime",
             "--max-quote-age-days",
             "9999",
             "--text",
-        ],
+        ),
         check=True,
         text=True,
         capture_output=True,

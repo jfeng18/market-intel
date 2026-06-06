@@ -102,9 +102,9 @@ def test_import_runtime_then_daily(monkeypatch, tmp_path):
     assert daily_payload["data"]["mode"] == "runtime"
 
 
-def test_import_schema_cli_smoke():
+def test_import_schema_cli_smoke(cli_cmd):
     result = subprocess.run(
-        [".venv/bin/market-intel", "import", "schema", "--json"],
+        cli_cmd("import", "schema", "--json"),
         check=True,
         text=True,
         capture_output=True,
@@ -115,13 +115,12 @@ def test_import_schema_cli_smoke():
     assert payload["data"]["agent_contract"]
 
 
-def test_import_quotes_cli_smoke(tmp_path):
+def test_import_quotes_cli_smoke(tmp_path, cli_cmd):
     csv_path = tmp_path / "quotes.csv"
     csv_path.write_text("证券代码,涨跌幅\n002837,7.2%\n", encoding="utf-8")
 
     result = subprocess.run(
-        [
-            ".venv/bin/market-intel",
+        cli_cmd(
             "import",
             "quotes",
             str(csv_path),
@@ -129,7 +128,7 @@ def test_import_quotes_cli_smoke(tmp_path):
             "--trade-date",
             "2026-06-06",
             "--json",
-        ],
+        ),
         check=True,
         text=True,
         capture_output=True,

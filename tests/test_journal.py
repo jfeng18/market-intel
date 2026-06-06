@@ -284,13 +284,13 @@ def test_journal_text_renderers(monkeypatch, tmp_path):
     assert "sell" not in timeline_text.lower()
 
 
-def test_journal_cli_smoke(monkeypatch, tmp_path):
+def test_journal_cli_smoke(monkeypatch, tmp_path, cli_cmd):
     monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(tmp_path / "runtime"))
     handle_import_quotes("examples/quotes.csv.example", use_runtime=True)
     handle_import_holdings("examples/holdings.csv.example", use_runtime=True)
 
     save_result = subprocess.run(
-        [".venv/bin/market-intel", "journal", "save", "--runtime", "--json"],
+        cli_cmd("journal", "save", "--runtime", "--json"),
         check=True,
         text=True,
         capture_output=True,
@@ -299,45 +299,44 @@ def test_journal_cli_smoke(monkeypatch, tmp_path):
     changed_quotes = write_changed_quotes(tmp_path)
     handle_import_quotes(str(changed_quotes), use_runtime=True)
     subprocess.run(
-        [".venv/bin/market-intel", "journal", "save", "--runtime", "--json"],
+        cli_cmd("journal", "save", "--runtime", "--json"),
         check=True,
         text=True,
         capture_output=True,
     )
     list_result = subprocess.run(
-        [".venv/bin/market-intel", "journal", "list", "--text"],
+        cli_cmd("journal", "list", "--text"),
         check=True,
         text=True,
         capture_output=True,
     )
     compare_result = subprocess.run(
-        [".venv/bin/market-intel", "journal", "compare", "--text"],
+        cli_cmd("journal", "compare", "--text"),
         check=True,
         text=True,
         capture_output=True,
     )
     note_result = subprocess.run(
-        [
-            ".venv/bin/market-intel",
+        cli_cmd(
             "journal",
             "note",
             "--section",
             "current_change",
             "--text",
             "记录今日变化集中在观察项和持仓复核。",
-        ],
+        ),
         check=True,
         text=True,
         capture_output=True,
     )
     timeline_result = subprocess.run(
-        [".venv/bin/market-intel", "journal", "timeline", "--text"],
+        cli_cmd("journal", "timeline", "--text"),
         check=True,
         text=True,
         capture_output=True,
     )
     notes_result = subprocess.run(
-        [".venv/bin/market-intel", "journal", "notes", "--section", "current_change", "--text"],
+        cli_cmd("journal", "notes", "--section", "current_change", "--text"),
         check=True,
         text=True,
         capture_output=True,

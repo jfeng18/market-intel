@@ -168,17 +168,16 @@ def test_portfolio_explain_missing_text_renderer():
     assert "下一步" in text
 
 
-def test_portfolio_review_text_cli_smoke():
+def test_portfolio_review_text_cli_smoke(cli_cmd):
     result = subprocess.run(
-        [
-            ".venv/bin/market-intel",
+        cli_cmd(
             "portfolio",
             "review",
             "--mock",
             "--top",
             "3",
             "--text",
-        ],
+        ),
         check=True,
         text=True,
         capture_output=True,
@@ -188,16 +187,15 @@ def test_portfolio_review_text_cli_smoke():
     assert "持仓复核" in result.stdout
 
 
-def test_portfolio_explain_text_cli_smoke():
+def test_portfolio_explain_text_cli_smoke(cli_cmd):
     result = subprocess.run(
-        [
-            ".venv/bin/market-intel",
+        cli_cmd(
             "portfolio",
             "explain",
             "300308",
             "--mock",
             "--text",
-        ],
+        ),
         check=True,
         text=True,
         capture_output=True,

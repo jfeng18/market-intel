@@ -845,33 +845,31 @@ def test_agent_next_symbol_not_found(monkeypatch, tmp_path):
     assert payload["errors"][0]["code"] == "AGENT_NEXT_SYMBOL_NOT_FOUND"
 
 
-def test_agent_plan_cli_smoke(monkeypatch, tmp_path):
+def test_agent_plan_cli_smoke(monkeypatch, tmp_path, cli_cmd):
     monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(tmp_path / "runtime"))
     handle_import_quotes("examples/quotes.csv.example", use_runtime=True)
     handle_import_holdings("examples/holdings.csv.example", use_runtime=True)
 
     json_result = subprocess.run(
-        [
-            ".venv/bin/market-intel",
+        cli_cmd(
             "agent",
             "plan",
             "--max-quote-age-days",
             "9999",
             "--json",
-        ],
+        ),
         check=True,
         text=True,
         capture_output=True,
     )
     text_result = subprocess.run(
-        [
-            ".venv/bin/market-intel",
+        cli_cmd(
             "agent",
             "plan",
             "--max-quote-age-days",
             "9999",
             "--text",
-        ],
+        ),
         check=True,
         text=True,
         capture_output=True,
@@ -881,33 +879,31 @@ def test_agent_plan_cli_smoke(monkeypatch, tmp_path):
     assert "market-intel agent plan" in text_result.stdout
 
 
-def test_agent_briefing_cli_smoke(monkeypatch, tmp_path):
+def test_agent_briefing_cli_smoke(monkeypatch, tmp_path, cli_cmd):
     monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(tmp_path / "runtime"))
     handle_import_quotes("examples/quotes.csv.example", use_runtime=True)
     handle_import_holdings("examples/holdings.csv.example", use_runtime=True)
 
     json_result = subprocess.run(
-        [
-            ".venv/bin/market-intel",
+        cli_cmd(
             "agent",
             "briefing",
             "--max-quote-age-days",
             "9999",
             "--json",
-        ],
+        ),
         check=True,
         text=True,
         capture_output=True,
     )
     text_result = subprocess.run(
-        [
-            ".venv/bin/market-intel",
+        cli_cmd(
             "agent",
             "briefing",
             "--max-quote-age-days",
             "9999",
             "--text",
-        ],
+        ),
         check=True,
         text=True,
         capture_output=True,
@@ -917,14 +913,13 @@ def test_agent_briefing_cli_smoke(monkeypatch, tmp_path):
     assert "market-intel agent briefing" in text_result.stdout
 
 
-def test_agent_run_cli_smoke(monkeypatch, tmp_path):
+def test_agent_run_cli_smoke(monkeypatch, tmp_path, cli_cmd):
     monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(tmp_path / "runtime"))
     handle_import_quotes("examples/quotes.csv.example", use_runtime=True)
     handle_import_holdings("examples/holdings.csv.example", use_runtime=True)
 
     json_result = subprocess.run(
-        [
-            ".venv/bin/market-intel",
+        cli_cmd(
             "agent",
             "run",
             "--max-quote-age-days",
@@ -932,14 +927,13 @@ def test_agent_run_cli_smoke(monkeypatch, tmp_path):
             "--max-steps",
             "3",
             "--json",
-        ],
+        ),
         check=True,
         text=True,
         capture_output=True,
     )
     text_result = subprocess.run(
-        [
-            ".venv/bin/market-intel",
+        cli_cmd(
             "agent",
             "run",
             "--max-quote-age-days",
@@ -947,7 +941,7 @@ def test_agent_run_cli_smoke(monkeypatch, tmp_path):
             "--max-steps",
             "3",
             "--text",
-        ],
+        ),
         check=True,
         text=True,
         capture_output=True,
@@ -957,14 +951,13 @@ def test_agent_run_cli_smoke(monkeypatch, tmp_path):
     assert "market-intel agent run" in text_result.stdout
 
 
-def test_agent_next_cli_smoke(monkeypatch, tmp_path):
+def test_agent_next_cli_smoke(monkeypatch, tmp_path, cli_cmd):
     monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(tmp_path / "runtime"))
     handle_import_quotes("examples/quotes.csv.example", use_runtime=True)
     handle_import_holdings("examples/holdings.csv.example", use_runtime=True)
 
     json_result = subprocess.run(
-        [
-            ".venv/bin/market-intel",
+        cli_cmd(
             "agent",
             "next",
             "--max-quote-age-days",
@@ -972,14 +965,13 @@ def test_agent_next_cli_smoke(monkeypatch, tmp_path):
             "--max-steps",
             "3",
             "--json",
-        ],
+        ),
         check=True,
         text=True,
         capture_output=True,
     )
     text_result = subprocess.run(
-        [
-            ".venv/bin/market-intel",
+        cli_cmd(
             "agent",
             "next",
             "--max-quote-age-days",
@@ -987,14 +979,13 @@ def test_agent_next_cli_smoke(monkeypatch, tmp_path):
             "--max-steps",
             "3",
             "--text",
-        ],
+        ),
         check=True,
         text=True,
         capture_output=True,
     )
     symbol_result = subprocess.run(
-        [
-            ".venv/bin/market-intel",
+        cli_cmd(
             "agent",
             "next",
             "--max-quote-age-days",
@@ -1002,7 +993,7 @@ def test_agent_next_cli_smoke(monkeypatch, tmp_path):
             "--symbol",
             "300308",
             "--json",
-        ],
+        ),
         check=True,
         text=True,
         capture_output=True,

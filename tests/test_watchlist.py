@@ -47,16 +47,15 @@ def test_watchlist_text_renderer():
     assert "sell" not in text.lower()
 
 
-def test_watchlist_text_cli_smoke():
+def test_watchlist_text_cli_smoke(cli_cmd):
     result = subprocess.run(
-        [
-            ".venv/bin/market-intel",
+        cli_cmd(
             "watchlist",
             "--mock",
             "--top",
             "3",
             "--text",
-        ],
+        ),
         check=True,
         text=True,
         capture_output=True,

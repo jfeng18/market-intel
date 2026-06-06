@@ -235,14 +235,13 @@ def test_daily_text_renderer():
     assert "sell" not in text.lower()
 
 
-def test_daily_text_cli_smoke():
+def test_daily_text_cli_smoke(cli_cmd):
     result = subprocess.run(
-        [
-            ".venv/bin/market-intel",
+        cli_cmd(
             "daily",
             "--mock",
             "--text",
-        ],
+        ),
         check=True,
         text=True,
         capture_output=True,
@@ -252,13 +251,13 @@ def test_daily_text_cli_smoke():
     assert "观察清单" in result.stdout
 
 
-def test_daily_command_queue_runnable_commands_parse():
+def test_daily_command_queue_runnable_commands_parse(cli_cmd):
     payload = handle_daily("ai-energy", use_mock=True, top=3, map_top=2)
     commands = [item["command"] for item in payload["data"]["command_queue"] if item.get("runnable") and "journal note" not in item["command"]]
 
     for command in commands:
         result = subprocess.run(
-            [".venv/bin/market-intel", *shlex.split(command)[1:]],
+            cli_cmd(*shlex.split(command)[1:]),
             text=True,
             capture_output=True,
         )

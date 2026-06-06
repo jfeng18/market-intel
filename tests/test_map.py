@@ -95,16 +95,15 @@ def test_map_text_renderer():
     assert "sell" not in text.lower()
 
 
-def test_map_text_cli_smoke():
+def test_map_text_cli_smoke(cli_cmd):
     result = subprocess.run(
-        [
-            ".venv/bin/market-intel",
+        cli_cmd(
             "map",
             "--mock",
             "--top",
             "2",
             "--text",
-        ],
+        ),
         check=True,
         text=True,
         capture_output=True,

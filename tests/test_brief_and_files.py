@@ -89,16 +89,15 @@ def test_brief_text_renderer_is_human_readable():
     assert "sell" not in text.lower()
 
 
-def test_brief_text_cli_smoke():
+def test_brief_text_cli_smoke(cli_cmd):
     result = subprocess.run(
-        [
-            ".venv/bin/market-intel",
+        cli_cmd(
             "brief",
             "--mock",
             "--top",
             "2",
             "--text",
-        ],
+        ),
         check=True,
         text=True,
         capture_output=True,

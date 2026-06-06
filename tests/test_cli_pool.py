@@ -66,15 +66,14 @@ def test_pool_explain_runtime_context(monkeypatch, tmp_path):
     assert context["holding"]["symbol"] == "002281"
 
 
-def test_pool_explain_text_cli_smoke():
+def test_pool_explain_text_cli_smoke(cli_cmd):
     result = subprocess.run(
-        [
-            ".venv/bin/market-intel",
+        cli_cmd(
             "pool",
             "explain",
             "002837",
             "--text",
-        ],
+        ),
         check=True,
         text=True,
         capture_output=True,
