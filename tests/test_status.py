@@ -54,7 +54,7 @@ def test_status_runtime_ready_after_universe_import(monkeypatch, tmp_path):
     assert payload["warnings"] == []
     assert data["readiness"]["state"] == "ready"
     assert data["universe"]["state"] == "ready"
-    assert data["universe"]["record_count"] == 3
+    assert data["universe"]["record_count"] == 16
     assert data["next_actions"][0]["id"] == "run_daily_report"
 
 

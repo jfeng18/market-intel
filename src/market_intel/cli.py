@@ -2001,6 +2001,7 @@ def build_mock_dashboard_data(
     scan = scan_payload.get("data", {}) if isinstance(scan_payload.get("data"), dict) else {}
     daily = daily_payload.get("data", {}) if isinstance(daily_payload.get("data"), dict) else {}
     portfolio_review = daily.get("portfolio_review", {}) if isinstance(daily.get("portfolio_review"), dict) else {}
+    coverage = mock_dashboard_coverage_context(daily)
     market = mock_dashboard_market_pulse(pool, scan)
     portfolio = mock_dashboard_portfolio_pulse(pool, portfolio_review)
     evidence = mock_dashboard_evidence_gaps(market, portfolio)
@@ -2019,6 +2020,7 @@ def build_mock_dashboard_data(
             "writes_are_skipped": True,
             "mode": "mock",
         },
+        "coverage_context": coverage,
         "tiles": tiles,
         "market_pulse": market,
         "portfolio_pulse": portfolio,
@@ -2033,6 +2035,14 @@ def build_mock_dashboard_data(
         ],
         "agent_contract": dashboard_contract(),
     }
+
+
+def mock_dashboard_coverage_context(daily: Dict[str, object]) -> Dict[str, object]:
+    coverage = daily.get("coverage_context", {}) if isinstance(daily.get("coverage_context"), dict) else {}
+    compact = compact_dashboard_coverage_context(coverage)
+    if compact.get("available"):
+        compact["summary"] = "%s mock 示例；正式复盘需导入 runtime 后复验。" % (compact.get("summary") or "覆盖底座")
+    return compact
 
 
 def mock_dashboard_summary(
@@ -2454,6 +2464,7 @@ def build_dashboard_data(
         "summary": dashboard_summary(run_data, digest),
         "source_agent_run_state": run_data.get("state"),
         "run_limits": run_data.get("run_limits", {"max_steps": max_steps, "read_only_only": True, "writes_are_skipped": True}),
+        "coverage_context": dashboard_coverage_context(digest),
         "tiles": dashboard_tiles(digest),
         "market_pulse": dashboard_market_pulse(digest),
         "portfolio_pulse": dashboard_portfolio_pulse(digest),
@@ -2467,6 +2478,65 @@ def build_dashboard_data(
             "写入 journal 或导入 runtime 的命令需要人工确认后执行。",
         ],
         "agent_contract": dashboard_contract(),
+    }
+
+
+def dashboard_coverage_context(digest: Dict[str, object]) -> Dict[str, object]:
+    coverage = digest.get("coverage_context", {}) if isinstance(digest.get("coverage_context"), dict) else {}
+    return compact_dashboard_coverage_context(coverage)
+
+
+def compact_dashboard_coverage_context(coverage: Dict[str, object]) -> Dict[str, object]:
+    if not coverage.get("available"):
+        return {"available": False, "summary": coverage.get("summary") or "暂无复盘池覆盖上下文。"}
+    universe = coverage.get("universe", {}) if isinstance(coverage.get("universe"), dict) else {}
+    profile = universe.get("sector_profile", {}) if isinstance(universe.get("sector_profile"), dict) else {}
+    raw_gaps = coverage.get("gaps") if isinstance(coverage.get("gaps"), list) else None
+    gaps = raw_gaps if raw_gaps is not None else coverage.get("top_gaps", [])
+    actions = coverage.get("next_actions", []) if isinstance(coverage.get("next_actions"), list) else []
+    return {
+        "available": True,
+        "pool": coverage.get("pool"),
+        "scope": coverage.get("scope"),
+        "status": coverage.get("status"),
+        "summary": coverage.get("summary"),
+        "universe": {
+            "available": bool(universe.get("available")),
+            "record_count": universe.get("record_count", 0),
+            "industry_count": universe.get("industry_count", 0),
+            "concept_count": universe.get("concept_count", 0),
+            "index_membership_count": universe.get("index_membership_count", 0),
+            "sector_profile": {
+                "industry_coverage_ratio": profile.get("industry_coverage_ratio", 0),
+                "concept_coverage_ratio": profile.get("concept_coverage_ratio", 0),
+                "index_coverage_ratio": profile.get("index_coverage_ratio", 0),
+                "top_industries": list(profile.get("top_industries", []))[:5] if isinstance(profile.get("top_industries"), list) else [],
+                "missing_field_counts": profile.get("missing_field_counts", {}) if isinstance(profile.get("missing_field_counts"), dict) else {},
+                "missing_field_samples": list(profile.get("missing_field_samples", []))[:5] if isinstance(profile.get("missing_field_samples"), list) else [],
+                "coverage_flags": list(profile.get("coverage_flags", [])) if isinstance(profile.get("coverage_flags"), list) else [],
+            },
+        },
+        "holdings_coverage": coverage.get("holdings_coverage", {}) if isinstance(coverage.get("holdings_coverage"), dict) else {},
+        "gap_count": len(gaps) if isinstance(gaps, list) else 0,
+        "top_gaps": [
+            {
+                "id": item.get("id"),
+                "severity": item.get("severity"),
+                "message": item.get("message"),
+            }
+            for item in gaps[:5]
+            if isinstance(item, dict)
+        ] if isinstance(gaps, list) else [],
+        "next_actions": [
+            {
+                "id": item.get("id"),
+                "command": item.get("command"),
+                "done_when": item.get("done_when"),
+            }
+            for item in actions[:5]
+            if isinstance(item, dict)
+        ],
+        "write_policy": "只说明复盘池和全 A 基础清单覆盖边界，不生成交易指令。",
     }
 
 
@@ -2910,6 +2980,11 @@ def dashboard_contract() -> Dict[str, object]:
             "data.state",
             "data.summary",
             "data.tiles",
+            "data.coverage_context",
+            "data.coverage_context.universe",
+            "data.coverage_context.universe.sector_profile",
+            "data.coverage_context.top_gaps",
+            "data.coverage_context.next_actions",
             "data.market_pulse",
             "data.market_pulse.top_groups",
             "data.market_pulse.candidates",

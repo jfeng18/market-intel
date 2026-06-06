@@ -177,6 +177,7 @@ market-intel journal timeline --text
 
 - 默认面向 `all-a`，复用 `agent run` 的只读复盘结果，把全市场扫描、持仓压力、证据缺口、行动队列和交接压缩到一屏。
 - `dashboard --mock --text` 是离线试跑入口，不读取 runtime、不暴露个人持仓，用示例行情和示例持仓展示完整工作台合同。
+- `data.coverage_context` 会在第一屏展示 `all-a` 的覆盖底座、A 股基础清单是否接入、行业/概念/指数字段覆盖率、覆盖缺口和下一步命令。
 - `data.market_pulse` 汇总全市场板块、候选复盘标的、覆盖状态、why_now 和下一条只读 JSON 命令。
 - `data.portfolio_pulse` 汇总个人持仓重点、变化持仓、缺行情/缺热点上下文、重复暴露和持仓复核命令。
 - `data.evidence_gaps` 只列未覆盖或待补的证据项，方便先处理数据阻塞、foundation/draft 覆盖和未读单票。
@@ -427,5 +428,5 @@ market-intel import research research_notes.csv --output data/runtime/research_n
 - `examples/holdings.example.json`
 - `examples/quotes.csv.example`
 - `examples/holdings.csv.example`
-- `examples/a_share_universe.csv.example`
+- `examples/a_share_universe.csv.example`：跨金融、消费、医药、周期、TMT、制造、能源等板块的公开样例基础清单，不包含个人持仓。
 - `examples/research_notes.csv.example`

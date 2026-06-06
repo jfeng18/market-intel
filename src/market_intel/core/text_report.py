@@ -1350,6 +1350,10 @@ def render_dashboard_text(payload: Dict[str, object]) -> str:
         for item in tiles:
             if isinstance(item, dict):
                 lines.append("- %s: %s | %s" % (item.get("label"), item.get("value"), item.get("detail") or ""))
+    coverage = data.get("coverage_context", {}) if isinstance(data.get("coverage_context"), dict) else {}
+    if coverage:
+        lines.extend(["", "覆盖底座"])
+        lines.extend(render_focus_coverage_context(coverage))
     market = data.get("market_pulse", {}) if isinstance(data.get("market_pulse"), dict) else {}
     if market:
         lines.extend(["", "全市场"])

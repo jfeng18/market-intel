@@ -971,6 +971,7 @@ def test_agent_next_returns_compact_handoff(monkeypatch, tmp_path):
 
 def test_dashboard_returns_one_screen_workbench(monkeypatch, tmp_path):
     import_runtime_examples(monkeypatch, tmp_path)
+    handle_import_universe("examples/a_share_universe.csv.example", use_runtime=True)
 
     payload = handle_dashboard("all-a", max_quote_age_days=9999, max_steps=5)
     data = payload["data"]
@@ -981,6 +982,12 @@ def test_dashboard_returns_one_screen_workbench(monkeypatch, tmp_path):
     assert data["pool"] == "all-a"
     assert data["state"] in {"needs_review", "ready_for_note", "blocked_review"}
     assert data["tiles"]
+    assert data["coverage_context"]["available"] is True
+    assert data["coverage_context"]["universe"]["available"] is True
+    assert data["coverage_context"]["universe"]["record_count"] == 16
+    assert data["coverage_context"]["universe"]["sector_profile"]["industry_coverage_ratio"] == 1
+    assert data["coverage_context"]["gap_count"] >= 1
+    assert data["coverage_context"]["top_gaps"]
     assert data["market_pulse"]["available"] is True
     assert data["market_pulse"]["top_groups"]
     assert data["market_pulse"]["candidates"]
@@ -996,11 +1003,16 @@ def test_dashboard_returns_one_screen_workbench(monkeypatch, tmp_path):
     assert data["review_plan"]["items"][0]["done_when"]
     assert data["handoff"]["next_read"]
     assert data["guardrails"]
+    assert "data.coverage_context" in data["agent_contract"]["stable_fields"]
+    assert "data.coverage_context.universe.sector_profile" in data["agent_contract"]["stable_fields"]
+    assert "data.coverage_context.top_gaps" in data["agent_contract"]["stable_fields"]
     assert "data.market_pulse.candidates" in data["agent_contract"]["stable_fields"]
     assert "data.portfolio_pulse.top_holdings" in data["agent_contract"]["stable_fields"]
     assert "data.action_lane.items" in data["agent_contract"]["stable_fields"]
     assert "data.review_plan.items[].json_command" in data["agent_contract"]["stable_fields"]
     assert "market-intel dashboard" in text
+    assert "覆盖底座" in text
+    assert "全 A: 已接入 | 记录 16" in text
     assert "全市场" in text
     assert "持仓" in text
     assert "证据缺口" in text
@@ -1023,6 +1035,8 @@ def test_dashboard_mock_returns_demo_workbench_without_runtime(monkeypatch, tmp_
     assert data["state"] == "demo_ready"
     assert data["source_agent_run_state"] == "mock_demo"
     assert data["run_limits"]["mode"] == "mock"
+    assert data["coverage_context"]["available"] is True
+    assert data["coverage_context"]["universe"]["available"] is False
     assert data["market_pulse"]["available"] is True
     assert data["market_pulse"]["candidates"]
     assert data["market_pulse"]["candidates"][0]["json_command"].endswith("--json")
@@ -1037,6 +1051,8 @@ def test_dashboard_mock_returns_demo_workbench_without_runtime(monkeypatch, tmp_
     assert data["handoff"]["next_read"]
     assert any("mock" in item for item in data["guardrails"])
     assert "mock 示例" in text
+    assert "覆盖底座" in text
+    assert "全 A: 未接入" in text
     assert "market-intel dashboard" in text
     assert "不生成买卖指令" in text
     assert "buy" not in text.lower()

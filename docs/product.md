@@ -138,6 +138,8 @@ dashboard --mock -> import/runtime -> status/readiness -> dashboard
 
 `scan` 是面向全 A 的默认发现入口。它不替代行情 App 的实时盯盘，也不输出交易建议；它的价值是把板块强弱、覆盖状态、研究证据缺口和下一步命令放进同一个结构化结果，让人和 agent 都能接着复盘。
 
+`dashboard` 是面向全 A 的默认第一屏。它必须先展示覆盖底座：`all-a` 当前是否仍是 seed，A 股基础清单是否接入，行业/概念/指数字段覆盖率如何，哪些覆盖缺口会影响当天结论。用户和 agent 应先看 `data.coverage_context`，再看市场热点和持仓压力。
+
 ## 6. 北极星指标
 
 项目不应只看命令数量或覆盖股票数量，应看复盘闭环是否完成：
@@ -154,6 +156,7 @@ dashboard --mock -> import/runtime -> status/readiness -> dashboard
 
 - 引入 A 股基础清单和行业/概念/指数成分输入格式；当前可通过 `MARKET_INTEL_A_SHARE_UNIVERSE_PATHS` 叠加 `a_share_universe_v1` CSV。
 - 让 `pool coverage` 明确展示全 A 覆盖范围、缺口和草稿状态。
+- 让 `dashboard` 第一屏展示 `data.coverage_context`，把全 A 基础清单和字段完整度放在热点/持仓之前复核。
 - 把默认叙事从单一 AI 主题池切到全 A：AI 仍保留为种子池，但产品入口、README 和 agent 合同都应以 `all-a` 为默认范围。
 - 保持所有输出不泄露本机路径和用户身份信息。
 
