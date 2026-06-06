@@ -37,19 +37,37 @@ def default_pool_path(pool: str = DEFAULT_POOL) -> Path:
     return repo_root() / "data" / "pools" / pool_definition(pool)["filename"]
 
 
+def extra_pool_paths() -> List[Path]:
+    configured = os.environ.get("MARKET_INTEL_POOL_EXTRA_PATHS")
+    if not configured:
+        return []
+    return [Path(value) for value in configured.split(os.pathsep) if value.strip()]
+
+
 def load_pool(pool: str = DEFAULT_POOL, path: Optional[Path] = None) -> List[PoolItem]:
     definition = pool_definition(pool)
     pool_path = path or default_pool_path(pool)
-    rows = []
-    with pool_path.open(newline="", encoding="utf-8") as handle:
-        reader = csv.DictReader(handle)
-        for raw_row, row in enumerate(reader, start=2):
-            rows.append(normalize_row(row, raw_row))
+    rows = read_pool_items(pool_path, source="base")
+    if path is None:
+        for extra_path in extra_pool_paths():
+            rows.extend(read_pool_items(extra_path, source="extra:%s" % extra_path.name))
     items = merge_pool_items(rows)
     for item in items:
         item.raw["pool"] = pool
         item.raw["pool_scope"] = definition["scope"]
     return items
+
+
+def read_pool_items(path: Path, source: str) -> List[PoolItem]:
+    rows = []
+    with path.open(newline="", encoding="utf-8") as handle:
+        reader = csv.DictReader(handle)
+        for raw_row, row in enumerate(reader, start=2):
+            item = normalize_row(row, raw_row)
+            item.raw["pool_source"] = source
+            item.raw["pool_source_file"] = path.name
+            rows.append(item)
+    return rows
 
 
 def pool_definition(pool: str) -> Dict[str, str]:

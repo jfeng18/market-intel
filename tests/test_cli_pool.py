@@ -156,7 +156,26 @@ def test_pool_expansion_writes_pool_csv(tmp_path):
     assert rows[0]["status"] == "candidate"
     assert rows[0]["code"] == "000001"
     assert rows[0]["section"] == "待确认 / 持仓补充"
-    assert "MARKET_INTEL_POOL_PATH=" in payload["data"]["next_commands"][0]
+    assert "MARKET_INTEL_POOL_EXTRA_PATHS=" in payload["data"]["next_commands"][0]
+
+
+def test_pool_expansion_overlay_closes_coverage_gap(monkeypatch, tmp_path):
+    holdings_file = tmp_path / "holdings.json"
+    output_file = tmp_path / "pool_expansion.csv"
+    holdings_file.write_text(
+        json.dumps({"holdings": [{"symbol": "000001", "name": "平安银行"}]}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    handle_pool_expansion("all-a", holdings_file=str(holdings_file), output=str(output_file))
+    monkeypatch.setenv("MARKET_INTEL_POOL_EXTRA_PATHS", str(output_file))
+
+    payload = handle_pool_coverage("all-a", holdings_file=str(holdings_file))
+    coverage = payload["data"]["holdings_coverage"]
+
+    assert payload["ok"] is True
+    assert coverage["matched_count"] == 1
+    assert coverage["unmatched_count"] == 0
+    assert payload["data"]["expansion_queue"] == []
 
 
 def test_pool_coverage_text_renders_expansion_queue(tmp_path):

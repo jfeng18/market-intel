@@ -27,6 +27,50 @@ def test_all_a_pool_is_supported_as_seed_universe():
     assert by_symbol["002837"].raw["pool_scope"] == "all_a_seed"
 
 
+def test_load_pool_can_overlay_extra_pool_paths(monkeypatch, tmp_path):
+    extra_pool = tmp_path / "pool_expansion.csv"
+    extra_pool.write_text(
+        "status,priority,section,level,company,code,desc,notes\n"
+        "candidate,P2,银行 / 银行,待确认,平安银行,000001,持仓补充样例,source=test\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("MARKET_INTEL_POOL_EXTRA_PATHS", str(extra_pool))
+
+    items = load_pool("all-a")
+    pingan = find_pool_item(items, "000001")
+    existing = find_pool_item(items, "002837")
+
+    assert existing is not None
+    assert pingan is not None
+    assert pingan.name == "平安银行"
+    assert pingan.raw["pool_source"] == "extra:pool_expansion.csv"
+    assert pingan.raw["pool_source_file"] == "pool_expansion.csv"
+    assert str(extra_pool) not in str(pingan.to_dict())
+    assert pingan.raw["pool"] == "all-a"
+    assert pingan.raw["pool_scope"] == "all_a_seed"
+
+
+def test_explicit_pool_path_ignores_extra_pool_paths(monkeypatch, tmp_path):
+    base_pool = tmp_path / "base.csv"
+    extra_pool = tmp_path / "extra.csv"
+    base_pool.write_text(
+        "status,priority,section,level,company,code,desc,notes\n"
+        "pending,P2,测试 / 基础,待确认,基础公司,000002,基础池样例,\n",
+        encoding="utf-8",
+    )
+    extra_pool.write_text(
+        "status,priority,section,level,company,code,desc,notes\n"
+        "candidate,P2,测试 / 额外,待确认,额外公司,000003,额外池样例,\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("MARKET_INTEL_POOL_EXTRA_PATHS", str(extra_pool))
+
+    items = load_pool("all-a", path=base_pool)
+
+    assert find_pool_item(items, "000002") is not None
+    assert find_pool_item(items, "000003") is None
+
+
 def test_unknown_pool_lists_supported_pools():
     with pytest.raises(ValueError) as exc:
         load_pool("unknown")

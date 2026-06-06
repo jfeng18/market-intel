@@ -265,10 +265,10 @@ market-intel pool coverage --holdings-file data/runtime/holdings.json --json
 
 ```bash
 market-intel pool expansion --runtime --output data/runtime/pool_expansion.csv --json
-MARKET_INTEL_POOL_PATH=data/runtime/pool_expansion.csv market-intel pool coverage --runtime --text
+MARKET_INTEL_POOL_EXTRA_PATHS=data/runtime/pool_expansion.csv market-intel pool coverage --runtime --text
 ```
 
-`pool expansion` 只写候选草稿，不会改主池。编辑 CSV 时至少要补齐 `section`、`level` 和 `desc`，再用 `MARKET_INTEL_POOL_PATH=...` 临时验证这个扩展池能否被 CLI 正常读取。
+`pool expansion` 只写候选草稿，不会改主池。编辑 CSV 时至少要补齐 `section`、`level` 和 `desc`，再用 `MARKET_INTEL_POOL_EXTRA_PATHS=...` 把草稿叠加到默认复盘池上验证覆盖缺口是否消失。`MARKET_INTEL_POOL_PATH=...` 仍可用于完全替换默认池，适合测试一个独立 pool CSV。
 
 `watchlist` 是盘中盯盘清单：把热点领涨标的和持仓标的合并去重，标出链路、涨幅、成交放大、回落、风险和是否持仓。
 

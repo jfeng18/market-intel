@@ -123,8 +123,8 @@ def expansion_export_next_commands(
         return []
     commands = []
     if written:
-        commands.append("MARKET_INTEL_POOL_PATH=%s market-intel pool list --json" % output_path)
-        commands.append("MARKET_INTEL_POOL_PATH=%s market-intel pool coverage --runtime --text" % output_path)
+        commands.append("MARKET_INTEL_POOL_EXTRA_PATHS=%s market-intel pool list --json" % output_path)
+        commands.append("MARKET_INTEL_POOL_EXTRA_PATHS=%s market-intel pool coverage --runtime --text" % output_path)
     else:
         commands.append("market-intel pool expansion --runtime --output data/runtime/pool_expansion.csv --json")
     return commands
