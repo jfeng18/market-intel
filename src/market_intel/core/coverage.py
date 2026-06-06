@@ -458,6 +458,7 @@ def build_holdings_coverage(
 
         market_counter.update([item.market])
         state = matched_coverage_state(item)
+        research = research_status(item)
         if state["state"] != "confirmed":
             review_queue.append(
                 {
@@ -465,8 +466,9 @@ def build_holdings_coverage(
                     "name": holding.name or item.name,
                     "coverage_state": state["state"],
                     "reasons": state["reasons"],
+                    "research_status": research,
                     "command": "market-intel pool explain %s --runtime --text" % holding.symbol,
-                    "done_when": "已确认该持仓的行业/主题链路、角色、核心逻辑和证伪风险。",
+                    "done_when": coverage_done_when(state["state"]),
                 }
             )
         matched.append(
@@ -481,6 +483,7 @@ def build_holdings_coverage(
                 "data_quality_flags": sorted(set(item.data_quality_flags)),
                 "coverage_state": state["state"],
                 "coverage_state_reasons": state["reasons"],
+                "research_status": research,
             }
         )
 
@@ -494,7 +497,9 @@ def build_holdings_coverage(
     flags = []
     if unmatched:
         flags.append("unmatched_holdings")
-    if needs_review_count:
+    if foundation_count:
+        flags.append("foundation_pool_matches")
+    if draft_count:
         flags.append("draft_pool_matches")
     return {
         "available": True,
@@ -531,23 +536,78 @@ def build_holdings_coverage_summary(
     return "持仓覆盖率 %.1f%%，当前持仓均已匹配复盘池。" % (ratio * 100)
 
 
+def research_status(item: PoolItem) -> Dict[str, object]:
+    raw = item.raw if isinstance(item.raw, dict) else {}
+    note = raw.get("research_note", {}) if isinstance(raw.get("research_note"), dict) else {}
+    if not note:
+        return {
+            "available": False,
+            "status": "missing",
+            "source_file": None,
+            "has_thesis": False,
+            "has_evidence": False,
+            "has_invalidation": False,
+            "confirmed": False,
+            "missing_fields": ["thesis", "evidence", "invalidation"],
+        }
+    missing_fields = [
+        field
+        for field in ("thesis", "evidence", "invalidation")
+        if not str(note.get(field) or "").strip()
+    ]
+    return {
+        "available": True,
+        "schema": note.get("schema") or raw.get("research_schema") or "research_notes_v1",
+        "status": str(note.get("status") or raw.get("research_status") or "draft").strip().lower() or "draft",
+        "source_file": note.get("source_file"),
+        "has_thesis": bool(str(note.get("thesis") or "").strip()),
+        "has_evidence": bool(str(note.get("evidence") or "").strip()),
+        "has_invalidation": bool(str(note.get("invalidation") or "").strip()),
+        "missing_fields": missing_fields,
+        "confirmed": research_note_confirmed(note),
+    }
+
+
 def matched_coverage_state(item: PoolItem) -> Dict[str, object]:
     reasons = []
     raw = item.raw if isinstance(item.raw, dict) else {}
+    research = raw.get("research_note", {}) if isinstance(raw.get("research_note"), dict) else {}
+    has_reviewed_research = research_note_confirmed(research)
     raw_status = str(raw.get("raw_status") or "").strip().lower()
     if raw_status in {"candidate", "draft"}:
         reasons.append("candidate_status")
     if str(raw.get("pool_source") or "").startswith("extra:"):
         reasons.append("extra_pool_overlay")
-    if str(raw.get("pool_source") or "").startswith("universe:") or raw.get("universe_schema"):
+    has_foundation_source = str(raw.get("pool_source") or "").startswith("universe:") or bool(raw.get("universe_schema"))
+    if has_foundation_source:
         reasons.append("a_share_universe_foundation")
     if any(is_pending_text(raw.get(field)) for field in ("raw_section", "raw_level", "raw_desc")):
         reasons.append("pending_fields")
+    if has_foundation_source and has_reviewed_research:
+        remaining = [reason for reason in reasons if reason != "a_share_universe_foundation"]
+        if not remaining:
+            return {"state": "confirmed", "reasons": ["reviewed_research"]}
     if reasons:
         if "a_share_universe_foundation" in reasons and len(reasons) == 1:
             return {"state": "foundation", "reasons": sorted(set(reasons))}
         return {"state": "draft", "reasons": sorted(set(reasons))}
     return {"state": "confirmed", "reasons": []}
+
+
+def research_note_confirmed(value: Dict[str, object]) -> bool:
+    status = str(value.get("status") or "").strip().lower()
+    if status not in {"reviewed", "confirmed"}:
+        return False
+    required = ("thesis", "evidence", "invalidation")
+    return all(str(value.get(field) or "").strip() for field in required)
+
+
+def coverage_done_when(state: object) -> str:
+    if state == "foundation":
+        return "已导入 reviewed research_notes，且核心逻辑、关键证据、证伪风险三项齐全。"
+    if state == "draft":
+        return "已确认候选补池行的行业/主题链路、角色、公司逻辑和证伪风险。"
+    return "已确认该持仓的行业/主题链路、角色、核心逻辑和证伪风险。"
 
 
 def is_pending_text(value: object) -> bool:
@@ -671,7 +731,15 @@ def coverage_gaps(
                 "message": "存在持仓未匹配当前复盘池，个人复盘会遗漏这些标的的链路暴露。",
             }
         )
-    if holdings_coverage.get("available") and holdings_coverage.get("needs_review_count"):
+    if holdings_coverage.get("available") and holdings_coverage.get("foundation_matched_count"):
+        gaps.append(
+            {
+                "id": "foundation_research_missing",
+                "severity": "medium",
+                "message": "存在持仓只命中 A 股基础清单，需要补 reviewed research_notes 才能视为正式覆盖。",
+            }
+        )
+    if holdings_coverage.get("available") and holdings_coverage.get("draft_matched_count"):
         gaps.append(
             {
                 "id": "draft_pool_matches",
@@ -733,7 +801,24 @@ def coverage_next_actions(
                 "done_when": "已逐项确认 expansion_queue 中的候选补池行、必填字段和复核问题。",
             }
         )
-    elif holdings_coverage.get("needs_review_count"):
+    elif holdings_coverage.get("foundation_matched_count"):
+        actions.append(
+            {
+                "rank": len(actions) + 1,
+                "id": "import_research_notes",
+                "command": "market-intel import research examples/research_notes.csv.example --runtime --json",
+                "done_when": "已为 foundation 持仓导入 reviewed research_notes，且 coverage 的 foundation_matched_count 降为 0。",
+            }
+        )
+        actions.append(
+            {
+                "rank": len(actions) + 1,
+                "id": "review_foundation_holdings",
+                "command": "market-intel pool coverage --runtime --json%s" % pool_arg(pool),
+                "done_when": "已逐项确认 holdings_coverage.review_queue 中 foundation 持仓的核心逻辑、关键证据和证伪风险。",
+            }
+        )
+    elif holdings_coverage.get("draft_matched_count"):
         actions.append(
             {
                 "rank": len(actions) + 1,

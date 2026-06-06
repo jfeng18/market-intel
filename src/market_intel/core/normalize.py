@@ -134,6 +134,14 @@ def merge_raw_metadata(existing: Dict[str, object], incoming: Dict[str, object])
         existing["universe_concepts"] = incoming.get("universe_concepts")
         existing["universe_index_membership"] = incoming.get("universe_index_membership")
         existing["universe_listing_status"] = incoming.get("universe_listing_status")
+    if incoming.get("research_schema"):
+        existing["research_schema"] = incoming.get("research_schema")
+        existing["research_note"] = incoming.get("research_note")
+        existing["research_status"] = incoming.get("research_status")
+        existing["research_source_file"] = incoming.get("research_source_file")
+        existing["research_thesis"] = incoming.get("research_thesis")
+        existing["research_evidence"] = incoming.get("research_evidence")
+        existing["research_invalidation"] = incoming.get("research_invalidation")
 
 
 def append_raw_list(raw: Dict[str, object], key: str, value: object) -> None:

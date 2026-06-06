@@ -41,6 +41,17 @@ UNIVERSE_ALIASES = {
     "source": ["source", "来源", "数据源"],
 }
 
+RESEARCH_ALIASES = {
+    "symbol": ["symbol", "code", "ticker", "stock_code", "证券代码", "股票代码", "代码", "标的代码"],
+    "name": ["name", "company", "证券名称", "股票名称", "名称", "公司名称"],
+    "status": ["status", "review_status", "研究状态", "状态"],
+    "thesis": ["thesis", "logic", "核心逻辑", "研究结论", "逻辑"],
+    "evidence": ["evidence", "key_evidence", "关键证据", "证据"],
+    "invalidation": ["invalidation", "risk", "bear_case", "证伪风险", "风险"],
+    "updated_at": ["updated_at", "date", "日期", "更新日期"],
+    "source": ["source", "来源", "数据源"],
+}
+
 
 def import_quotes_csv(
     csv_path: Path,
@@ -170,6 +181,48 @@ def import_universe_csv(
     }
 
 
+def import_research_csv(
+    csv_path: Path,
+    output_path: Optional[Path],
+    dry_run: bool = False,
+    runtime: bool = False,
+) -> Dict[str, object]:
+    rows, read_errors = read_csv_rows(csv_path)
+    warnings: List[Dict[str, object]] = []
+    errors: List[Dict[str, object]] = list(read_errors)
+    records: List[Dict[str, object]] = []
+
+    if not errors:
+        for index, row in enumerate(rows):
+            record, row_warnings, row_errors = parse_research_row(row, index, csv_path)
+            warnings.extend(row_warnings)
+            errors.extend(row_errors)
+            if record:
+                records.append(record)
+    if not errors and not records:
+        errors.append(issue("NO_RESEARCH_RECORDS", "CSV 中没有可导入的研究证据记录。", {"path": command_path(csv_path)}))
+
+    written = False
+    if not errors and not dry_run and output_path is not None:
+        write_research_csv(output_path, records)
+        written = True
+
+    return {
+        "kind": "research",
+        "input": command_path(csv_path),
+        "output": command_path(output_path) if output_path else None,
+        "record_key": "research",
+        "record_count": len(records),
+        "dry_run": dry_run,
+        "written": written,
+        "preview": records[:5],
+        "canonical_schema": research_schema(),
+        "next_commands": next_commands("research", written, runtime, output_path),
+        "warnings": warnings,
+        "errors": errors,
+    }
+
+
 def import_schema() -> Dict[str, object]:
     return {
         "quotes": {
@@ -225,6 +278,21 @@ def import_schema() -> Dict[str, object]:
                 "market-intel import universe examples/a_share_universe.csv.example --runtime --json",
                 "market-intel import universe a_share_universe.csv --output data/runtime/a_share_universe.csv --json",
                 "market-intel import universe a_share_universe.csv --dry-run --json",
+            ],
+        },
+        "research": {
+            "record_key": "research",
+            "accepted_columns": RESEARCH_ALIASES,
+            "canonical_schema": research_schema(),
+            "defaults": {
+                "name": "缺失时使用 symbol",
+                "status": "draft",
+                "source": "csv:<filename>",
+            },
+            "example_commands": [
+                "market-intel import research examples/research_notes.csv.example --runtime --json",
+                "market-intel import research research_notes.csv --output data/runtime/research_notes.csv --json",
+                "market-intel import research research_notes.csv --dry-run --json",
             ],
         },
         "agent_contract": {
@@ -377,6 +445,63 @@ def parse_universe_row(
     }, warnings, errors
 
 
+def parse_research_row(
+    row: Dict[str, str],
+    index: int,
+    csv_path: Path,
+) -> Tuple[Optional[Dict[str, object]], List[Dict[str, object]], List[Dict[str, object]]]:
+    warnings: List[Dict[str, object]] = []
+    errors: List[Dict[str, object]] = []
+    symbol = normalize_symbol(get_value(row, RESEARCH_ALIASES["symbol"]))
+    if not symbol:
+        return None, warnings, [issue("MISSING_SYMBOL", "研究证据记录缺少证券代码。", {"index": index})]
+    if not re.match(r"^\d{6}$", symbol):
+        return None, warnings, [
+            issue("INVALID_RESEARCH_SYMBOL", "研究证据当前只接受 6 位 A 股代码。", {"index": index, "symbol": symbol})
+        ]
+
+    name = get_value(row, RESEARCH_ALIASES["name"])
+    if is_empty(name):
+        name = symbol
+        warnings.append(default_warning("RESEARCH_NAME_DEFAULTED", index, symbol, "name", name))
+    status = normalize_research_status(get_value(row, RESEARCH_ALIASES["status"]))
+    thesis = get_value(row, RESEARCH_ALIASES["thesis"]) or ""
+    evidence = get_value(row, RESEARCH_ALIASES["evidence"]) or ""
+    invalidation = get_value(row, RESEARCH_ALIASES["invalidation"]) or ""
+    if status in {"reviewed", "confirmed"}:
+        for field, value in (("thesis", thesis), ("evidence", evidence), ("invalidation", invalidation)):
+            if is_empty(value):
+                errors.append(
+                    issue(
+                        "RESEARCH_REVIEWED_FIELD_MISSING",
+                        "已复核研究证据缺少必填字段。",
+                        {"index": index, "symbol": symbol, "field": field},
+                    )
+                )
+    if errors:
+        return None, warnings, errors
+
+    return {
+        "symbol": symbol,
+        "name": str(name),
+        "status": status,
+        "thesis": str(thesis),
+        "evidence": str(evidence),
+        "invalidation": str(invalidation),
+        "updated_at": get_value(row, RESEARCH_ALIASES["updated_at"]) or "",
+        "source": get_value(row, RESEARCH_ALIASES["source"]) or "csv:%s" % csv_path.name,
+    }, warnings, errors
+
+
+def normalize_research_status(value: Optional[str]) -> str:
+    text = str(value or "").strip().lower()
+    if text in {"reviewed", "confirmed", "已复核", "已确认", "确认"}:
+        return "reviewed"
+    if text in {"blocked", "invalid", "驳回", "阻塞"}:
+        return "blocked"
+    return "draft"
+
+
 def read_csv_rows(path: Path) -> Tuple[List[Dict[str, str]], List[Dict[str, object]]]:
     if not path.exists():
         return [], [issue("CSV_FILE_NOT_FOUND", "CSV 文件不存在。", {"path": command_path(path)})]
@@ -400,6 +525,16 @@ def write_json_records(path: Path, key: str, records: List[Dict[str, object]]) -
 def write_universe_csv(path: Path, records: List[Dict[str, object]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fields = [row["field"] for row in universe_schema()]
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fields)
+        writer.writeheader()
+        for record in records:
+            writer.writerow({field: record.get(field, "") for field in fields})
+
+
+def write_research_csv(path: Path, records: List[Dict[str, object]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fields = [row["field"] for row in research_schema()]
     with path.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=fields)
         writer.writeheader()
@@ -445,6 +580,19 @@ def universe_schema() -> List[Dict[str, object]]:
     ]
 
 
+def research_schema() -> List[Dict[str, object]]:
+    return [
+        {"field": "symbol", "type": "string", "required": True},
+        {"field": "name", "type": "string", "required": True},
+        {"field": "status", "type": "draft|reviewed|blocked", "required": True},
+        {"field": "thesis", "type": "string", "required": "status=reviewed"},
+        {"field": "evidence", "type": "string", "required": "status=reviewed"},
+        {"field": "invalidation", "type": "string", "required": "status=reviewed"},
+        {"field": "updated_at", "type": "string", "required": False},
+        {"field": "source", "type": "string", "required": False},
+    ]
+
+
 def next_commands(kind: str, written: bool, runtime: bool, output_path: Optional[Path]) -> List[str]:
     if not written:
         return []
@@ -460,9 +608,20 @@ def next_commands(kind: str, written: bool, runtime: bool, output_path: Optional
                 "MARKET_INTEL_A_SHARE_UNIVERSE_PATHS=%s market-intel pool coverage --text" % path_text,
                 "MARKET_INTEL_A_SHARE_UNIVERSE_PATHS=%s market-intel pool coverage --runtime --text" % path_text,
             ]
+        if kind == "research":
+            return [
+                "MARKET_INTEL_RESEARCH_NOTES_PATHS=%s market-intel pool coverage --runtime --text" % path_text,
+                "MARKET_INTEL_RESEARCH_NOTES_PATHS=%s market-intel agent next --text" % path_text,
+            ]
         return [
             "market-intel holdings impact --holdings-file %s --json" % path_text,
             "market-intel daily --quotes-file <quotes.json> --holdings-file %s --json" % path_text,
+        ]
+    if kind == "research":
+        return [
+            "market-intel pool coverage --runtime --text",
+            "market-intel agent next --text",
+            "market-intel journal note --section security_review --text '<填写研究证据确认>'",
         ]
     if kind == "universe":
         return [

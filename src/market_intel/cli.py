@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional
 from .core.agent import build_agent_briefing, build_agent_plan, command_queue_item
 from .core.fixtures import load_holdings_file, load_mock_holdings, load_mock_quotes, load_quotes_file
 from .core.brief import build_daily_brief
-from .core.csv_importer import import_holdings_csv, import_quotes_csv, import_schema, import_universe_csv
+from .core.csv_importer import import_holdings_csv, import_quotes_csv, import_research_csv, import_schema, import_universe_csv
 from .core.coverage import build_pool_coverage, export_expansion_queue_csv, review_expansion_csv
 from .core.daily import build_daily_report, validate_daily_files
 from .core.focus import build_focus_report
@@ -211,6 +211,13 @@ def build_parser() -> argparse.ArgumentParser:
     import_universe_parser.add_argument("--output")
     import_universe_parser.add_argument("--dry-run", action="store_true")
     import_universe_parser.add_argument("--json", action="store_true", dest="as_json")
+
+    import_research_parser = import_subparsers.add_parser("research")
+    import_research_parser.add_argument("csv_path")
+    import_research_parser.add_argument("--runtime", action="store_true")
+    import_research_parser.add_argument("--output")
+    import_research_parser.add_argument("--dry-run", action="store_true")
+    import_research_parser.add_argument("--json", action="store_true", dest="as_json")
 
     init_parser = subparsers.add_parser("init")
     init_subparsers = init_parser.add_subparsers(dest="action")
@@ -448,6 +455,13 @@ def main(argv: Optional[List[str]] = None) -> int:
             )
         elif args.resource == "import" and args.action == "universe":
             result = handle_import_universe(
+                args.csv_path,
+                args.runtime,
+                args.output,
+                args.dry_run,
+            )
+        elif args.resource == "import" and args.action == "research":
+            result = handle_import_research(
                 args.csv_path,
                 args.runtime,
                 args.output,
@@ -1287,6 +1301,24 @@ def handle_import_universe(
         runtime=use_runtime,
     )
     return import_envelope("import.universe", data)
+
+
+def handle_import_research(
+    csv_path: str,
+    use_runtime: bool = False,
+    output: Optional[str] = None,
+    dry_run: bool = False,
+) -> Dict[str, Any]:
+    target = resolve_import_output("research", use_runtime, output, dry_run)
+    if target.get("error"):
+        return import_config_error("import.research", target["error"], csv_path)
+    data = import_research_csv(
+        Path(csv_path),
+        target["path"],
+        dry_run=dry_run,
+        runtime=use_runtime,
+    )
+    return import_envelope("import.research", data)
 
 
 def resolve_import_output(
@@ -2317,6 +2349,7 @@ def holding_dashboard_row(item: Dict[str, object], change_tracking: Dict[str, ob
         if isinstance(item.get("coverage_state_reasons"), list)
         else []
     )
+    research = compact_digest_research_status(item.get("research_status", {}))
     primary_command = first_digest_read_command(commands, "market-intel portfolio explain %s --runtime --json" % symbol) if symbol else "market-intel portfolio review --runtime --json"
     change = security_change_context(symbol, change_tracking) if symbol else {"available": False, "reasons": []}
     return {
@@ -2326,6 +2359,7 @@ def holding_dashboard_row(item: Dict[str, object], change_tracking: Dict[str, ob
         "review_score": item.get("priority_score"),
         "coverage_state": coverage_state,
         "coverage_state_reasons": [str(reason) for reason in coverage_state_reasons[:6] if reason],
+        "research_status": research,
         "has_quote": bool(quote),
         "in_hotspot": bool(hotspot),
         "quote": {
@@ -2362,6 +2396,7 @@ def holding_dashboard_row(item: Dict[str, object], change_tracking: Dict[str, ob
             hotspot,
             change,
             coverage_state,
+            research,
         ),
         "primary_command": primary_command,
         "primary_json_command": digest_json_variant(primary_command),
@@ -2450,12 +2485,18 @@ def holding_dashboard_primary_question(
     hotspot: Dict[str, object],
     change: Dict[str, object],
     coverage_state: object = "",
+    research_status: Optional[Dict[str, object]] = None,
 ) -> str:
     change_reasons = change.get("reasons", []) if isinstance(change.get("reasons"), list) else []
     if change_reasons:
         return "先核对变化：%s。" % "、".join(str(reason) for reason in change_reasons[:3])
+    research = research_status if isinstance(research_status, dict) else {}
     coverage_text = str(coverage_state or "")
     if coverage_text == "foundation":
+        if research.get("available"):
+            missing = research.get("missing_fields", []) if isinstance(research.get("missing_fields"), list) else []
+            if missing:
+                return "先把 research notes 补成 reviewed：缺 %s。" % "、".join(str(field) for field in missing[:3])
         return "先补齐全 A 基础清单命中的行业/主题逻辑、关键证据和证伪风险。"
     if coverage_text == "draft":
         return "先确认候选补池行的链路、角色、公司逻辑和证伪风险。"
@@ -2490,7 +2531,30 @@ def holding_dashboard_questions(rows: List[Dict[str, object]]) -> List[str]:
     foundation = [row for row in rows if row.get("coverage_state") == "foundation"]
     if foundation:
         questions.append("基础清单覆盖持仓需要补研究证据：%s。" % "、".join(str(row.get("symbol")) for row in foundation[:4]))
+    partial_research = [
+        row
+        for row in rows
+        if isinstance(row.get("research_status"), dict)
+        and row.get("research_status", {}).get("available")
+        and not row.get("research_status", {}).get("confirmed")
+    ]
+    if partial_research:
+        questions.append("已有 research notes 但证据未完整：%s。" % "、".join(str(row.get("symbol")) for row in partial_research[:4]))
     return dedupe_queue_texts(questions)[:5]
+
+
+def compact_digest_research_status(value: object) -> Dict[str, object]:
+    data = value if isinstance(value, dict) else {}
+    return {
+        "available": bool(data.get("available")),
+        "status": data.get("status") or "missing",
+        "source_file": data.get("source_file"),
+        "has_thesis": bool(data.get("has_thesis")),
+        "has_evidence": bool(data.get("has_evidence")),
+        "has_invalidation": bool(data.get("has_invalidation")),
+        "missing_fields": list(data.get("missing_fields", [])) if isinstance(data.get("missing_fields"), list) else [],
+        "confirmed": bool(data.get("confirmed")),
+    }
 
 
 def agent_run_digest_securities(daily: Dict[str, object]) -> List[Dict[str, object]]:
@@ -2824,6 +2888,11 @@ def evidence_holding_rows(holding: Dict[str, object]) -> List[object]:
     coverage_state = str(holding.get("coverage_state") or "")
     if coverage_state and coverage_state != "confirmed":
         rows.append("覆盖状态 %s" % coverage_state)
+    research = holding.get("research_status", {}) if isinstance(holding.get("research_status"), dict) else {}
+    if research.get("confirmed"):
+        rows.append("研究证据 reviewed，核心逻辑/关键证据/证伪风险齐全")
+    elif research.get("available"):
+        rows.append("研究记录 %s，证据待补" % (research.get("status") or "draft"))
     quote = holding.get("quote", {}) if isinstance(holding.get("quote"), dict) else {}
     if quote:
         rows.append(
@@ -2843,8 +2912,16 @@ def evidence_holding_rows(holding: Dict[str, object]) -> List[object]:
 def evidence_holding_gaps(holding: Dict[str, object]) -> List[object]:
     gaps = []
     coverage_state = str(holding.get("coverage_state") or "")
+    research = holding.get("research_status", {}) if isinstance(holding.get("research_status"), dict) else {}
     if coverage_state == "foundation":
-        gaps.append("只命中全 A 基础清单，需补行业/主题逻辑、关键证据和证伪风险。")
+        if research.get("available") and not research.get("confirmed"):
+            missing = research.get("missing_fields", []) if isinstance(research.get("missing_fields"), list) else []
+            if missing:
+                gaps.append("research notes 已存在但未完整，缺 %s。" % "、".join(str(field) for field in missing[:3]))
+            else:
+                gaps.append("research notes 已存在但状态不是 reviewed。")
+        else:
+            gaps.append("只命中全 A 基础清单，需补行业/主题逻辑、关键证据和证伪风险。")
     elif coverage_state == "draft":
         gaps.append("来自候选或待复核补池行，需确认链路、角色、公司逻辑和证伪风险。")
     if not holding.get("has_quote"):
@@ -4635,11 +4712,13 @@ def security_card_item(
         if isinstance(holding.get("coverage_state_reasons"), list)
         else []
     )
+    research = compact_digest_research_status(holding.get("research_status", {}))
     supporting = dedupe_queue_texts(
         list(holding.get("review_points", []) if isinstance(holding.get("review_points"), list) else [])
         + list(workbench.get("evidence", []) if isinstance(workbench.get("evidence"), list) else [])
         + [row for item in evidence_items for row in item.get("evidence", []) if isinstance(item, dict) and isinstance(item.get("evidence"), list)]
         + [row for item in hypothesis_items for row in item.get("supporting_evidence", []) if isinstance(item, dict) and isinstance(item.get("supporting_evidence"), list)]
+        + (["研究证据 reviewed"] if research.get("confirmed") else [])
     )[:6]
     gaps = dedupe_queue_texts(
         [row for item in evidence_items for row in item.get("missing_evidence", []) if isinstance(item, dict) and isinstance(item.get("missing_evidence"), list)]
@@ -4678,6 +4757,7 @@ def security_card_item(
         "review_score": holding.get("review_score"),
         "coverage_state": coverage_state,
         "coverage_state_reasons": [str(reason) for reason in coverage_state_reasons[:6] if reason],
+        "research_status": research,
         "change_priority": holding.get("change_priority"),
         "has_quote": bool(holding.get("has_quote")),
         "in_hotspot": bool(holding.get("in_hotspot")),
@@ -5225,6 +5305,7 @@ def agent_run_contract() -> Dict[str, object]:
             "data.review_digest.holding_dashboard.top_holdings",
             "data.review_digest.holding_dashboard.top_holdings[].coverage_state",
             "data.review_digest.holding_dashboard.top_holdings[].coverage_state_reasons",
+            "data.review_digest.holding_dashboard.top_holdings[].research_status",
             "data.review_digest.holding_dashboard.top_holdings[].change",
             "data.review_digest.holding_dashboard.top_holdings[].change_priority",
             "data.review_digest.holding_dashboard.top_holdings[].primary_question",
@@ -5245,6 +5326,7 @@ def agent_run_contract() -> Dict[str, object]:
             "data.review_digest.security_cards.cards[].priority",
             "data.review_digest.security_cards.cards[].coverage_state",
             "data.review_digest.security_cards.cards[].coverage_state_reasons",
+            "data.review_digest.security_cards.cards[].research_status",
             "data.review_digest.security_cards.cards[].open_gaps",
             "data.review_digest.security_cards.cards[].next_json_command",
             "data.review_digest.security_cards.cards[].journal_note.prefilled_note_command",
@@ -5349,6 +5431,7 @@ def agent_next_contract() -> Dict[str, object]:
             "data.security_cards.cards[].symbol",
             "data.security_cards.cards[].coverage_state",
             "data.security_cards.cards[].coverage_state_reasons",
+            "data.security_cards.cards[].research_status",
             "data.security_cards.cards[].next_json_command",
             "data.security_cards.cards[].open_gaps",
         ],

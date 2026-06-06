@@ -101,7 +101,9 @@ def test_pool_coverage_reports_a_share_universe(monkeypatch, tmp_path):
     assert coverage["foundation_matched_count"] == 1
     assert coverage["matched"][0]["coverage_state"] == "foundation"
     assert "a_share_universe_foundation" in coverage["matched"][0]["coverage_state_reasons"]
-    assert any(gap["id"] == "draft_pool_matches" for gap in data["gaps"])
+    assert "foundation_pool_matches" in coverage["coverage_flags"]
+    assert any(gap["id"] == "foundation_research_missing" for gap in data["gaps"])
+    assert any(action["id"] == "import_research_notes" for action in data["next_actions"])
     assert all(gap["id"] != "all_a_seed_only" for gap in data["gaps"])
     assert "data.universe" in data["agent_contract"]["stable_fields"]
     assert str(universe_file) not in json.dumps(payload, ensure_ascii=False)

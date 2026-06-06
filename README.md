@@ -120,6 +120,7 @@ market-intel import schema --json
 market-intel import quotes examples/quotes.csv.example --runtime --json
 market-intel import holdings examples/holdings.csv.example --runtime --json
 market-intel import universe examples/a_share_universe.csv.example --runtime --json
+market-intel import research examples/research_notes.csv.example --runtime --json
 market-intel agent plan --json
 market-intel agent briefing --text
 market-intel agent run --json
@@ -263,7 +264,17 @@ market-intel pool coverage --text
 market-intel pool coverage --runtime --text
 ```
 
-`market-intel init runtime --json` 也会生成 `data/runtime/a_share_universe.csv` 模板。需要临时叠加额外清单时，仍可使用 `MARKET_INTEL_A_SHARE_UNIVERSE_PATHS=...`。
+`market-intel init runtime --json` 也会生成 `data/runtime/a_share_universe.csv` 和 `data/runtime/research_notes.csv` 模板。需要临时叠加额外清单时，仍可使用 `MARKET_INTEL_A_SHARE_UNIVERSE_PATHS=...`。
+
+研究证据用 `research_notes_v1` CSV 维护，支持 `symbol/name/status/thesis/evidence/invalidation/updated_at/source`，也支持常见中文列名如 `证券代码/证券名称/状态/核心逻辑/关键证据/证伪风险/更新日期/来源`。只有 `status=reviewed` 且核心逻辑、关键证据、证伪风险三项齐全时，基础清单命中的持仓才会从 `foundation` 升级为 `confirmed`。
+
+```bash
+market-intel import research examples/research_notes.csv.example --runtime --json
+market-intel pool coverage --runtime --text
+market-intel agent next --text
+```
+
+需要临时叠加研究证据时，可使用 `MARKET_INTEL_RESEARCH_NOTES_PATHS=...`，不会改主复盘池。
 
 传入持仓源后，它还会检查个人持仓是否已被复盘池覆盖：
 
@@ -359,9 +370,11 @@ CSV 导入支持常见中英文列名。示例：
 ```bash
 market-intel import quotes examples/quotes.csv.example --dry-run --json
 market-intel import holdings examples/holdings.csv.example --dry-run --json
+market-intel import research examples/research_notes.csv.example --dry-run --json
 market-intel import quotes quotes.csv --output data/runtime/quotes.json --json
 market-intel import holdings holdings.csv --output data/runtime/holdings.json --json
 market-intel import universe a_share_universe.csv --output data/runtime/a_share_universe.csv --json
+market-intel import research research_notes.csv --output data/runtime/research_notes.csv --json
 ```
 
 可参考：
@@ -371,3 +384,4 @@ market-intel import universe a_share_universe.csv --output data/runtime/a_share_
 - `examples/quotes.csv.example`
 - `examples/holdings.csv.example`
 - `examples/a_share_universe.csv.example`
+- `examples/research_notes.csv.example`

@@ -9,6 +9,7 @@ from market_intel.cli import (
     handle_agent_run,
     handle_import_holdings,
     handle_import_quotes,
+    handle_import_research,
     handle_import_universe,
     handle_journal_note,
     handle_journal_save,
@@ -61,6 +62,16 @@ def import_foundation_runtime(monkeypatch, tmp_path):
     handle_import_universe(str(universe_path), use_runtime=True)
     handle_import_quotes(str(quotes_path), use_runtime=True)
     handle_import_holdings(str(holdings_path), use_runtime=True)
+
+
+def import_foundation_research(tmp_path):
+    research_path = tmp_path / "research_notes.csv"
+    research_path.write_text(
+        "证券代码,证券名称,状态,核心逻辑,关键证据,证伪风险,更新日期,来源\n"
+        "000001,平安银行,reviewed,股份行资产质量和息差变化是复核主线,关注营收结构、资产质量、拨备和同业对比,若息差继续承压且资产质量恶化则证伪,2026-06-07,test\n",
+        encoding="utf-8",
+    )
+    handle_import_research(str(research_path), use_runtime=True)
 
 
 def test_agent_plan_blocked_when_runtime_missing(monkeypatch, tmp_path):
@@ -906,6 +917,28 @@ def test_agent_next_surfaces_foundation_holding_review(monkeypatch, tmp_path):
     assert "data.security_cards.cards[].coverage_state" in data["agent_contract"]["stable_fields"]
     assert "覆盖: foundation" in text or "覆盖: 基础" in text
     assert "证伪风险" in text
+    assert "buy" not in text.lower()
+    assert "sell" not in text.lower()
+
+
+def test_agent_next_closes_foundation_gap_with_reviewed_research(monkeypatch, tmp_path):
+    import_foundation_runtime(monkeypatch, tmp_path)
+    import_foundation_research(tmp_path)
+
+    payload = handle_agent_next("all-a", max_quote_age_days=9999, max_steps=5, symbol="000001")
+    data = payload["data"]
+    text = render_agent_next_text(payload)
+    card = data["security_cards"]["cards"][0]
+
+    assert payload["ok"] is True
+    assert card["symbol"] == "000001"
+    assert card["coverage_state"] == "confirmed"
+    assert card["coverage_state_reasons"] == ["reviewed_research"]
+    assert card["research_status"]["confirmed"] is True
+    assert "foundation_pool_match" not in card["risk_flags"]
+    assert not any("全 A 基础清单" in gap for gap in card["open_gaps"])
+    assert "data.security_cards.cards[].research_status" in data["agent_contract"]["stable_fields"]
+    assert "研究: reviewed" in text
     assert "buy" not in text.lower()
     assert "sell" not in text.lower()
 

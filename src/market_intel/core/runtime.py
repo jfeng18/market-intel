@@ -10,6 +10,7 @@ EXAMPLES_DIR = repo_root() / "examples"
 EXAMPLE_QUOTES = EXAMPLES_DIR / "quotes.example.json"
 EXAMPLE_HOLDINGS = EXAMPLES_DIR / "holdings.example.json"
 EXAMPLE_UNIVERSE = EXAMPLES_DIR / "a_share_universe.csv.example"
+EXAMPLE_RESEARCH = EXAMPLES_DIR / "research_notes.csv.example"
 
 
 def init_runtime(force: bool = False) -> Dict[str, object]:
@@ -18,10 +19,12 @@ def init_runtime(force: bool = False) -> Dict[str, object]:
     quotes_path = runtime_quotes_path()
     holdings_path = runtime_holdings_path()
     universe_path = runtime_universe_path()
+    research_path = runtime_research_path()
     files = [
         copy_template(EXAMPLE_QUOTES, quotes_path, force),
         copy_template(EXAMPLE_HOLDINGS, holdings_path, force),
         copy_template(EXAMPLE_UNIVERSE, universe_path, force),
+        copy_template(EXAMPLE_RESEARCH, research_path, force),
     ]
     return {
         "runtime_dir": display_path(runtime_dir),
@@ -30,6 +33,7 @@ def init_runtime(force: bool = False) -> Dict[str, object]:
             "Edit %s with current quote values." % display_path(quotes_path),
             "Edit %s with current holdings." % display_path(holdings_path),
             "Edit %s with A-share universe rows if you want broader all-a coverage." % display_path(universe_path),
+            "Edit %s with reviewed single-name research notes when a foundation holding is confirmed." % display_path(research_path),
             "Run: market-intel brief --runtime --text",
         ],
     }
@@ -40,6 +44,7 @@ def runtime_paths() -> Dict[str, str]:
         "quotes": str(runtime_quotes_path()),
         "holdings": str(runtime_holdings_path()),
         "universe": str(runtime_universe_path()),
+        "research": str(runtime_research_path()),
     }
 
 
@@ -71,6 +76,10 @@ def runtime_holdings_path() -> Path:
 
 def runtime_universe_path() -> Path:
     return runtime_dir_path() / "a_share_universe.csv"
+
+
+def runtime_research_path() -> Path:
+    return runtime_dir_path() / "research_notes.csv"
 
 
 def copy_template(source: Path, target: Path, force: bool) -> Dict[str, object]:

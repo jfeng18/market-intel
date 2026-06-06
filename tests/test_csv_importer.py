@@ -5,6 +5,7 @@ from market_intel.cli import (
     handle_daily,
     handle_import_holdings,
     handle_import_quotes,
+    handle_import_research,
     handle_import_schema,
     handle_import_universe,
     handle_pool_coverage,
@@ -164,6 +165,59 @@ def test_import_universe_runtime_then_pool_coverage(monkeypatch, tmp_path):
     assert coverage_payload["data"]["holdings_coverage"]["foundation_matched_count"] == 1
     assert str(universe_csv) not in json.dumps(import_payload, ensure_ascii=False)
     assert str(runtime) not in json.dumps(import_payload, ensure_ascii=False)
+
+
+def test_import_research_rejects_reviewed_rows_with_missing_evidence(tmp_path):
+    csv_path = tmp_path / "research_notes.csv"
+    csv_path.write_text(
+        "证券代码,证券名称,状态,核心逻辑,关键证据,证伪风险\n000001,平安银行,reviewed,银行复核主线,,资产质量恶化\n",
+        encoding="utf-8",
+    )
+
+    payload = handle_import_research(str(csv_path), dry_run=True)
+
+    assert payload["ok"] is False
+    assert any(error["code"] == "RESEARCH_REVIEWED_FIELD_MISSING" for error in payload["errors"])
+
+
+def test_import_research_confirms_foundation_coverage(monkeypatch, tmp_path):
+    runtime = tmp_path / "runtime"
+    monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(runtime))
+    universe_csv = tmp_path / "a_share_universe.csv"
+    research_csv = tmp_path / "research_notes.csv"
+    holdings_json = tmp_path / "holdings.json"
+    universe_csv.write_text(
+        "证券代码,证券名称,行业,概念,指数成分\n000001,平安银行,银行,股份行;金融科技,沪深300\n",
+        encoding="utf-8",
+    )
+    research_csv.write_text(
+        (
+            "证券代码,证券名称,状态,核心逻辑,关键证据,证伪风险,更新日期,来源\n"
+            "000001,平安银行,reviewed,股份行资产质量和息差变化是复核主线,关注营收结构、资产质量、拨备和同业对比,若息差继续承压且资产质量恶化则证伪,2026-06-07,test\n"
+        ),
+        encoding="utf-8",
+    )
+    holdings_json.write_text(
+        json.dumps({"holdings": [{"symbol": "000001", "name": "平安银行"}]}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    universe_payload = handle_import_universe(str(universe_csv), use_runtime=True)
+    research_payload = handle_import_research(str(research_csv), use_runtime=True)
+    coverage_payload = handle_pool_coverage("all-a", holdings_file=str(holdings_json))
+    matched = coverage_payload["data"]["holdings_coverage"]["matched"][0]
+
+    assert universe_payload["ok"] is True
+    assert research_payload["ok"] is True
+    assert research_payload["data"]["output"] == "research_notes.csv"
+    assert coverage_payload["ok"] is True
+    assert coverage_payload["data"]["holdings_coverage"]["confirmed_count"] == 1
+    assert coverage_payload["data"]["holdings_coverage"]["foundation_matched_count"] == 0
+    assert matched["coverage_state"] == "confirmed"
+    assert matched["coverage_state_reasons"] == ["reviewed_research"]
+    assert matched["research_status"]["confirmed"] is True
+    assert str(research_csv) not in json.dumps(research_payload, ensure_ascii=False)
+    assert str(runtime) not in json.dumps(research_payload, ensure_ascii=False)
 
 
 def test_import_schema_cli_smoke(cli_cmd):

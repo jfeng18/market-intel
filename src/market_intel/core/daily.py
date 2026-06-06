@@ -1029,6 +1029,7 @@ def portfolio_security_context(item: Dict[str, object]) -> Dict[str, object]:
         "priority": item.get("priority"),
         "coverage_state": item.get("coverage_state"),
         "coverage_state_reasons": item.get("coverage_state_reasons"),
+        "research_status": item.get("research_status") if isinstance(item.get("research_status"), dict) else {},
         "change_pct": quote.get("change_pct") if quote else None,
         "amount_ratio": quote.get("amount_ratio") if quote else None,
         "intraday_fade_pct": quote.get("intraday_fade_pct") if quote else None,

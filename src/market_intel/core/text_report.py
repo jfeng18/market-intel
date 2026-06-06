@@ -398,7 +398,9 @@ def render_holdings_coverage(value: object) -> List[str]:
         rendered = []
         for row in matched[:5]:
             if isinstance(row, dict):
-                rendered.append("%s %s/%s" % (row.get("symbol"), row.get("primary_layer"), row.get("primary_sub_sector")))
+                research_text = render_research_status(row.get("research_status", {}))
+                suffix = " | %s" % research_text if research_text else ""
+                rendered.append("%s %s/%s%s" % (row.get("symbol"), row.get("primary_layer"), row.get("primary_sub_sector"), suffix))
         if rendered:
             lines.append("   已覆盖样例: %s" % "；".join(rendered))
     return lines
@@ -1221,6 +1223,9 @@ def render_agent_run_security_cards(value: Dict[str, object]) -> List[str]:
             reasons = item.get("coverage_state_reasons", []) if isinstance(item.get("coverage_state_reasons"), list) else []
             reason_text = " | 原因: %s" % render_labels(reasons) if reasons else ""
             lines.append("      覆盖: %s%s" % (label(coverage_state), reason_text))
+        research_text = render_research_status(item.get("research_status", {}))
+        if research_text:
+            lines.append("      研究: %s" % research_text)
         hotspot = item.get("hotspot", {}) if isinstance(item.get("hotspot"), dict) else {}
         if hotspot:
             lines.append("      热点: %s | 分 %s" % (hotspot.get("chain"), hotspot.get("score")))
@@ -1482,6 +1487,9 @@ def render_agent_run_holding_dashboard(value: Dict[str, object]) -> List[str]:
             coverage_reasons = item.get("coverage_state_reasons", []) if isinstance(item.get("coverage_state_reasons"), list) else []
             reason_text = " | 原因: %s" % render_labels(coverage_reasons) if coverage_reasons else ""
             lines.append("      覆盖: %s%s" % (label(coverage_state), reason_text))
+        research_text = render_research_status(item.get("research_status", {}))
+        if research_text:
+            lines.append("      研究: %s" % research_text)
         if item.get("primary_question"):
             lines.append("      问题: %s" % item.get("primary_question"))
         if item.get("primary_json_command") or item.get("primary_command"):
@@ -2191,6 +2199,9 @@ def render_portfolio_item(item: Dict[str, object]) -> List[str]:
         reasons = item.get("coverage_state_reasons", []) if isinstance(item.get("coverage_state_reasons"), list) else []
         reason_text = " | 原因: %s" % render_labels(reasons) if reasons else ""
         lines.append("   覆盖: %s%s" % (label(coverage_state), reason_text))
+    research_text = render_research_status(item.get("research_status", {}))
+    if research_text:
+        lines.append("   研究: %s" % research_text)
     exposures = item.get("exposures", []) if isinstance(item.get("exposures"), list) else []
     if exposures:
         lines.append("   链路: %s" % render_portfolio_exposures(exposures))
@@ -2862,6 +2873,9 @@ def render_security_review_queue(value: object) -> List[str]:
             coverage_reasons = context.get("coverage_state_reasons", []) if isinstance(context.get("coverage_state_reasons"), list) else []
             reason_text = " | 原因: %s" % render_labels(coverage_reasons) if coverage_reasons else ""
             lines.append("   覆盖: %s%s" % (label(coverage_state), reason_text))
+        research_text = render_research_status(context.get("research_status", {}))
+        if research_text:
+            lines.append("   研究: %s" % research_text)
         points = item.get("review_points", []) if isinstance(item.get("review_points"), list) else []
         if points:
             lines.append("   复核: %s" % "；".join(label(point) for point in points[:2]))
@@ -3398,6 +3412,20 @@ def trim_text(value: object, limit: int) -> str:
 
 def render_labels(values: Iterable[object]) -> str:
     return ", ".join(label(value) for value in values)
+
+
+def render_research_status(value: object) -> str:
+    data = value if isinstance(value, dict) else {}
+    if not data.get("available"):
+        return ""
+    status = str(data.get("status") or "draft")
+    if data.get("confirmed"):
+        source = data.get("source_file")
+        return "reviewed%s" % (" | %s" % source if source else "")
+    missing = data.get("missing_fields", []) if isinstance(data.get("missing_fields"), list) else []
+    if missing:
+        return "%s | 待补 %s" % (status, "、".join(str(field) for field in missing[:3]))
+    return status
 
 
 def label(value: object) -> str:

@@ -172,6 +172,7 @@ def build_review_item(
         if isinstance(impact.get("coverage_state_reasons"), list)
         else []
     )
+    research = impact.get("research_status", {}) if isinstance(impact.get("research_status"), dict) else {}
 
     priority_score = calculate_priority_score(risk_flags, quote, hotspot, exposure_rows)
     return {
@@ -183,6 +184,7 @@ def build_review_item(
         "matched_pool_item": bool(impact.get("matched_pool_item")),
         "coverage_state": coverage_state,
         "coverage_state_reasons": coverage_state_reasons,
+        "research_status": compact_research_status(research),
         "exposure_count": len(exposure_rows),
         "exposures": exposure_rows,
         "overlap_groups": impact.get("overlap_groups", []) if isinstance(impact.get("overlap_groups"), list) else [],
@@ -190,8 +192,22 @@ def build_review_item(
         "risk_flags": risk_flags,
         "priority_score": priority_score,
         "priority": priority_label(priority_score),
-        "review_points": review_points(risk_flags, quote, hotspot, exposure_rows),
+        "review_points": review_points(risk_flags, quote, hotspot, exposure_rows, compact_research_status(research)),
         "explain": build_item_explain(holding, quote, hotspot, risk_flags, exposure_rows),
+    }
+
+
+def compact_research_status(value: Dict[str, object]) -> Dict[str, object]:
+    data = value if isinstance(value, dict) else {}
+    return {
+        "available": bool(data.get("available")),
+        "status": data.get("status") or "missing",
+        "source_file": data.get("source_file"),
+        "has_thesis": bool(data.get("has_thesis")),
+        "has_evidence": bool(data.get("has_evidence")),
+        "has_invalidation": bool(data.get("has_invalidation")),
+        "missing_fields": list(data.get("missing_fields", [])) if isinstance(data.get("missing_fields"), list) else [],
+        "confirmed": bool(data.get("confirmed")),
     }
 
 
@@ -273,14 +289,23 @@ def review_points(
     quote: Optional[Quote],
     hotspot: Optional[Dict[str, object]],
     exposures: List[Dict[str, object]],
+    research: Optional[Dict[str, object]] = None,
 ) -> List[str]:
     points = []
+    research = research if isinstance(research, dict) else {}
     if "holding_missing_quote" in risk_flags:
         points.append("补齐该持仓行情，否则无法判断今日链路上下文。")
     if "not_in_pool" in risk_flags:
         points.append("确认该持仓是否应加入当前复盘池，或单独标记为池外持仓。")
     if "foundation_pool_match" in risk_flags:
-        points.append("该持仓只命中全 A 基础清单，需补行业/主题逻辑、证据和证伪风险。")
+        if research.get("available") and not research.get("confirmed"):
+            missing = research.get("missing_fields", []) if isinstance(research.get("missing_fields"), list) else []
+            suffix = "，缺 %s。" % "、".join(str(field) for field in missing) if missing else "。"
+            points.append("该持仓已有研究记录但未达到 reviewed 完整证据%s" % suffix)
+        else:
+            points.append("该持仓只命中全 A 基础清单，需补行业/主题逻辑、证据和证伪风险。")
+    if research.get("confirmed") and "reviewed_research" in research_reason_text(research):
+        points.append("研究证据已复核：核心逻辑、关键证据和证伪风险齐全。")
     if "draft_pool_match" in risk_flags:
         points.append("该持仓来自候选或待复核补池行，需确认链路、角色和公司逻辑。")
     if "theme_overlap" in risk_flags or "multi_chain_exposure" in risk_flags:
@@ -296,6 +321,12 @@ def review_points(
     if exposures and not points:
         points.append("链路暴露清晰，继续核对公司逻辑和当日行情来源。")
     return dedupe(points)
+
+
+def research_reason_text(research: Dict[str, object]) -> str:
+    if research.get("confirmed"):
+        return "reviewed_research"
+    return ""
 
 
 def build_item_explain(
@@ -369,6 +400,7 @@ def portfolio_contract() -> Dict[str, object]:
             "data.items[].priority",
             "data.items[].coverage_state",
             "data.items[].coverage_state_reasons",
+            "data.items[].research_status",
             "data.items[].risk_flags",
             "data.items[].review_points",
             "data.repeated_exposures",

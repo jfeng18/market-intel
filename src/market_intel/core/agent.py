@@ -1025,6 +1025,7 @@ def agent_briefing_contract(max_quote_age_days: int) -> Dict[str, object]:
             "data.daily.portfolio_review",
             "data.daily.portfolio_review.top_items[].coverage_state",
             "data.daily.portfolio_review.top_items[].coverage_state_reasons",
+            "data.daily.portfolio_review.top_items[].research_status",
             "data.daily.portfolio_exposure",
             "data.daily.risk_register",
             "data.daily.risk_register[].severity",
@@ -1118,6 +1119,7 @@ def compact_portfolio_item(item: Dict[str, object]) -> Dict[str, object]:
         "priority_score": item.get("priority_score"),
         "coverage_state": item.get("coverage_state"),
         "coverage_state_reasons": list(item.get("coverage_state_reasons", [])) if isinstance(item.get("coverage_state_reasons"), list) else [],
+        "research_status": compact_research_status(item.get("research_status", {})),
         "risk_flags": list(item.get("risk_flags", [])) if isinstance(item.get("risk_flags"), list) else [],
         "review_points": list(item.get("review_points", []))[:3] if isinstance(item.get("review_points"), list) else [],
         "exposures": compact_exposures(item.get("exposures", [])),
@@ -1147,6 +1149,20 @@ def compact_exposures(value: object) -> List[Dict[str, object]]:
         for item in exposures[:5]
         if isinstance(item, dict)
     ]
+
+
+def compact_research_status(value: object) -> Dict[str, object]:
+    data = value if isinstance(value, dict) else {}
+    return {
+        "available": bool(data.get("available")),
+        "status": data.get("status") or "missing",
+        "source_file": data.get("source_file"),
+        "has_thesis": bool(data.get("has_thesis")),
+        "has_evidence": bool(data.get("has_evidence")),
+        "has_invalidation": bool(data.get("has_invalidation")),
+        "missing_fields": list(data.get("missing_fields", [])) if isinstance(data.get("missing_fields"), list) else [],
+        "confirmed": bool(data.get("confirmed")),
+    }
 
 
 def compact_group_counts(value: object) -> List[Dict[str, object]]:
@@ -1554,6 +1570,9 @@ def portfolio_context(item: Dict[str, object]) -> Dict[str, object]:
     return {
         "is_holding": True,
         "priority": item.get("priority"),
+        "coverage_state": item.get("coverage_state"),
+        "coverage_state_reasons": item.get("coverage_state_reasons"),
+        "research_status": compact_research_status(item.get("research_status", {})),
         "change_pct": quote.get("change_pct") if quote else None,
         "amount_ratio": quote.get("amount_ratio") if quote else None,
         "intraday_fade_pct": quote.get("intraday_fade_pct") if quote else None,

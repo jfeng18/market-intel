@@ -12,6 +12,7 @@ AI_ENERGY_POOL = "ai-energy"
 DEFAULT_POOL = ALL_A_POOL
 AI_ENERGY_POOL_FILENAME = "ai_energy_pool_2026-05-19.csv"
 A_SHARE_UNIVERSE_ENV = "MARKET_INTEL_A_SHARE_UNIVERSE_PATHS"
+RESEARCH_NOTES_ENV = "MARKET_INTEL_RESEARCH_NOTES_PATHS"
 
 POOL_REGISTRY: Dict[str, Dict[str, str]] = {
     ALL_A_POOL: {
@@ -56,11 +57,29 @@ def a_share_universe_paths() -> List[Path]:
     return dedupe_paths(paths)
 
 
+def research_note_paths() -> List[Path]:
+    paths = []
+    runtime_path = runtime_research_path()
+    if runtime_path.exists():
+        paths.append(runtime_path)
+    configured = os.environ.get(RESEARCH_NOTES_ENV)
+    if configured:
+        paths.extend(Path(value) for value in configured.split(os.pathsep) if value.strip())
+    return dedupe_paths(paths)
+
+
 def runtime_universe_path() -> Path:
     configured = os.environ.get("MARKET_INTEL_RUNTIME_DIR")
     if configured:
         return Path(configured) / "a_share_universe.csv"
     return repo_root() / "data" / "runtime" / "a_share_universe.csv"
+
+
+def runtime_research_path() -> Path:
+    configured = os.environ.get("MARKET_INTEL_RUNTIME_DIR")
+    if configured:
+        return Path(configured) / "research_notes.csv"
+    return repo_root() / "data" / "runtime" / "research_notes.csv"
 
 
 def dedupe_paths(paths: List[Path]) -> List[Path]:
@@ -85,6 +104,7 @@ def load_pool(pool: str = DEFAULT_POOL, path: Optional[Path] = None) -> List[Poo
                 rows.extend(read_a_share_universe_items(universe_path))
         for extra_path in extra_pool_paths():
             rows.extend(read_pool_items(extra_path, source="extra:%s" % extra_path.name))
+        apply_research_notes(rows, research_note_paths())
     items = merge_pool_items(rows)
     for item in items:
         item.raw["pool"] = pool
@@ -102,6 +122,63 @@ def read_pool_items(path: Path, source: str) -> List[PoolItem]:
             item.raw["pool_source_file"] = path.name
             rows.append(item)
     return rows
+
+
+def apply_research_notes(items: List[PoolItem], paths: List[Path]) -> None:
+    if not paths:
+        return
+    notes = read_research_notes(paths)
+    if not notes:
+        return
+    for item in items:
+        if not item.symbol:
+            continue
+        note = notes.get(item.symbol.upper())
+        if not note:
+            continue
+        item.raw["research_note"] = note
+        item.raw["research_status"] = note.get("status")
+        item.raw["research_source_file"] = note.get("source_file")
+        item.raw["research_schema"] = "research_notes_v1"
+        item.raw["research_thesis"] = note.get("thesis")
+        item.raw["research_evidence"] = note.get("evidence")
+        item.raw["research_invalidation"] = note.get("invalidation")
+
+
+def read_research_notes(paths: List[Path]) -> Dict[str, Dict[str, object]]:
+    notes: Dict[str, Dict[str, object]] = {}
+    for path in paths:
+        if not path.exists():
+            continue
+        with path.open(newline="", encoding="utf-8-sig") as handle:
+            reader = csv.DictReader(handle)
+            for row in reader:
+                symbol = first_value(row, ["symbol", "code", "证券代码", "股票代码", "代码"])
+                if not symbol:
+                    continue
+                note = {
+                    "symbol": symbol.strip().upper(),
+                    "name": first_value(row, ["name", "company", "证券名称", "股票名称", "名称"]),
+                    "status": normalize_research_status(first_value(row, ["status", "review_status", "研究状态", "状态"])),
+                    "thesis": first_value(row, ["thesis", "logic", "核心逻辑", "研究结论", "逻辑"]),
+                    "evidence": first_value(row, ["evidence", "key_evidence", "关键证据", "证据"]),
+                    "invalidation": first_value(row, ["invalidation", "risk", "bear_case", "证伪风险", "风险"]),
+                    "source": first_value(row, ["source", "来源", "数据源"]),
+                    "updated_at": first_value(row, ["updated_at", "date", "日期", "更新日期"]),
+                    "source_file": path.name,
+                    "schema": "research_notes_v1",
+                }
+                notes[note["symbol"]] = note
+    return notes
+
+
+def normalize_research_status(value: str) -> str:
+    text = str(value or "").strip().lower()
+    if text in {"reviewed", "confirmed", "已复核", "已确认", "确认"}:
+        return "reviewed"
+    if text in {"blocked", "invalid", "驳回", "阻塞"}:
+        return "blocked"
+    return "draft"
 
 
 def read_a_share_universe_items(path: Path) -> List[PoolItem]:

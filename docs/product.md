@@ -57,6 +57,8 @@ market-intel 是面向全 A 的个人复盘操作系统，不是行情 App、交
 
 尤其是全 A 方向，基础证券清单只能说明“这只票存在且有行业/概念字段”，不能说明已经完成研究覆盖。`foundation` 标的必须继续输出待补证据、证伪风险和 journal 模板，不能被当作已确认池内标的。
 
+当前实现用 `research_notes_v1` 作为轻量研究证据层：一只基础清单标的只有在 `status=reviewed` 且核心逻辑、关键证据、证伪风险三项齐全时，才会从 `foundation` 升级为 `confirmed`。这让“覆盖率提升”不是因为股票被导入了，而是因为研究证据闭环完成了。
+
 ### 3.3 agent-native
 
 每个核心输出都必须给 agent 稳定读取路径：
@@ -120,8 +122,9 @@ import/runtime -> status/readiness -> pool coverage -> pool expansion review
 1. A 股基础证券清单：代码、名称、交易所、行业、上市状态。
 2. 行业/概念/指数成分：形成基础链路，不局限于 AI。
 3. 持仓驱动补池：从未覆盖持仓生成 `expansion_queue`，人工复核后叠加验证。
-4. 覆盖状态分层：`confirmed/draft/missing/blocked`，避免把草稿当成正式结论。
-5. 热点与风险模型泛化：支持金融、消费、医药、周期、TMT、制造、能源等板块。
+4. 研究证据闭环：用 `research_notes_v1` 记录核心逻辑、关键证据和证伪风险，关闭 `foundation` 待复核状态。
+5. 覆盖状态分层：`confirmed/foundation/draft/missing/blocked`，避免把草稿或基础清单当成正式结论。
+6. 热点与风险模型泛化：支持金融、消费、医药、周期、TMT、制造、能源等板块。
 
 全 A 不是一次性导入大表，而是先建立覆盖状态和复核流程，逐步提高可解释覆盖率。
 
@@ -153,6 +156,7 @@ import/runtime -> status/readiness -> pool coverage -> pool expansion review
 
 - journal 不只保存日报，还要追踪上次假设、本次验证结果和未完成 follow-up。
 - 把“缺证据”作为一等对象输出，而不是隐藏在自然语言里。
+- 让 `import research`、`pool coverage`、`portfolio review` 和 `agent next` 共用同一套 research status，使人和 agent 都能看到证据是否足以关闭基础覆盖缺口。
 
 ### P3：轻量 GUI
 

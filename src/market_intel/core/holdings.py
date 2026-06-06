@@ -1,7 +1,7 @@
 from collections import Counter
 from typing import Dict, List
 
-from .coverage import matched_coverage_state
+from .coverage import matched_coverage_state, research_status
 from .models import Holding, PoolItem
 from .normalize import find_pool_item
 
@@ -90,6 +90,7 @@ def build_holding_impact(items: List[PoolItem], holding: Holding) -> Dict[str, o
     if overlap_groups:
         risk_flags.append("theme_overlap")
     coverage_state = matched_coverage_state(item)
+    research = research_status(item)
     if coverage_state["state"] == "foundation":
         risk_flags.append("foundation_pool_match")
     elif coverage_state["state"] == "draft":
@@ -102,6 +103,7 @@ def build_holding_impact(items: List[PoolItem], holding: Holding) -> Dict[str, o
         "matched_pool_item": True,
         "coverage_state": coverage_state["state"],
         "coverage_state_reasons": coverage_state["reasons"],
+        "research_status": research,
         "exposures": exposures,
         "overlap_groups": overlap_groups,
         "impact": {
