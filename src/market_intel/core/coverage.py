@@ -4,7 +4,7 @@ from typing import Dict, List, Optional
 import csv
 
 from .models import Holding, PoolItem
-from .normalize import find_pool_item
+from .normalize import find_pool_item, normalize_row
 from .pool_loader import pool_definition
 
 
@@ -88,6 +88,158 @@ def export_expansion_queue_csv(
         "warnings": expansion_export_warnings(rows),
         "next_commands": expansion_export_next_commands(output_path, written, rows),
     }
+
+
+def review_expansion_csv(csv_path: Path) -> Dict[str, object]:
+    if not csv_path.exists():
+        return expansion_review_result(
+            csv_path,
+            rows=[],
+            blockers=[
+                {
+                    "code": "POOL_EXPANSION_FILE_NOT_FOUND",
+                    "message": "Expansion CSV file does not exist.",
+                    "detail": {"path": csv_path.name},
+                }
+            ],
+            warnings=[],
+        )
+
+    rows = []
+    blockers = []
+    warnings = []
+    with csv_path.open(encoding="utf-8-sig", newline="") as handle:
+        reader = csv.DictReader(handle)
+        fieldnames = reader.fieldnames or []
+        missing = [field for field in POOL_CSV_FIELDS if field not in fieldnames]
+        if missing:
+            blockers.append(
+                {
+                    "code": "POOL_EXPANSION_COLUMNS_MISSING",
+                    "message": "Expansion CSV is missing required columns.",
+                    "detail": {"missing": missing, "expected": list(POOL_CSV_FIELDS)},
+                }
+            )
+        for index, row in enumerate(reader, start=2):
+            row_result = review_expansion_row(row, index)
+            rows.append(row_result)
+            blockers.extend(row_result["blockers"])
+            warnings.extend(row_result["warnings"])
+
+    if not rows and not blockers:
+        blockers.append(
+            {
+                "code": "POOL_EXPANSION_EMPTY",
+                "message": "Expansion CSV has no rows.",
+                "detail": {"path": csv_path.name},
+            }
+        )
+    return expansion_review_result(csv_path, rows, blockers, warnings)
+
+
+def review_expansion_row(row: Dict[str, str], row_number: int) -> Dict[str, object]:
+    blockers = []
+    warnings = []
+    normalized = normalize_row(row, row_number)
+    symbol = normalized.symbol
+    status = str(row.get("status") or "").strip().lower()
+    required_missing = [field for field in ("section", "level", "desc") if is_pending_text(row.get(field))]
+    if required_missing:
+        blockers.append(
+            {
+                "code": "POOL_EXPANSION_REQUIRED_FIELDS_PENDING",
+                "message": "Expansion row still has pending required fields.",
+                "detail": {"row": row_number, "symbol": symbol or row.get("code"), "fields": required_missing},
+            }
+        )
+    if status in {"candidate", "draft", ""}:
+        blockers.append(
+            {
+                "code": "POOL_EXPANSION_STATUS_NOT_READY",
+                "message": "Expansion row status must be reviewed before it is considered ready.",
+                "detail": {"row": row_number, "symbol": symbol or row.get("code"), "status": status or "EMPTY"},
+            }
+        )
+    if normalized.instrument_type != "security" or not normalized.tradable:
+        blockers.append(
+            {
+                "code": "POOL_EXPANSION_NOT_TRADABLE",
+                "message": "Expansion row does not normalize to a tradable security.",
+                "detail": {"row": row_number, "symbol": symbol or row.get("code"), "instrument_type": normalized.instrument_type},
+            }
+        )
+    flags = sorted(set(normalized.data_quality_flags))
+    blocking_flags = [flag for flag in flags if flag in {"invalid_symbol", "missing_role", "column_shift_suspected"}]
+    if blocking_flags:
+        blockers.append(
+            {
+                "code": "POOL_EXPANSION_DATA_QUALITY_BLOCKERS",
+                "message": "Expansion row has blocking data quality flags.",
+                "detail": {"row": row_number, "symbol": symbol or row.get("code"), "flags": blocking_flags},
+            }
+        )
+    nonblocking_flags = [flag for flag in flags if flag not in blocking_flags]
+    if nonblocking_flags:
+        warnings.append(
+            {
+                "code": "POOL_EXPANSION_DATA_QUALITY_WARNINGS",
+                "message": "Expansion row has data quality warnings.",
+                "detail": {"row": row_number, "symbol": symbol or row.get("code"), "flags": nonblocking_flags},
+            }
+        )
+
+    return {
+        "row": row_number,
+        "symbol": symbol,
+        "name": normalized.name,
+        "status": status or None,
+        "review_state": "ready" if not blockers else "blocked",
+        "normalized": {
+            "market": normalized.market,
+            "instrument_type": normalized.instrument_type,
+            "tradable": normalized.tradable,
+            "primary_layer": normalized.primary_layer,
+            "primary_sub_sector": normalized.primary_sub_sector,
+            "primary_role": normalized.primary_role,
+            "data_quality_flags": flags,
+        },
+        "blockers": blockers,
+        "warnings": warnings,
+    }
+
+
+def expansion_review_result(
+    csv_path: Path,
+    rows: List[Dict[str, object]],
+    blockers: List[Dict[str, object]],
+    warnings: List[Dict[str, object]],
+) -> Dict[str, object]:
+    ready_rows = [row for row in rows if isinstance(row, dict) and row.get("review_state") == "ready"]
+    state = "ready" if rows and not blockers else "blocked"
+    return {
+        "input": csv_path.name,
+        "row_count": len(rows),
+        "ready_count": len(ready_rows),
+        "blocked_count": len(rows) - len(ready_rows),
+        "review_state": state,
+        "rows": rows,
+        "ready_rows": ready_rows,
+        "blockers": blockers,
+        "warnings": warnings,
+        "next_commands": expansion_review_next_commands(csv_path, state),
+    }
+
+
+def expansion_review_next_commands(csv_path: Path, state: str) -> List[str]:
+    if state == "ready":
+        return [
+            "MARKET_INTEL_POOL_EXTRA_PATHS=%s market-intel pool coverage --runtime --text" % csv_path.name,
+            "MARKET_INTEL_POOL_EXTRA_PATHS=%s market-intel focus --runtime --text" % csv_path.name,
+        ]
+    return [
+        "Edit %s and resolve blockers." % csv_path.name,
+        "market-intel pool expansion --review-file %s --json" % csv_path.name,
+    ]
 
 
 def expansion_candidate_rows(expansion_queue: List[Dict[str, object]]) -> List[Dict[str, object]]:

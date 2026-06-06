@@ -9,7 +9,7 @@ from .core.agent import build_agent_briefing, build_agent_plan, command_queue_it
 from .core.fixtures import load_holdings_file, load_mock_holdings, load_mock_quotes, load_quotes_file
 from .core.brief import build_daily_brief
 from .core.csv_importer import import_holdings_csv, import_quotes_csv, import_schema
-from .core.coverage import build_pool_coverage, export_expansion_queue_csv
+from .core.coverage import build_pool_coverage, export_expansion_queue_csv, review_expansion_csv
 from .core.daily import build_daily_report, validate_daily_files
 from .core.focus import build_focus_report
 from .core.holdings import calculate_holding_impacts
@@ -82,6 +82,7 @@ def build_parser() -> argparse.ArgumentParser:
     expansion_parser.add_argument("--runtime", action="store_true")
     expansion_parser.add_argument("--holdings-file")
     expansion_parser.add_argument("--output")
+    expansion_parser.add_argument("--review-file")
     expansion_parser.add_argument("--dry-run", action="store_true")
     expansion_parser.add_argument("--json", action="store_true", dest="as_json")
 
@@ -318,6 +319,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                 args.holdings_file,
                 args.runtime,
                 args.output,
+                args.review_file,
                 args.dry_run,
             )
         elif args.resource == "pool" and args.action == "explain":
@@ -575,8 +577,36 @@ def handle_pool_expansion(
     holdings_file: Optional[str] = None,
     use_runtime: bool = False,
     output: Optional[str] = None,
+    review_file: Optional[str] = None,
     dry_run: bool = False,
 ) -> Dict[str, Any]:
+    if review_file:
+        if output or dry_run or use_mock or use_runtime or holdings_file:
+            return envelope(
+                command="pool.expansion",
+                data={"pool": pool, "agent_contract": pool_expansion_contract()},
+                errors=[
+                    error(
+                        "POOL_EXPANSION_REVIEW_CONFLICT",
+                        "Use --review-file by itself; do not combine it with source or output options.",
+                        {"pool": pool},
+                    )
+                ],
+                source="pool:%s" % pool,
+                ok=False,
+            )
+        review_data = review_expansion_csv(Path(review_file))
+        review_data["pool"] = pool
+        review_data["agent_contract"] = pool_expansion_contract()
+        return envelope(
+            command="pool.expansion",
+            data=review_data,
+            warnings=review_data.get("warnings", []),
+            errors=review_data.get("blockers", []),
+            source="pool:%s" % pool,
+            ok=review_data.get("review_state") == "ready",
+        )
+
     coverage_payload = handle_pool_coverage(pool, use_mock, holdings_file, use_runtime)
     if not coverage_payload.get("ok"):
         return coverage_payload
@@ -628,8 +658,11 @@ def pool_expansion_contract() -> Dict[str, object]:
             "data.fields",
             "data.rows",
             "data.next_commands",
+            "data.review_state",
+            "data.blockers",
+            "data.ready_rows",
         ],
-        "boundary": "pool expansion 只导出候选补池 CSV，不自动修改主复盘池。",
+        "boundary": "pool expansion 只导出或审查候选补池 CSV，不自动修改主复盘池。",
     }
 
 

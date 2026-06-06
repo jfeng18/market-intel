@@ -159,6 +159,56 @@ def test_pool_expansion_writes_pool_csv(tmp_path):
     assert "MARKET_INTEL_POOL_EXTRA_PATHS=" in payload["data"]["next_commands"][0]
 
 
+def test_pool_expansion_review_blocks_candidate_draft(tmp_path):
+    expansion_file = tmp_path / "pool_expansion.csv"
+    expansion_file.write_text(
+        "status,priority,section,level,company,code,desc,notes\n"
+        "candidate,P2,待确认 / 持仓补充,待确认,平安银行,000001,持仓未匹配当前复盘池,source=test\n",
+        encoding="utf-8",
+    )
+
+    payload = handle_pool_expansion("all-a", review_file=str(expansion_file))
+    data = payload["data"]
+
+    assert payload["ok"] is False
+    assert data["review_state"] == "blocked"
+    assert data["row_count"] == 1
+    assert data["blocked_count"] == 1
+    assert any(blocker["code"] == "POOL_EXPANSION_STATUS_NOT_READY" for blocker in data["blockers"])
+    assert any(blocker["code"] == "POOL_EXPANSION_REQUIRED_FIELDS_PENDING" for blocker in data["blockers"])
+    assert str(expansion_file) not in json.dumps(payload, ensure_ascii=False)
+
+
+def test_pool_expansion_review_accepts_reviewed_rows(tmp_path):
+    expansion_file = tmp_path / "pool_expansion.csv"
+    expansion_file.write_text(
+        "status,priority,section,level,company,code,desc,notes\n"
+        "reviewed,P2,银行 / 银行,股份行,平安银行,000001,股份行龙头；用于持仓覆盖补充,source=test\n",
+        encoding="utf-8",
+    )
+
+    payload = handle_pool_expansion("all-a", review_file=str(expansion_file))
+    data = payload["data"]
+
+    assert payload["ok"] is True
+    assert data["review_state"] == "ready"
+    assert data["ready_count"] == 1
+    assert data["ready_rows"][0]["symbol"] == "000001"
+    assert data["ready_rows"][0]["normalized"]["primary_layer"] == "其他"
+    assert "MARKET_INTEL_POOL_EXTRA_PATHS=" in data["next_commands"][0]
+    assert str(expansion_file) not in json.dumps(payload, ensure_ascii=False)
+
+
+def test_pool_expansion_review_rejects_conflicting_options(tmp_path):
+    expansion_file = tmp_path / "pool_expansion.csv"
+    expansion_file.write_text("status,priority,section,level,company,code,desc,notes\n", encoding="utf-8")
+
+    payload = handle_pool_expansion("all-a", review_file=str(expansion_file), dry_run=True)
+
+    assert payload["ok"] is False
+    assert payload["errors"][0]["code"] == "POOL_EXPANSION_REVIEW_CONFLICT"
+
+
 def test_pool_expansion_overlay_closes_coverage_gap(monkeypatch, tmp_path):
     holdings_file = tmp_path / "holdings.json"
     output_file = tmp_path / "pool_expansion.csv"
@@ -364,3 +414,29 @@ def test_pool_expansion_cli_smoke(tmp_path, cli_cmd):
     payload = json.loads(result.stdout)
     assert payload["command"] == "pool.expansion"
     assert payload["data"]["rows"][0]["code"] == "000001"
+
+
+def test_pool_expansion_review_cli_smoke(tmp_path, cli_cmd):
+    expansion_file = tmp_path / "pool_expansion.csv"
+    expansion_file.write_text(
+        "status,priority,section,level,company,code,desc,notes\n"
+        "candidate,P2,待确认 / 持仓补充,待确认,平安银行,000001,持仓未匹配当前复盘池,source=test\n",
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        cli_cmd(
+            "pool",
+            "expansion",
+            "--review-file",
+            str(expansion_file),
+            "--json",
+        ),
+        text=True,
+        capture_output=True,
+    )
+
+    payload = json.loads(result.stdout)
+    assert result.returncode == 1
+    assert payload["command"] == "pool.expansion"
+    assert payload["data"]["review_state"] == "blocked"
