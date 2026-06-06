@@ -241,6 +241,7 @@ market-intel daily --runtime --text
 market-intel portfolio review --runtime --text
 market-intel portfolio explain 002837 --runtime --text
 market-intel brief --runtime --text
+market-intel scan --runtime --text
 market-intel watchlist --runtime --text
 market-intel map --runtime --text
 market-intel pool explain 002837 --runtime --text
@@ -289,6 +290,13 @@ market-intel pool coverage --runtime --text
 ```
 
 `pool research` 只导出 foundation 持仓的研究证据草稿，不自动生成研究结论。
+
+`scan` 是全 A / 复盘池扫描入口：只要求行情源，持仓源可选；有 A 股基础清单时按行业、概念、指数成分聚合，没有基础清单时退回当前复盘池链路。它输出 `sector_groups` 和 `candidate_securities`，每个候选都包含 `why_now`、`checklist`、`coverage_state`、`research_status`、后续命令和完成标准。`scan` 用来回答“今天全市场哪些板块和标的值得复盘”，不生成买卖动作、目标价或仓位建议。
+
+```bash
+market-intel scan --runtime --text
+market-intel scan --quotes-file data/runtime/quotes.json --json
+```
 
 传入持仓源后，它还会检查个人持仓是否已被复盘池覆盖：
 

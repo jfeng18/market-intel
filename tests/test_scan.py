@@ -1,0 +1,168 @@
+import json
+import subprocess
+
+from market_intel.cli import handle_scan
+from market_intel.core.text_report import render_scan_text
+
+
+def test_scan_mock_defaults_to_all_a_seed():
+    payload = handle_scan("all-a", use_mock=True, top=3, candidate_top=4)
+    data = payload["data"]
+    text = render_scan_text(payload)
+
+    assert payload["ok"] is True
+    assert payload["command"] == "scan"
+    assert data["pool"] == "all-a"
+    assert data["scan_mode"] == "pool_chain_seed"
+    assert data["sector_groups"]
+    assert data["candidate_securities"]
+    assert data["candidate_securities"][0]["why_now"]
+    assert data["candidate_securities"][0]["checklist"]
+    assert data["candidate_securities"][0]["commands"][0].startswith("market-intel pool explain")
+    assert data["coverage_context"]["available"] is True
+    assert data["coverage_context"]["pool"] == "all-a"
+    assert "data.sector_groups" in data["agent_contract"]["stable_fields"]
+    assert "data.candidate_securities[].why_now" in data["agent_contract"]["stable_fields"]
+    assert "market-intel scan" in text
+    assert "板块扫描" in text
+    assert "候选复盘" in text
+    assert "buy" not in text.lower()
+    assert "sell" not in text.lower()
+
+
+def test_scan_uses_a_share_universe_groups(monkeypatch, tmp_path):
+    universe_file = tmp_path / "a_share_universe.csv"
+    universe_file.write_text(
+        "证券代码,证券名称,行业,概念,指数成分,上市状态\n"
+        "000001,平安银行,银行,股份行;金融科技,沪深300;深证100,listed\n"
+        "600519,贵州茅台,食品饮料,白酒;消费,上证50;沪深300,listed\n",
+        encoding="utf-8",
+    )
+    quotes_file = tmp_path / "quotes.json"
+    quotes_file.write_text(
+        json.dumps(
+            {
+                "quotes": [
+                    {
+                        "symbol": "000001",
+                        "trade_date": "2026-06-06",
+                        "last_price": 12.3,
+                        "change_pct": 4.2,
+                        "amount": 1000000000,
+                        "amount_ratio": 1.8,
+                        "turnover_rate": 2.1,
+                        "amplitude_pct": 5.0,
+                        "is_limit_up": False,
+                        "is_stage_high": True,
+                        "intraday_fade_pct": 0.8,
+                        "source": "test",
+                    },
+                    {
+                        "symbol": "600519",
+                        "trade_date": "2026-06-06",
+                        "last_price": 1600,
+                        "change_pct": 2.1,
+                        "amount": 2000000000,
+                        "amount_ratio": 1.3,
+                        "turnover_rate": 1.2,
+                        "amplitude_pct": 3.0,
+                        "is_limit_up": False,
+                        "is_stage_high": False,
+                        "intraday_fade_pct": 0.4,
+                        "source": "test",
+                    },
+                ]
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("MARKET_INTEL_A_SHARE_UNIVERSE_PATHS", str(universe_file))
+
+    payload = handle_scan("all-a", use_mock=False, quotes_file=str(quotes_file), top=5, candidate_top=3)
+    data = payload["data"]
+    text = render_scan_text(payload)
+
+    assert payload["ok"] is True
+    assert data["scan_mode"] == "all_a_universe"
+    assert data["matched_quote_count"] == 2
+    assert any(group["group_type"] == "industry" and group["name"] == "银行" for group in data["sector_groups"])
+    assert any(group["group_type"] == "index" and group["name"] == "沪深300" for group in data["sector_groups"])
+    first = data["candidate_securities"][0]
+    assert first["symbol"] == "000001"
+    assert first["coverage_state"] == "foundation"
+    assert "foundation_pool_match" in first["risk_flags"]
+    assert first["research_status"]["status"] == "missing"
+    assert first["commands"][1] == "market-intel pool research --runtime --dry-run --json"
+    assert "全 A 基础清单" in text
+    assert "行业银行" in text
+    assert str(universe_file) not in json.dumps(payload, ensure_ascii=False)
+    assert str(quotes_file) not in json.dumps(payload, ensure_ascii=False)
+
+
+def test_scan_requires_quote_source_has_text_guidance():
+    payload = handle_scan("all-a", use_mock=False)
+    text = render_scan_text(payload)
+
+    assert payload["ok"] is False
+    assert payload["errors"][0]["code"] == "SCAN_QUOTE_SOURCE_REQUIRED"
+    assert payload["data"]["next_actions"][0]["command"] == "market-intel import quotes <quotes.csv> --runtime --json"
+    assert "数据未就绪" in text
+    assert "market-intel import quotes" in text
+
+
+def test_scan_runtime_requires_quotes_not_holdings(monkeypatch, tmp_path):
+    runtime_dir = tmp_path / "runtime"
+    runtime_dir.mkdir()
+    quotes_file = runtime_dir / "quotes.json"
+    quotes_file.write_text(
+        json.dumps(
+            {
+                "quotes": [
+                    {
+                        "symbol": "002837",
+                        "trade_date": "2026-06-06",
+                        "last_price": 38.42,
+                        "change_pct": 7.2,
+                        "amount": 1850000000,
+                        "amount_ratio": 2.8,
+                        "turnover_rate": 8.6,
+                        "amplitude_pct": 9.8,
+                        "is_limit_up": False,
+                        "is_stage_high": True,
+                        "intraday_fade_pct": 1.1,
+                        "source": "test",
+                    }
+                ]
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(runtime_dir))
+
+    payload = handle_scan("all-a", use_mock=False, use_runtime=True)
+
+    assert payload["ok"] is True
+    assert payload["data"]["mode"] == "runtime"
+    assert payload["data"]["sources"]["quotes"]["source"] == "runtime_quotes"
+    assert payload["data"]["sources"]["holdings"]["provided"] is False
+
+
+def test_scan_cli_smoke(cli_cmd):
+    text_result = subprocess.run(
+        cli_cmd("scan", "--mock", "--top", "3", "--candidate-top", "4", "--text"),
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    json_result = subprocess.run(
+        cli_cmd("scan", "--mock", "--top", "3", "--candidate-top", "4", "--json"),
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+
+    assert "market-intel scan" in text_result.stdout
+    assert "候选复盘" in text_result.stdout
+    assert json.loads(json_result.stdout)["command"] == "scan"

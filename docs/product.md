@@ -128,9 +128,12 @@ import/runtime -> status/readiness -> pool coverage -> pool expansion review
 3. 持仓驱动补池：从未覆盖持仓生成 `expansion_queue`，人工复核后叠加验证。
 4. 研究证据闭环：用 `research_notes_v1` 记录核心逻辑、关键证据和证伪风险，关闭 `foundation` 待复核状态。
 5. 覆盖状态分层：`confirmed/foundation/draft/missing/blocked`，避免把草稿或基础清单当成正式结论。
-6. 热点与风险模型泛化：支持金融、消费、医药、周期、TMT、制造、能源等板块。
+6. 全市场扫描入口：`scan` 只要求行情源，按行业、概念、指数或复盘池链路聚合板块强弱，并输出可复核候选清单。
+7. 热点与风险模型泛化：支持金融、消费、医药、周期、TMT、制造、能源等板块。
 
 全 A 不是一次性导入大表，也不是把所有基础清单标的都当作已研究；它先建立覆盖状态和复核流程，再逐步提高可解释覆盖率。最重要的工作流是：发现 `foundation` 缺口，导出 research notes 待办，人工补齐三项证据，dry-run 校验，runtime 导入，coverage 复跑确认。
+
+`scan` 是面向全 A 的默认发现入口。它不替代行情 App 的实时盯盘，也不输出交易建议；它的价值是把板块强弱、覆盖状态、研究证据缺口和下一步命令放进同一个结构化结果，让人和 agent 都能接着复盘。
 
 ## 6. 北极星指标
 

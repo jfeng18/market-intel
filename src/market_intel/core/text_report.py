@@ -13,6 +13,9 @@ LABELS = {
     "strong_members": "强势成员",
     "leader_strength": "龙头强",
     "high_hotspot_score": "热点分高",
+    "broad_sector_strength": "板块扩散",
+    "stage_high_members": "阶段新高",
+    "turnover_expansion": "成交放大",
     "multi_chain_exposure": "多链路暴露",
     "theme_overlap": "主题重叠",
     "leader_in_hotspot": "热点领涨",
@@ -95,6 +98,54 @@ def render_brief_text(payload: Dict[str, object]) -> str:
     lines.extend(render_list(data.get("risk_flags", []), empty="暂无风险标签。"))
     lines.extend(["", "待验证问题"])
     lines.extend(render_list(data.get("questions", []), empty="暂无待验证问题。"))
+    lines.extend(["", "边界"])
+    lines.extend(render_list(data.get("guardrails", []), empty="无。"))
+    return "\n".join(lines)
+
+
+def render_scan_text(payload: Dict[str, object]) -> str:
+    data = payload.get("data", {})
+    if not isinstance(data, dict):
+        return "market-intel scan\n\n无数据。"
+    if not payload.get("ok"):
+        lines = [
+            "market-intel scan",
+            "",
+            "数据未就绪",
+        ]
+        lines.extend(render_scan_errors(payload.get("errors", [])))
+        lines.extend(["", "下一步"])
+        lines.extend(render_scan_actions(data.get("next_actions", [])))
+        lines.extend(["", "边界"])
+        lines.extend(render_list(data.get("guardrails", []), empty="scan 不生成买卖指令。"))
+        return "\n".join(lines)
+
+    lines = [
+        "market-intel scan",
+        "",
+        "总览",
+        "- %s" % (data.get("summary") or "暂无扫描摘要。"),
+        "- 范围 %s | 模式 %s | 行情 %s | 匹配 %s | 候选 %s"
+        % (
+            data.get("pool") or "-",
+            render_scan_mode(data.get("scan_mode")),
+            data.get("quote_count", 0),
+            data.get("matched_quote_count", 0),
+            len(data.get("candidate_securities", []) if isinstance(data.get("candidate_securities"), list) else []),
+        ),
+    ]
+    coverage = data.get("coverage_context", {}) if isinstance(data.get("coverage_context"), dict) else {}
+    if coverage:
+        lines.extend(["", "覆盖底座"])
+        lines.extend(render_focus_coverage_context(coverage))
+    lines.extend(["", "板块扫描"])
+    lines.extend(render_scan_groups(data.get("sector_groups", [])))
+    lines.extend(["", "候选复盘"])
+    lines.extend(render_scan_candidates(data.get("candidate_securities", [])))
+    lines.extend(["", "待验证问题"])
+    lines.extend(render_list(data.get("questions", []), empty="暂无待验证问题。"))
+    lines.extend(["", "下一步"])
+    lines.extend(render_scan_actions(data.get("next_actions", [])))
     lines.extend(["", "边界"])
     lines.extend(render_list(data.get("guardrails", []), empty="无。"))
     return "\n".join(lines)
@@ -383,6 +434,134 @@ def render_expansion_ready_rows(value: object) -> List[str]:
             )
         )
     return lines
+
+
+def render_scan_mode(value: object) -> str:
+    labels = {
+        "all_a_universe": "全 A 基础清单",
+        "pool_chain_seed": "复盘池链路种子",
+    }
+    return labels.get(str(value), str(value or "未知"))
+
+
+def render_scan_errors(value: object) -> List[str]:
+    errors = value if isinstance(value, list) else []
+    if not errors:
+        return ["- 暂无错误明细。"]
+    lines = []
+    for item in errors[:5]:
+        if isinstance(item, dict):
+            lines.append("- %s: %s" % (item.get("code"), item.get("message")))
+    return lines or ["- 暂无错误明细。"]
+
+
+def render_scan_groups(value: object) -> List[str]:
+    rows = value if isinstance(value, list) else []
+    if not rows:
+        return ["- 暂无板块扫描结果。"]
+    lines = []
+    for row in rows[:8]:
+        if not isinstance(row, dict):
+            continue
+        lines.append(
+            "- #%s %s%s | 分 %.2f | 活跃 %s/%s | 涨幅 %.2f%% | 成交 %.2f | 风险 %s"
+            % (
+                row.get("rank") or "-",
+                scan_group_type_label(row.get("group_type")),
+                row.get("name") or "-",
+                float(row.get("score") or 0),
+                row.get("active_member_count", 0),
+                row.get("member_count", 0),
+                float(row.get("avg_change_pct") or 0),
+                float(row.get("avg_amount_ratio") or 0),
+                render_labels(row.get("risks", [])) if row.get("risks") else "无",
+            )
+        )
+        leaders = row.get("leaders", []) if isinstance(row.get("leaders"), list) else []
+        if leaders:
+            lines.append("   领涨: %s" % render_scan_leaders(leaders))
+        signals = row.get("signals", []) if isinstance(row.get("signals"), list) else []
+        if signals:
+            lines.append("   信号: %s" % render_labels(signals))
+    return lines
+
+
+def render_scan_candidates(value: object) -> List[str]:
+    rows = value if isinstance(value, list) else []
+    if not rows:
+        return ["- 暂无候选复盘标的。"]
+    lines = []
+    for row in rows[:10]:
+        if not isinstance(row, dict):
+            continue
+        quote = row.get("quote", {}) if isinstance(row.get("quote"), dict) else {}
+        mark = "持仓" if row.get("is_holding") else "观察"
+        lines.append(
+            "- #%s %s %s | %s | %s | 分 %.2f | %+s%% | 覆盖 %s"
+            % (
+                row.get("rank") or "-",
+                row.get("symbol"),
+                row.get("name"),
+                mark,
+                label(row.get("priority")),
+                float(row.get("review_score") or 0),
+                quote.get("change_pct", 0),
+                row.get("coverage_state") or "-",
+            )
+        )
+        if row.get("why_now"):
+            lines.append("   为何现在看: %s" % row.get("why_now"))
+        checklist = row.get("checklist", []) if isinstance(row.get("checklist"), list) else []
+        if checklist:
+            lines.append("   核对: %s" % "；".join(str(item) for item in checklist[:3]))
+        commands = row.get("commands", []) if isinstance(row.get("commands"), list) else []
+        if commands:
+            lines.append("   命令: %s" % "；".join(str(command) for command in commands[:2]))
+        if row.get("done_when"):
+            lines.append("   完成: %s" % row.get("done_when"))
+    return lines
+
+
+def render_scan_leaders(value: object) -> str:
+    leaders = value if isinstance(value, list) else []
+    parts = []
+    for leader in leaders[:4]:
+        if not isinstance(leader, dict):
+            continue
+        parts.append(
+            "%s %s %+s%%"
+            % (
+                leader.get("symbol"),
+                leader.get("name"),
+                leader.get("change_pct"),
+            )
+        )
+    return "；".join(parts) if parts else "无"
+
+
+def render_scan_actions(value: object) -> List[str]:
+    rows = value if isinstance(value, list) else []
+    if not rows:
+        return ["- 暂无下一步。"]
+    lines = []
+    for row in rows[:5]:
+        if not isinstance(row, dict):
+            continue
+        lines.append("- #%s %s" % (row.get("rank") or "-", row.get("command") or row.get("id")))
+        if row.get("done_when"):
+            lines.append("   完成: %s" % row.get("done_when"))
+    return lines
+
+
+def scan_group_type_label(value: object) -> str:
+    labels = {
+        "industry": "行业",
+        "concept": "概念",
+        "index": "指数",
+        "chain": "链路",
+        "unknown": "分组",
+    }
+    return labels.get(str(value), str(value or "分组"))
 
 
 def render_named_counts(value: object, empty: str) -> List[str]:

@@ -31,6 +31,7 @@ from .core.normalize import explain_pool_item, find_pool_item
 from .core.pool_loader import DEFAULT_POOL, default_pool_path, list_pools, load_pool
 from .core.portfolio import build_portfolio_explain, build_portfolio_review
 from .core.runtime import init_runtime, runtime_missing_files, runtime_paths
+from .core.scan import build_market_scan
 from .core.scoring import calculate_hotspots
 from .core.status import build_runtime_status
 from .core.text_report import (
@@ -54,6 +55,7 @@ from .core.text_report import (
     render_portfolio_explain_text,
     render_portfolio_review_text,
     render_runtime_status_text,
+    render_scan_text,
     render_watchlist_text,
 )
 from .core.validation import validate_runtime
@@ -114,6 +116,17 @@ def build_parser() -> argparse.ArgumentParser:
     hotspots_parser.add_argument("--top", type=int, default=10)
     hotspots_parser.add_argument("--pool", default=DEFAULT_POOL)
     hotspots_parser.add_argument("--json", action="store_true", dest="as_json")
+
+    scan_parser = subparsers.add_parser("scan")
+    scan_parser.add_argument("--mock", action="store_true")
+    scan_parser.add_argument("--runtime", action="store_true")
+    scan_parser.add_argument("--quotes-file")
+    scan_parser.add_argument("--holdings-file")
+    scan_parser.add_argument("--top", type=int, default=8)
+    scan_parser.add_argument("--candidate-top", type=int, default=12)
+    scan_parser.add_argument("--pool", default=DEFAULT_POOL)
+    scan_parser.add_argument("--json", action="store_true", dest="as_json")
+    scan_parser.add_argument("--text", action="store_true")
 
     holdings_parser = subparsers.add_parser("holdings")
     holdings_subparsers = holdings_parser.add_subparsers(dest="action")
@@ -372,6 +385,19 @@ def main(argv: Optional[List[str]] = None) -> int:
                 return 0
         elif args.resource == "hotspots":
             result = handle_hotspots(args.pool, args.mock, args.top, args.quotes_file, args.runtime)
+        elif args.resource == "scan":
+            result = handle_scan(
+                args.pool,
+                args.mock,
+                args.top,
+                args.candidate_top,
+                args.quotes_file,
+                args.holdings_file,
+                args.runtime,
+            )
+            if args.text:
+                print(render_scan_text(result))
+                return 0 if result["ok"] else 1
         elif args.resource == "holdings" and args.action == "impact":
             result = handle_holdings_impact(args.pool, args.mock, args.holdings_file, args.runtime)
         elif args.resource == "portfolio" and args.action == "review":
@@ -858,6 +884,97 @@ def handle_hotspots(
         data=data,
         source=source,
     )
+
+
+def handle_scan(
+    pool: str,
+    use_mock: bool,
+    top: int = 8,
+    candidate_top: int = 12,
+    quotes_file: Optional[str] = None,
+    holdings_file: Optional[str] = None,
+    use_runtime: bool = False,
+) -> Dict[str, Any]:
+    if use_runtime:
+        missing = scan_runtime_missing_files()
+        if missing:
+            return runtime_error("scan", missing)
+        paths = runtime_paths()
+        quotes_file = paths["quotes"]
+        holdings_path = Path(paths["holdings"])
+        if holdings_path.exists():
+            holdings_file = paths["holdings"]
+
+    if not use_mock and not quotes_file:
+        return envelope(
+            command="scan",
+            data={
+                "pool": pool,
+                "agent_contract": build_market_scan([], [], top=top, candidate_top=candidate_top, pool=pool).get("agent_contract"),
+                "next_actions": [
+                    {
+                        "rank": 1,
+                        "id": "import_quotes",
+                        "command": "market-intel import quotes <quotes.csv> --runtime --json",
+                        "done_when": "已导入当日行情后重新运行 scan。",
+                    }
+                ],
+                "guardrails": ["scan 需要行情源；输出不生成买卖指令、目标价或仓位建议。"],
+            },
+            errors=[
+                error(
+                    "SCAN_QUOTE_SOURCE_REQUIRED",
+                    "Scan requires --mock, --runtime, or --quotes-file.",
+                    {"pool": pool},
+                )
+            ],
+            source=str(default_pool_path(pool)),
+            ok=False,
+        )
+
+    items = load_pool(pool)
+    quotes, quote_mode, quote_source = resolve_quotes(use_mock, quotes_file)
+    holdings = []
+    holdings_mode = "none"
+    holdings_source = None
+    if use_mock or holdings_file:
+        holdings, holdings_mode, raw_holdings_source = resolve_holdings(use_mock, holdings_file)
+        holdings_source = privacy_safe_source(raw_holdings_source, "holdings", "runtime" if use_runtime else holdings_mode)
+    data = build_market_scan(items, quotes, holdings=holdings, top=top, candidate_top=candidate_top, pool=pool)
+    data["pool"] = pool
+    data["mode"] = scan_mode(use_mock, use_runtime, quotes_file)
+    data["coverage_context"] = daily_coverage_context(pool, items, holdings)
+    data["sources"] = {
+        "quotes": {
+            "mode": "runtime" if use_runtime else quote_mode,
+            "source": privacy_safe_source(quote_source, "quotes", "runtime" if use_runtime else quote_mode),
+        },
+        "holdings": {
+            "provided": bool(holdings),
+            "mode": "runtime" if use_runtime else holdings_mode,
+            "source": holdings_source,
+        },
+    }
+    return envelope(
+        command="scan",
+        data=data,
+        warnings=pool_warnings(items),
+        source="pool:%s" % pool,
+    )
+
+
+def scan_mode(use_mock: bool, use_runtime: bool, quotes_file: Optional[str]) -> str:
+    if use_runtime:
+        return "runtime"
+    if use_mock and not quotes_file:
+        return "mock"
+    return "file"
+
+
+def scan_runtime_missing_files() -> List[str]:
+    paths = runtime_paths()
+    quotes_path = Path(paths["quotes"])
+    return [] if quotes_path.exists() else [str(quotes_path)]
 
 
 def handle_holdings_impact(
