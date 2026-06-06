@@ -1,5 +1,7 @@
 from collections import Counter
+from pathlib import Path
 from typing import Dict, List, Optional
+import csv
 
 from .models import Holding, PoolItem
 from .normalize import find_pool_item
@@ -19,6 +21,8 @@ CN_A_PREFIXES = {
     "605": "沪市主板",
     "688": "科创板",
 }
+
+POOL_CSV_FIELDS = ["status", "priority", "section", "level", "company", "code", "desc", "notes"]
 
 
 def build_pool_coverage(
@@ -58,6 +62,72 @@ def build_pool_coverage(
         "agent_contract": coverage_contract(),
         "guardrails": coverage_guardrails(scope),
     }
+
+
+def export_expansion_queue_csv(
+    expansion_queue: List[Dict[str, object]],
+    output_path: Path,
+    dry_run: bool = False,
+) -> Dict[str, object]:
+    rows = expansion_candidate_rows(expansion_queue)
+    written = False
+    if rows and not dry_run:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        with output_path.open("w", encoding="utf-8", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=POOL_CSV_FIELDS)
+            writer.writeheader()
+            writer.writerows(rows)
+        written = True
+    return {
+        "output": str(output_path),
+        "record_count": len(rows),
+        "written": written,
+        "dry_run": dry_run,
+        "fields": list(POOL_CSV_FIELDS),
+        "rows": rows,
+        "warnings": expansion_export_warnings(rows),
+        "next_commands": expansion_export_next_commands(output_path, written, rows),
+    }
+
+
+def expansion_candidate_rows(expansion_queue: List[Dict[str, object]]) -> List[Dict[str, object]]:
+    rows = []
+    for item in expansion_queue:
+        if not isinstance(item, dict):
+            continue
+        candidate = item.get("candidate_pool_row")
+        if not isinstance(candidate, dict):
+            continue
+        rows.append({field: str(candidate.get(field) or "") for field in POOL_CSV_FIELDS})
+    return rows
+
+
+def expansion_export_warnings(rows: List[Dict[str, object]]) -> List[Dict[str, object]]:
+    if not rows:
+        return []
+    return [
+        {
+            "code": "POOL_EXPANSION_NEEDS_REVIEW",
+            "message": "Expansion CSV is a draft. Confirm section, level, desc, and notes before using it as a pool source.",
+            "detail": {"record_count": len(rows), "required_fields": ["section", "level", "desc"]},
+        }
+    ]
+
+
+def expansion_export_next_commands(
+    output_path: Path,
+    written: bool,
+    rows: List[Dict[str, object]],
+) -> List[str]:
+    if not rows:
+        return []
+    commands = []
+    if written:
+        commands.append("MARKET_INTEL_POOL_PATH=%s market-intel pool list --json" % output_path)
+        commands.append("MARKET_INTEL_POOL_PATH=%s market-intel pool coverage --runtime --text" % output_path)
+    else:
+        commands.append("market-intel pool expansion --runtime --output data/runtime/pool_expansion.csv --json")
+    return commands
 
 
 def coverage_status(scope: str, data_quality: Dict[str, object]) -> str:

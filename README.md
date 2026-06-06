@@ -261,6 +261,15 @@ market-intel pool coverage --holdings-file data/runtime/holdings.json --json
 
 未覆盖持仓会进入 `data.expansion_queue`，每项包含 `symbol/name`、候选补池行、必填字段、复核问题、后续命令和完成标准。这个队列是“补池任务”，不会自动写入池子文件；补入前需要人工或 agent 先确认行业/主题链路、角色和核心逻辑。
 
+可以把补池任务导出成可编辑 CSV 草稿：
+
+```bash
+market-intel pool expansion --runtime --output data/runtime/pool_expansion.csv --json
+MARKET_INTEL_POOL_PATH=data/runtime/pool_expansion.csv market-intel pool coverage --runtime --text
+```
+
+`pool expansion` 只写候选草稿，不会改主池。编辑 CSV 时至少要补齐 `section`、`level` 和 `desc`，再用 `MARKET_INTEL_POOL_PATH=...` 临时验证这个扩展池能否被 CLI 正常读取。
+
 `watchlist` 是盘中盯盘清单：把热点领涨标的和持仓标的合并去重，标出链路、涨幅、成交放大、回落、风险和是否持仓。
 
 `portfolio review` 是从持仓出发的复盘清单：逐个持仓汇总链路暴露、行情、热点上下文、风险标签和待复核问题，并展开重复链路/重复主题涉及的持仓，适合盘后检查“我手上的票今天需要看什么”。

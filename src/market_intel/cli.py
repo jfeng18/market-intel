@@ -9,7 +9,7 @@ from .core.agent import build_agent_briefing, build_agent_plan, command_queue_it
 from .core.fixtures import load_holdings_file, load_mock_holdings, load_mock_quotes, load_quotes_file
 from .core.brief import build_daily_brief
 from .core.csv_importer import import_holdings_csv, import_quotes_csv, import_schema
-from .core.coverage import build_pool_coverage
+from .core.coverage import build_pool_coverage, export_expansion_queue_csv
 from .core.daily import build_daily_report, validate_daily_files
 from .core.focus import build_focus_report
 from .core.holdings import calculate_holding_impacts
@@ -75,6 +75,15 @@ def build_parser() -> argparse.ArgumentParser:
     coverage_parser.add_argument("--holdings-file")
     coverage_parser.add_argument("--json", action="store_true", dest="as_json")
     coverage_parser.add_argument("--text", action="store_true")
+
+    expansion_parser = pool_subparsers.add_parser("expansion")
+    expansion_parser.add_argument("--pool", default=DEFAULT_POOL)
+    expansion_parser.add_argument("--mock", action="store_true")
+    expansion_parser.add_argument("--runtime", action="store_true")
+    expansion_parser.add_argument("--holdings-file")
+    expansion_parser.add_argument("--output")
+    expansion_parser.add_argument("--dry-run", action="store_true")
+    expansion_parser.add_argument("--json", action="store_true", dest="as_json")
 
     explain_parser = pool_subparsers.add_parser("explain")
     explain_parser.add_argument("symbol")
@@ -302,6 +311,15 @@ def main(argv: Optional[List[str]] = None) -> int:
             if args.text and result["ok"]:
                 print(render_pool_coverage_text(result))
                 return 0
+        elif args.resource == "pool" and args.action == "expansion":
+            result = handle_pool_expansion(
+                args.pool,
+                args.mock,
+                args.holdings_file,
+                args.runtime,
+                args.output,
+                args.dry_run,
+            )
         elif args.resource == "pool" and args.action == "explain":
             result = handle_pool_explain(args.pool, args.symbol, args.runtime)
             if args.text and result["ok"]:
@@ -549,6 +567,70 @@ def handle_pool_coverage(
         warnings=pool_warnings(items),
         source="pool:%s" % pool,
     )
+
+
+def handle_pool_expansion(
+    pool: str,
+    use_mock: bool = False,
+    holdings_file: Optional[str] = None,
+    use_runtime: bool = False,
+    output: Optional[str] = None,
+    dry_run: bool = False,
+) -> Dict[str, Any]:
+    coverage_payload = handle_pool_coverage(pool, use_mock, holdings_file, use_runtime)
+    if not coverage_payload.get("ok"):
+        return coverage_payload
+    if not output and not dry_run:
+        return envelope(
+            command="pool.expansion",
+            data={
+                "pool": pool,
+                "agent_contract": pool_expansion_contract(),
+            },
+            errors=[
+                error(
+                    "POOL_EXPANSION_OUTPUT_REQUIRED",
+                    "Pool expansion export requires --output or --dry-run.",
+                    {"pool": pool},
+                )
+            ],
+            source="pool:%s" % pool,
+            ok=False,
+        )
+
+    data = coverage_payload.get("data", {}) if isinstance(coverage_payload.get("data"), dict) else {}
+    output_path = Path(output) if output else Path("data/runtime/pool_expansion.csv")
+    export_data = export_expansion_queue_csv(
+        data.get("expansion_queue", []) if isinstance(data.get("expansion_queue"), list) else [],
+        output_path,
+        dry_run=dry_run,
+    )
+    export_data["pool"] = pool
+    export_data["coverage_summary"] = data.get("holdings_coverage", {})
+    export_data["agent_contract"] = pool_expansion_contract()
+    return envelope(
+        command="pool.expansion",
+        data=export_data,
+        warnings=export_data.get("warnings", []),
+        source="pool:%s" % pool,
+    )
+
+
+def pool_expansion_contract() -> Dict[str, object]:
+    return {
+        "success": "ok=true 且 errors=[]",
+        "stable_fields": [
+            "data.pool",
+            "data.output",
+            "data.record_count",
+            "data.written",
+            "data.dry_run",
+            "data.fields",
+            "data.rows",
+            "data.next_commands",
+        ],
+        "boundary": "pool expansion 只导出候选补池 CSV，不自动修改主复盘池。",
+    }
 
 
 def handle_pool_explain(pool: str, symbol: str, use_runtime: bool = False) -> Dict[str, Any]:

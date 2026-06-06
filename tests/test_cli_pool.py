@@ -1,7 +1,14 @@
+import csv
 import json
 import subprocess
 
-from market_intel.cli import handle_init_runtime, handle_pool_coverage, handle_pool_explain, handle_pool_list
+from market_intel.cli import (
+    handle_init_runtime,
+    handle_pool_coverage,
+    handle_pool_expansion,
+    handle_pool_explain,
+    handle_pool_list,
+)
 from market_intel.core.text_report import render_pool_coverage_text, render_pool_explain_text
 
 
@@ -95,6 +102,61 @@ def test_pool_coverage_file_holdings_reports_unmatched_gap(tmp_path):
     assert data["next_actions"][2]["id"] == "review_expansion_queue"
     assert data["holdings_source"]["source"] == "holdings_file"
     assert str(holdings_file) not in json.dumps(payload, ensure_ascii=False)
+
+
+def test_pool_expansion_requires_output_or_dry_run(tmp_path):
+    holdings_file = tmp_path / "holdings.json"
+    holdings_file.write_text(
+        json.dumps({"holdings": [{"symbol": "000001", "name": "平安银行"}]}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    payload = handle_pool_expansion("all-a", holdings_file=str(holdings_file))
+
+    assert payload["ok"] is False
+    assert payload["command"] == "pool.expansion"
+    assert payload["errors"][0]["code"] == "POOL_EXPANSION_OUTPUT_REQUIRED"
+
+
+def test_pool_expansion_dry_run_exports_candidate_rows(tmp_path):
+    holdings_file = tmp_path / "holdings.json"
+    holdings_file.write_text(
+        json.dumps({"holdings": [{"symbol": "000001", "name": "平安银行"}]}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    payload = handle_pool_expansion("all-a", holdings_file=str(holdings_file), dry_run=True)
+    data = payload["data"]
+
+    assert payload["ok"] is True
+    assert data["record_count"] == 1
+    assert data["written"] is False
+    assert data["dry_run"] is True
+    assert data["rows"][0]["code"] == "000001"
+    assert data["rows"][0]["company"] == "平安银行"
+    assert "data.rows" in data["agent_contract"]["stable_fields"]
+    assert str(holdings_file) not in json.dumps(payload, ensure_ascii=False)
+
+
+def test_pool_expansion_writes_pool_csv(tmp_path):
+    holdings_file = tmp_path / "holdings.json"
+    output_file = tmp_path / "pool_expansion.csv"
+    holdings_file.write_text(
+        json.dumps({"holdings": [{"symbol": "000001", "name": "平安银行"}]}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    payload = handle_pool_expansion("all-a", holdings_file=str(holdings_file), output=str(output_file))
+
+    assert payload["ok"] is True
+    assert payload["data"]["written"] is True
+    assert payload["data"]["record_count"] == 1
+    with output_file.open(encoding="utf-8", newline="") as handle:
+        rows = list(csv.DictReader(handle))
+    assert rows[0]["status"] == "candidate"
+    assert rows[0]["code"] == "000001"
+    assert rows[0]["section"] == "待确认 / 持仓补充"
+    assert "MARKET_INTEL_POOL_PATH=" in payload["data"]["next_commands"][0]
 
 
 def test_pool_coverage_text_renders_expansion_queue(tmp_path):
@@ -229,3 +291,29 @@ def test_pool_coverage_cli_smoke(cli_cmd):
     assert "覆盖率 100.0%" in text_result.stdout
     assert "覆盖缺口" in text_result.stdout
     assert json.loads(json_result.stdout)["command"] == "pool.coverage"
+
+
+def test_pool_expansion_cli_smoke(tmp_path, cli_cmd):
+    holdings_file = tmp_path / "holdings.json"
+    holdings_file.write_text(
+        json.dumps({"holdings": [{"symbol": "000001", "name": "平安银行"}]}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        cli_cmd(
+            "pool",
+            "expansion",
+            "--holdings-file",
+            str(holdings_file),
+            "--dry-run",
+            "--json",
+        ),
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+
+    payload = json.loads(result.stdout)
+    assert payload["command"] == "pool.expansion"
+    assert payload["data"]["rows"][0]["code"] == "000001"
