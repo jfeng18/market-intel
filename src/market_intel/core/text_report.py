@@ -234,8 +234,27 @@ def render_holdings_coverage(value: object) -> List[str]:
             ratio_text,
         )
     ]
+    if coverage.get("needs_review_count"):
+        lines.append(
+            "   待复核覆盖: %s | 正式覆盖: %s | 草稿匹配: %s"
+            % (
+                coverage.get("needs_review_count", 0),
+                coverage.get("confirmed_count", 0),
+                coverage.get("draft_matched_count", 0),
+            )
+        )
     if coverage.get("summary"):
         lines.append("   摘要: %s" % coverage.get("summary"))
+
+    review_queue = coverage.get("review_queue", []) if isinstance(coverage.get("review_queue"), list) else []
+    if review_queue:
+        rendered = []
+        for row in review_queue[:6]:
+            if isinstance(row, dict):
+                reasons = row.get("reasons", []) if isinstance(row.get("reasons"), list) else []
+                rendered.append("%s %s[%s]" % (row.get("symbol"), row.get("name") or "", ",".join(str(reason) for reason in reasons[:3])))
+        if rendered:
+            lines.append("   待复核: %s" % "；".join(rendered))
 
     unmatched = coverage.get("unmatched", []) if isinstance(coverage.get("unmatched"), list) else []
     if unmatched:

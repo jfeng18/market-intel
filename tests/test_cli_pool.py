@@ -175,7 +175,35 @@ def test_pool_expansion_overlay_closes_coverage_gap(monkeypatch, tmp_path):
     assert payload["ok"] is True
     assert coverage["matched_count"] == 1
     assert coverage["unmatched_count"] == 0
+    assert coverage["confirmed_count"] == 0
+    assert coverage["draft_matched_count"] == 1
+    assert coverage["needs_review_count"] == 1
+    assert coverage["matched"][0]["coverage_state"] == "draft"
+    assert "candidate_status" in coverage["matched"][0]["coverage_state_reasons"]
+    assert "extra_pool_overlay" in coverage["matched"][0]["coverage_state_reasons"]
+    assert coverage["review_queue"][0]["symbol"] == "000001"
+    assert "draft_pool_matches" in coverage["coverage_flags"]
     assert payload["data"]["expansion_queue"] == []
+    assert any(gap["id"] == "draft_pool_matches" for gap in payload["data"]["gaps"])
+    assert any(action["id"] == "review_draft_pool_matches" for action in payload["data"]["next_actions"])
+
+
+def test_pool_coverage_text_renders_draft_matches(monkeypatch, tmp_path):
+    holdings_file = tmp_path / "holdings.json"
+    output_file = tmp_path / "pool_expansion.csv"
+    holdings_file.write_text(
+        json.dumps({"holdings": [{"symbol": "000001", "name": "平安银行"}]}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    handle_pool_expansion("all-a", holdings_file=str(holdings_file), output=str(output_file))
+    monkeypatch.setenv("MARKET_INTEL_POOL_EXTRA_PATHS", str(output_file))
+
+    text = render_pool_coverage_text(handle_pool_coverage("all-a", holdings_file=str(holdings_file)))
+
+    assert "待复核覆盖: 1" in text
+    assert "草稿匹配: 1" in text
+    assert "draft_pool_matches" in text
+    assert "000001 平安银行" in text
 
 
 def test_pool_coverage_text_renders_expansion_queue(tmp_path):

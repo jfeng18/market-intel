@@ -219,6 +219,7 @@ def build_holdings_coverage(
     matched = []
     unmatched = []
     market_counter = Counter()
+    review_queue = []
     for holding in holdings:
         item = find_pool_item(items, holding.symbol)
         if item is None:
@@ -233,6 +234,18 @@ def build_holdings_coverage(
             continue
 
         market_counter.update([item.market])
+        state = matched_coverage_state(item)
+        if state["state"] != "confirmed":
+            review_queue.append(
+                {
+                    "symbol": holding.symbol,
+                    "name": holding.name or item.name,
+                    "coverage_state": state["state"],
+                    "reasons": state["reasons"],
+                    "command": "market-intel pool explain %s --runtime --text" % holding.symbol,
+                    "done_when": "已确认该持仓的行业/主题链路、角色、核心逻辑和证伪风险。",
+                }
+            )
         matched.append(
             {
                 "symbol": holding.symbol,
@@ -243,6 +256,8 @@ def build_holdings_coverage(
                 "primary_sub_sector": item.primary_sub_sector,
                 "exposure_count": len(item.exposures),
                 "data_quality_flags": sorted(set(item.data_quality_flags)),
+                "coverage_state": state["state"],
+                "coverage_state_reasons": state["reasons"],
             }
         )
 
@@ -250,18 +265,28 @@ def build_holdings_coverage(
     matched_count = len(matched)
     unmatched_count = len(unmatched)
     ratio = round(matched_count / holding_count, 4) if holding_count else 0
-    flags = ["unmatched_holdings"] if unmatched else []
+    draft_count = sum(1 for row in matched if row.get("coverage_state") == "draft")
+    needs_review_count = sum(1 for row in matched if row.get("coverage_state") != "confirmed")
+    flags = []
+    if unmatched:
+        flags.append("unmatched_holdings")
+    if needs_review_count:
+        flags.append("draft_pool_matches")
     return {
         "available": True,
         "holding_count": holding_count,
         "matched_count": matched_count,
         "unmatched_count": unmatched_count,
+        "confirmed_count": matched_count - needs_review_count,
+        "draft_matched_count": draft_count,
+        "needs_review_count": needs_review_count,
         "matched_ratio": ratio,
         "matched": matched[:20],
         "unmatched": unmatched[:20],
+        "review_queue": review_queue[:20],
         "by_market": counter_dicts(market_counter),
         "coverage_flags": flags,
-        "summary": build_holdings_coverage_summary(holding_count, matched_count, unmatched_count, ratio),
+        "summary": build_holdings_coverage_summary(holding_count, matched_count, unmatched_count, ratio, needs_review_count),
     }
 
 
@@ -270,12 +295,35 @@ def build_holdings_coverage_summary(
     matched_count: int,
     unmatched_count: int,
     ratio: float,
+    needs_review_count: int = 0,
 ) -> str:
     if holding_count == 0:
         return "已提供持仓源，但持仓为空。"
     if unmatched_count:
         return "持仓覆盖率 %.1f%%，%s 个持仓未匹配当前复盘池。" % (ratio * 100, unmatched_count)
+    if needs_review_count:
+        return "持仓覆盖率 %.1f%%，但 %s 个匹配仍是草稿或待复核状态。" % (ratio * 100, needs_review_count)
     return "持仓覆盖率 %.1f%%，当前持仓均已匹配复盘池。" % (ratio * 100)
+
+
+def matched_coverage_state(item: PoolItem) -> Dict[str, object]:
+    reasons = []
+    raw = item.raw if isinstance(item.raw, dict) else {}
+    raw_status = str(raw.get("raw_status") or "").strip().lower()
+    if raw_status in {"candidate", "draft"}:
+        reasons.append("candidate_status")
+    if str(raw.get("pool_source") or "").startswith("extra:"):
+        reasons.append("extra_pool_overlay")
+    if any(is_pending_text(raw.get(field)) for field in ("raw_section", "raw_level", "raw_desc")):
+        reasons.append("pending_fields")
+    if reasons:
+        return {"state": "draft", "reasons": sorted(set(reasons))}
+    return {"state": "confirmed", "reasons": []}
+
+
+def is_pending_text(value: object) -> bool:
+    text = str(value or "").strip()
+    return text in {"", "待确认", "待确认 / 持仓补充"} or text.startswith("待确认 /")
 
 
 def build_expansion_queue(
@@ -376,6 +424,14 @@ def coverage_gaps(
                 "message": "存在持仓未匹配当前复盘池，个人复盘会遗漏这些标的的链路暴露。",
             }
         )
+    if holdings_coverage.get("available") and holdings_coverage.get("needs_review_count"):
+        gaps.append(
+            {
+                "id": "draft_pool_matches",
+                "severity": "medium",
+                "message": "存在持仓只匹配到候选或待复核补池行，不能视为已完成正式覆盖。",
+            }
+        )
     return gaps
 
 
@@ -418,6 +474,15 @@ def coverage_next_actions(
                 "id": "review_expansion_queue",
                 "command": "market-intel pool coverage --runtime --json%s" % pool_arg(pool),
                 "done_when": "已逐项确认 expansion_queue 中的候选补池行、必填字段和复核问题。",
+            }
+        )
+    elif holdings_coverage.get("needs_review_count"):
+        actions.append(
+            {
+                "rank": len(actions) + 1,
+                "id": "review_draft_pool_matches",
+                "command": "market-intel pool coverage --runtime --json%s" % pool_arg(pool),
+                "done_when": "已确认 holdings_coverage.review_queue 中的草稿匹配，并将候选字段补齐。",
             }
         )
         actions.append(
