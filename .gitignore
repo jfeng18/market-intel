@@ -1,0 +1,15 @@
+__pycache__/
+.pytest_cache/
+.venv/
+*.pyc
+.DS_Store
+.env
+.env.*
+*.pem
+*.key
+*.token
+.zshrc
+.bashrc
+.profile
+/data/runtime/
+/data/cache/

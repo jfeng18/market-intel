@@ -1,0 +1,28 @@
+{
+  "holdings": [
+    {
+      "symbol": "002261",
+      "name": "拓维信息",
+      "quantity": 1000,
+      "source": "manual"
+    },
+    {
+      "symbol": "002281",
+      "name": "光迅科技",
+      "quantity": 600,
+      "source": "manual"
+    },
+    {
+      "symbol": "300308",
+      "name": "中际旭创",
+      "quantity": 200,
+      "source": "manual"
+    },
+    {
+      "symbol": "300604",
+      "name": "长川科技",
+      "quantity": 500,
+      "source": "manual"
+    }
+  ]
+}

@@ -1,0 +1,60 @@
+{
+  "quotes": [
+    {
+      "symbol": "002837",
+      "trade_date": "2026-06-06",
+      "last_price": 38.42,
+      "change_pct": 7.2,
+      "amount": 1850000000,
+      "amount_ratio": 2.8,
+      "turnover_rate": 8.6,
+      "amplitude_pct": 9.8,
+      "is_limit_up": false,
+      "is_stage_high": true,
+      "intraday_fade_pct": 1.1,
+      "source": "manual"
+    },
+    {
+      "symbol": "002281",
+      "trade_date": "2026-06-06",
+      "last_price": 47.2,
+      "change_pct": 6.3,
+      "amount": 2460000000,
+      "amount_ratio": 2.5,
+      "turnover_rate": 9.3,
+      "amplitude_pct": 10.4,
+      "is_limit_up": false,
+      "is_stage_high": true,
+      "intraday_fade_pct": 1.2,
+      "source": "manual"
+    },
+    {
+      "symbol": "300308",
+      "trade_date": "2026-06-06",
+      "last_price": 172.6,
+      "change_pct": 8.9,
+      "amount": 4320000000,
+      "amount_ratio": 3.4,
+      "turnover_rate": 10.1,
+      "amplitude_pct": 12.2,
+      "is_limit_up": false,
+      "is_stage_high": true,
+      "intraday_fade_pct": 0.9,
+      "source": "manual"
+    },
+    {
+      "symbol": "300604",
+      "trade_date": "2026-06-06",
+      "last_price": 44.7,
+      "change_pct": 2.1,
+      "amount": 760000000,
+      "amount_ratio": 1.2,
+      "turnover_rate": 5.2,
+      "amplitude_pct": 7.4,
+      "is_limit_up": false,
+      "is_stage_high": false,
+      "intraday_fade_pct": 3.2,
+      "source": "manual"
+    }
+  ]
+}

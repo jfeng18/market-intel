@@ -1,0 +1,15 @@
+[project]
+name = "market-intel"
+version = "0.1.0"
+description = "Market intelligence radar for macro, industry, company, news, and capital-flow signals."
+requires-python = ">=3.10"
+dependencies = []
+
+[project.scripts]
+market-intel = "market_intel.cli:main"
+
+[tool.setuptools.package-data]
+market_intel = ["fixtures/*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
