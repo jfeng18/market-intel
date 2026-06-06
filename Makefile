@@ -23,7 +23,7 @@ smoke:
 	$(PYTHON) -m market_intel.cli scan --mock --text >/dev/null
 	$(PYTHON) -m market_intel.cli daily --mock --text >/dev/null
 	$(PYTHON) -m market_intel.cli focus --mock --text >/dev/null
-	$(PYTHON) -m market_intel.cli dashboard --max-quote-age-days 9999 --text >/dev/null
+	$(PYTHON) -m market_intel.cli dashboard --mock --text >/dev/null
 
 console-smoke:
 	$(CLI) --help >/dev/null

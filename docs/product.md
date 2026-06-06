@@ -9,6 +9,8 @@
 
 它应该成为“复盘后的工作系统”：把外部 App、行情源、持仓文件和用户判断组织成一个可复核、可接力、可留痕的每日流程。
 
+这也决定了产品判断：同花顺、东方财富、雪球、通达信这类成熟工具分别强在行情/交易/资讯、社区/组合、公式选股和技术分析。`market-intel` 的竞争力不应该是“多一个看盘 App”，而是把这些外部信息吸收进本地全 A 复盘闭环，并输出稳定 JSON、证据缺口、行动队列和 journal 留痕。
+
 一句话定位：
 
 ```text
@@ -106,16 +108,17 @@ market-intel 是面向全 A 的个人复盘操作系统，不是行情 App、交
 短期最有价值的入口不是完整 GUI，而是以下闭环：
 
 ```text
-import/runtime -> status/readiness -> pool coverage -> pool expansion review
--> focus/agent briefing -> agent next -> journal save/note/compare
+dashboard --mock -> import/runtime -> status/readiness -> dashboard
+-> agent next -> journal save/note/compare
 ```
 
 这个闭环回答四个问题：
 
-1. 今天能不能跑复盘。
-2. 全 A 复盘池是否覆盖我的持仓。
-3. 今天先看什么，为什么。
-4. 这次判断如何留档，下次如何验证。
+1. 没有 runtime 时能不能先理解工作台结构。
+2. 今天能不能跑正式复盘。
+3. 全 A 复盘池是否覆盖我的持仓。
+4. 今天先看什么，为什么。
+5. 这次判断如何留档，下次如何验证。
 
 ## 5. 全 A 方向
 
@@ -156,7 +159,8 @@ import/runtime -> status/readiness -> pool coverage -> pool expansion review
 
 ### P1：复盘工作台
 
-- 强化 `focus` 和 `agent next`，让它们成为“今天先看什么”的默认入口。
+- 强化 `dashboard` 和 `agent next`，让它们成为“今天先看什么、下一步谁接手”的默认入口。
+- 保持 `dashboard --mock` 可离线试跑，不读取 runtime、不写 journal、不暴露个人持仓。
 - 把持仓覆盖、重复暴露、风险标签、数据缺口和 journal 前置条件合并成单票卡片。
 - 每个单票卡片必须有 `why_now/checklist/done_when/note_command`。
 

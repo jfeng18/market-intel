@@ -1011,6 +1011,51 @@ def test_dashboard_returns_one_screen_workbench(monkeypatch, tmp_path):
     assert "sell" not in text.lower()
 
 
+def test_dashboard_mock_returns_demo_workbench_without_runtime(monkeypatch, tmp_path):
+    monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(tmp_path / "runtime"))
+
+    payload = handle_dashboard("all-a", use_mock=True, max_steps=5)
+    data = payload["data"]
+    text = render_dashboard_text(payload)
+
+    assert payload["ok"] is True
+    assert payload["command"] == "dashboard"
+    assert data["state"] == "demo_ready"
+    assert data["source_agent_run_state"] == "mock_demo"
+    assert data["run_limits"]["mode"] == "mock"
+    assert data["market_pulse"]["available"] is True
+    assert data["market_pulse"]["candidates"]
+    assert data["market_pulse"]["candidates"][0]["json_command"].endswith("--json")
+    assert data["portfolio_pulse"]["available"] is True
+    assert data["portfolio_pulse"]["top_holdings"]
+    assert data["portfolio_pulse"]["top_holdings"][0]["rank"] == 1
+    assert data["portfolio_pulse"]["top_holdings"][0]["primary_json_command"].endswith("--mock --json")
+    assert data["evidence_gaps"]["items"]
+    assert data["review_plan"]["items"][0]["json_command"] == "market-intel scan --mock --json"
+    assert data["action_lane"]["items"]
+    assert data["handoff"]["handoff_state"] == "demo"
+    assert data["handoff"]["next_read"]
+    assert any("mock" in item for item in data["guardrails"])
+    assert "mock 示例" in text
+    assert "market-intel dashboard" in text
+    assert "不生成买卖指令" in text
+    assert "buy" not in text.lower()
+    assert "sell" not in text.lower()
+
+
+def test_dashboard_mock_preserves_non_default_pool(monkeypatch, tmp_path):
+    monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(tmp_path / "runtime"))
+
+    payload = handle_dashboard("ai-energy", use_mock=True)
+    data = payload["data"]
+
+    assert payload["ok"] is True
+    assert data["pool"] == "ai-energy"
+    assert data["review_plan"]["items"][0]["json_command"].endswith("--pool ai-energy")
+    assert data["portfolio_pulse"]["top_holdings"][0]["primary_json_command"].endswith("--pool ai-energy")
+    assert data["handoff"]["summary"].endswith("--pool ai-energy。")
+
+
 def test_agent_next_can_focus_symbol(monkeypatch, tmp_path):
     import_runtime_examples(monkeypatch, tmp_path)
 
@@ -1326,3 +1371,27 @@ def test_dashboard_cli_smoke(monkeypatch, tmp_path, cli_cmd):
     assert data["command"] == "dashboard"
     assert data["data"]["market_pulse"]["candidates"]
     assert "market-intel dashboard" in text_result.stdout
+
+
+def test_dashboard_mock_cli_smoke(monkeypatch, tmp_path, cli_cmd):
+    monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(tmp_path / "runtime"))
+
+    json_result = subprocess.run(
+        cli_cmd("dashboard", "--mock", "--json"),
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    text_result = subprocess.run(
+        cli_cmd("dashboard", "--mock", "--text"),
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+
+    data = json.loads(json_result.stdout)
+    assert data["command"] == "dashboard"
+    assert data["data"]["state"] == "demo_ready"
+    assert data["data"]["run_limits"]["mode"] == "mock"
+    assert data["data"]["review_plan"]["items"][0]["json_command"] == "market-intel scan --mock --json"
+    assert "mock 示例" in text_result.stdout

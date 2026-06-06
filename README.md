@@ -62,6 +62,7 @@ make ci PYTHON=python3.10
 
 ```bash
 PYTHONPATH=src python3 -m market_intel.cli focus --mock --text
+PYTHONPATH=src python3 -m market_intel.cli dashboard --mock --text
 ```
 
 ## 当前 P0 用法
@@ -85,6 +86,7 @@ PYTHONPATH=src python3 -m market_intel.cli brief --mock --text
 PYTHONPATH=src python3 -m market_intel.cli watchlist --mock --text
 PYTHONPATH=src python3 -m market_intel.cli map --mock --text
 PYTHONPATH=src python3 -m market_intel.cli daily --mock --text
+PYTHONPATH=src python3 -m market_intel.cli dashboard --mock --text
 PYTHONPATH=src python3 -m market_intel.cli dashboard --text
 PYTHONPATH=src python3 -m market_intel.cli focus --mock --text
 ```
@@ -106,6 +108,7 @@ market-intel brief --mock --text
 market-intel watchlist --mock --text
 market-intel map --mock --text
 market-intel daily --mock --text
+market-intel dashboard --mock --text
 market-intel dashboard --text
 market-intel focus --mock --text
 market-intel focus --mock --text --pool ai-energy
@@ -173,6 +176,7 @@ market-intel journal timeline --text
 `dashboard` 是日常第一屏工作台：
 
 - 默认面向 `all-a`，复用 `agent run` 的只读复盘结果，把全市场扫描、持仓压力、证据缺口、行动队列和交接压缩到一屏。
+- `dashboard --mock --text` 是离线试跑入口，不读取 runtime、不暴露个人持仓，用示例行情和示例持仓展示完整工作台合同。
 - `data.market_pulse` 汇总全市场板块、候选复盘标的、覆盖状态、why_now 和下一条只读 JSON 命令。
 - `data.portfolio_pulse` 汇总个人持仓重点、变化持仓、缺行情/缺热点上下文、重复暴露和持仓复核命令。
 - `data.evidence_gaps` 只列未覆盖或待补的证据项，方便先处理数据阻塞、foundation/draft 覆盖和未读单票。

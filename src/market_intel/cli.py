@@ -202,6 +202,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     dashboard_parser = subparsers.add_parser("dashboard")
     dashboard_parser.add_argument("--pool", default=DEFAULT_POOL)
+    dashboard_parser.add_argument("--mock", action="store_true")
     dashboard_parser.add_argument("--top", type=int, default=5)
     dashboard_parser.add_argument("--map-top", type=int, default=2)
     dashboard_parser.add_argument("--max-quote-age-days", type=int, default=3)
@@ -484,7 +485,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                 print(render_daily_report_text(result))
                 return 0
         elif args.resource == "dashboard":
-            result = handle_dashboard(args.pool, args.top, args.map_top, args.max_quote_age_days, args.max_steps)
+            result = handle_dashboard(args.pool, args.top, args.map_top, args.max_quote_age_days, args.max_steps, args.mock)
             if args.text:
                 print(render_dashboard_text(result))
                 return 0 if result["ok"] else 1
@@ -1945,7 +1946,11 @@ def handle_dashboard(
     map_top: int = 2,
     max_quote_age_days: int = 3,
     max_steps: int = 8,
+    use_mock: bool = False,
 ) -> Dict[str, Any]:
+    if use_mock:
+        return handle_mock_dashboard(pool=pool, top=top, map_top=map_top, max_steps=max_steps)
+
     run_payload = handle_agent_run(pool, top=top, map_top=map_top, max_quote_age_days=max_quote_age_days, max_steps=max_steps)
     run_data = run_payload.get("data", {}) if isinstance(run_payload.get("data"), dict) else {}
     digest = run_data.get("review_digest", {}) if isinstance(run_data.get("review_digest"), dict) else {}
@@ -1958,6 +1963,483 @@ def handle_dashboard(
         source=run_payload.get("meta", {}).get("source") if isinstance(run_payload.get("meta"), dict) else None,
         ok=bool(run_payload.get("ok")),
     )
+
+
+def handle_mock_dashboard(
+    pool: str = DEFAULT_POOL,
+    top: int = 5,
+    map_top: int = 2,
+    max_steps: int = 8,
+) -> Dict[str, Any]:
+    scan_payload = handle_scan(pool, use_mock=True, top=max(top, 8), candidate_top=max(top * 2, 12))
+    daily_payload = handle_daily(pool, use_mock=True, top=top, map_top=map_top)
+    warnings = []
+    for payload in (scan_payload, daily_payload):
+        if isinstance(payload.get("warnings"), list):
+            warnings.extend(payload.get("warnings", []))
+    errors = []
+    for payload in (scan_payload, daily_payload):
+        if isinstance(payload.get("errors"), list):
+            errors.extend(payload.get("errors", []))
+    data = build_mock_dashboard_data(pool, scan_payload, daily_payload, max_steps=max_steps)
+    return envelope(
+        command="dashboard",
+        data=data,
+        warnings=warnings,
+        errors=errors,
+        source="mock",
+        ok=bool(scan_payload.get("ok") and daily_payload.get("ok")),
+    )
+
+
+def build_mock_dashboard_data(
+    pool: str,
+    scan_payload: Dict[str, object],
+    daily_payload: Dict[str, object],
+    max_steps: int,
+) -> Dict[str, object]:
+    scan = scan_payload.get("data", {}) if isinstance(scan_payload.get("data"), dict) else {}
+    daily = daily_payload.get("data", {}) if isinstance(daily_payload.get("data"), dict) else {}
+    portfolio_review = daily.get("portfolio_review", {}) if isinstance(daily.get("portfolio_review"), dict) else {}
+    market = mock_dashboard_market_pulse(pool, scan)
+    portfolio = mock_dashboard_portfolio_pulse(pool, portfolio_review)
+    evidence = mock_dashboard_evidence_gaps(market, portfolio)
+    plan = mock_dashboard_review_plan(pool, market, portfolio, evidence)
+    actions = mock_dashboard_action_lane(plan)
+    handoff = mock_dashboard_handoff(pool, plan)
+    tiles = mock_dashboard_tiles(market, portfolio, evidence, plan)
+    return {
+        "pool": pool,
+        "state": "demo_ready" if scan_payload.get("ok") and daily_payload.get("ok") else "demo_blocked",
+        "summary": mock_dashboard_summary(market, portfolio, plan),
+        "source_agent_run_state": "mock_demo",
+        "run_limits": {
+            "max_steps": max_steps,
+            "read_only_only": True,
+            "writes_are_skipped": True,
+            "mode": "mock",
+        },
+        "tiles": tiles,
+        "market_pulse": market,
+        "portfolio_pulse": portfolio,
+        "evidence_gaps": evidence,
+        "action_lane": actions,
+        "handoff": handoff,
+        "review_plan": plan,
+        "guardrails": [
+            "mock dashboard 只演示报告结构，不读取个人 runtime 持仓或行情。",
+            "dashboard 只整理复盘优先级和证据缺口，不生成买卖指令、目标价或仓位建议。",
+            "正式复盘应先导入 runtime 行情、持仓和全 A 基础清单，再运行 market-intel dashboard --text。",
+        ],
+        "agent_contract": dashboard_contract(),
+    }
+
+
+def mock_dashboard_summary(
+    market: Dict[str, object],
+    portfolio: Dict[str, object],
+    plan: Dict[str, object],
+) -> str:
+    candidates = market.get("candidates", []) if isinstance(market.get("candidates"), list) else []
+    holdings = portfolio.get("top_holdings", []) if isinstance(portfolio.get("top_holdings"), list) else []
+    steps = plan.get("items", []) if isinstance(plan.get("items"), list) else []
+    return "mock 示例：全市场候选 %s 个，持仓重点 %s 个；复盘步骤 %s 个，用于试跑 dashboard 合同。" % (
+        len(candidates),
+        len(holdings),
+        len(steps),
+    )
+
+
+def mock_dashboard_market_pulse(pool: str, scan: Dict[str, object]) -> Dict[str, object]:
+    groups = scan.get("sector_groups", []) if isinstance(scan.get("sector_groups"), list) else []
+    candidates = scan.get("candidate_securities", []) if isinstance(scan.get("candidate_securities"), list) else []
+    return {
+        "available": bool(scan),
+        "summary": scan.get("summary") or "mock 全市场扫描示例。",
+        "scan_mode": scan.get("scan_mode") or scan.get("mode") or "mock",
+        "quote_count": scan.get("quote_count", 0),
+        "matched_quote_count": scan.get("matched_quote_count", 0),
+        "top_groups": [mock_dashboard_group(item) for item in groups[:4] if isinstance(item, dict)],
+        "seed_chains": [],
+        "candidates": [mock_dashboard_candidate(pool, item) for item in candidates[:5] if isinstance(item, dict)],
+        "questions": list(scan.get("questions", []))[:4] if isinstance(scan.get("questions"), list) else [],
+        "write_policy": "mock 只读市场扫描，不读取 runtime，不生成交易指令。",
+    }
+
+
+def mock_dashboard_group(item: Dict[str, object]) -> Dict[str, object]:
+    return {
+        "rank": item.get("rank"),
+        "group_type": item.get("group_type"),
+        "name": item.get("name"),
+        "score": item.get("score"),
+        "active_member_count": item.get("active_member_count", 0),
+        "member_count": item.get("member_count", 0),
+    }
+
+
+def mock_dashboard_candidate(pool: str, item: Dict[str, object]) -> Dict[str, object]:
+    commands = item.get("commands", []) if isinstance(item.get("commands"), list) else []
+    symbol = item.get("symbol")
+    fallback = (
+        with_pool_arg("market-intel pool explain %s --json" % symbol, pool)
+        if symbol
+        else with_pool_arg("market-intel scan --mock --json", pool)
+    )
+    return {
+        "rank": item.get("rank"),
+        "symbol": symbol,
+        "name": item.get("name"),
+        "review_score": item.get("review_score"),
+        "coverage_state": item.get("coverage_state"),
+        "why_now": item.get("why_now"),
+        "json_command": mock_dashboard_json_command(commands, fallback),
+    }
+
+
+def mock_dashboard_portfolio_pulse(pool: str, portfolio_review: Dict[str, object]) -> Dict[str, object]:
+    holdings = portfolio_review.get("items", []) if isinstance(portfolio_review.get("items"), list) else []
+    repeated = portfolio_review.get("repeated_exposures", []) if isinstance(portfolio_review.get("repeated_exposures"), list) else []
+    overlap = portfolio_review.get("repeated_overlap_groups", []) if isinstance(portfolio_review.get("repeated_overlap_groups"), list) else []
+    top_holdings = []
+    for item in holdings[:5]:
+        if isinstance(item, dict):
+            top_holdings.append(mock_dashboard_holding(pool, item, len(top_holdings) + 1))
+    pressure_groups = [mock_dashboard_pressure_group(pool, "chain", item) for item in repeated[:2] if isinstance(item, dict)]
+    pressure_groups.extend(mock_dashboard_pressure_group(pool, "theme", item) for item in overlap[:2] if isinstance(item, dict))
+    high_count = sum(1 for item in holdings if isinstance(item, dict) and item.get("priority") == "high_review")
+    buckets = {
+        "high_review": high_count,
+        "missing_quote": sum(1 for item in holdings if isinstance(item, dict) and not item.get("has_quote")),
+        "without_hotspot": sum(
+            1
+            for item in holdings
+            if isinstance(item, dict) and not isinstance(item.get("hotspot_context"), dict)
+        ),
+        "with_overlap": sum(
+            1
+            for item in holdings
+            if isinstance(item, dict) and item.get("overlap_groups")
+        ),
+    }
+    return {
+        "available": bool(portfolio_review),
+        "summary": portfolio_review.get("summary") or "mock 持仓复盘示例。",
+        "holding_count": portfolio_review.get("holding_count", len(holdings)),
+        "high_review_count": high_count,
+        "changed_holding_count": 0,
+        "buckets": buckets,
+        "top_holdings": top_holdings,
+        "pressure_groups": pressure_groups[:3],
+        "questions": list(portfolio_review.get("questions", []))[:4] if isinstance(portfolio_review.get("questions"), list) else [],
+        "write_policy": "mock 只读持仓复盘，不读取个人 runtime，不自动修改持仓或写入 journal。",
+    }
+
+
+def mock_dashboard_holding(pool: str, item: Dict[str, object], rank: int) -> Dict[str, object]:
+    symbol = item.get("symbol")
+    command = (
+        with_pool_arg("market-intel portfolio explain %s --mock --json" % symbol, pool)
+        if symbol
+        else with_pool_arg("market-intel portfolio review --mock --json", pool)
+    )
+    hotspot = item.get("hotspot_context", {}) if isinstance(item.get("hotspot_context"), dict) else {}
+    hotspot_chain = "%s/%s" % (hotspot.get("layer"), hotspot.get("sub_sector")) if hotspot.get("layer") or hotspot.get("sub_sector") else ""
+    return {
+        "rank": rank,
+        "symbol": symbol,
+        "name": item.get("name"),
+        "priority": item.get("priority"),
+        "review_score": item.get("priority_score"),
+        "coverage_state": item.get("coverage_state"),
+        "change_priority": 0,
+        "primary_question": mock_holding_primary_question(item),
+        "primary_json_command": command,
+        "risk_flags": list(item.get("risk_flags", []))[:5] if isinstance(item.get("risk_flags"), list) else [],
+        "has_quote": bool(item.get("has_quote")),
+        "hotspot": {"chain": hotspot_chain} if hotspot_chain else {},
+        "overlap_groups": list(item.get("overlap_groups", []))[:4] if isinstance(item.get("overlap_groups"), list) else [],
+    }
+
+
+def mock_holding_primary_question(item: Dict[str, object]) -> str:
+    points = item.get("review_points", []) if isinstance(item.get("review_points"), list) else []
+    if points:
+        return str(points[0])
+    return "读取该持仓的行情、热点、风险和组合暴露。"
+
+
+def mock_dashboard_pressure_group(pool: str, group_type: str, item: Dict[str, object]) -> Dict[str, object]:
+    group = str(item.get("group") or "")
+    return {
+        "group_type": group_type,
+        "group": group,
+        "holding_count": item.get("holding_count", 0),
+        "priority_question": "%s 是否来自同一驱动，需要核对组合集中度。" % group if group else "核对组合集中度。",
+        "primary_json_command": with_pool_arg("market-intel portfolio review --mock --json", pool),
+    }
+
+
+def mock_dashboard_evidence_gaps(
+    market: Dict[str, object],
+    portfolio: Dict[str, object],
+) -> Dict[str, object]:
+    rows: List[Dict[str, object]] = []
+    for item in portfolio.get("top_holdings", []) if isinstance(portfolio.get("top_holdings"), list) else []:
+        if not isinstance(item, dict):
+            continue
+        status = str(item.get("coverage_state") or "")
+        missing = []
+        if not item.get("has_quote"):
+            missing.append("行情源")
+        if status != "confirmed":
+            missing.append("核心逻辑、关键证据和证伪风险")
+        if not missing:
+            continue
+        rows.append(
+            mock_dashboard_gap_item(
+                len(rows) + 1,
+                "holding_review",
+                "%s %s" % (item.get("symbol"), item.get("name") or ""),
+                status or "missing",
+                [item.get("symbol")],
+                missing,
+                item.get("primary_json_command"),
+            )
+        )
+    for item in market.get("candidates", []) if isinstance(market.get("candidates"), list) else []:
+        if not isinstance(item, dict):
+            continue
+        if item.get("coverage_state") == "confirmed":
+            continue
+        rows.append(
+            mock_dashboard_gap_item(
+                len(rows) + 1,
+                "market_scan",
+                "%s %s" % (item.get("symbol"), item.get("name") or ""),
+                item.get("coverage_state") or "draft",
+                [item.get("symbol")],
+                ["行业/主题链路、公司角色、研究证据"],
+                item.get("json_command"),
+            )
+        )
+        if len(rows) >= 6:
+            break
+    summary = "mock 证据缺口 %s 项，重点看 coverage_state 不是 confirmed 的标的。" % len(rows)
+    return {
+        "available": bool(rows),
+        "summary": summary,
+        "data_repair": {"available": False},
+        "items": rows[:6],
+        "write_policy": "mock 只整理证据充分性；不生成交易指令或自动写入 journal。",
+    }
+
+
+def mock_dashboard_gap_item(
+    rank: int,
+    item_type: str,
+    title: str,
+    status: object,
+    symbols: List[object],
+    missing: List[object],
+    command: object,
+) -> Dict[str, object]:
+    return {
+        "rank": rank,
+        "item_type": item_type,
+        "title": title,
+        "coverage_status": "pending" if status != "confirmed" else "covered",
+        "coverage_label": str(status or "pending"),
+        "related_symbols": dedupe_queue_texts(symbols),
+        "missing_evidence": dedupe_queue_texts(missing),
+        "json_command": str(command or ""),
+        "done_when": "已补齐或记录缺失原因，正式复盘时用 runtime 复验。",
+    }
+
+
+def mock_dashboard_review_plan(
+    pool: str,
+    market: Dict[str, object],
+    portfolio: Dict[str, object],
+    evidence: Dict[str, object],
+) -> Dict[str, object]:
+    items: List[Dict[str, object]] = []
+    candidates = market.get("candidates", []) if isinstance(market.get("candidates"), list) else []
+    groups = market.get("top_groups", []) if isinstance(market.get("top_groups"), list) else []
+    if market.get("available"):
+        items.append(
+            dashboard_plan_item(
+                "market_scan",
+                "先读全市场强弱",
+                market.get("summary") or "确认全市场板块和候选复盘标的。",
+                with_pool_arg("market-intel scan --mock --json", pool),
+                "read",
+                "已记录 mock 最强板块、候选标的和覆盖状态。",
+                related_symbols=[item.get("symbol") for item in candidates[:5] if isinstance(item, dict)],
+                evidence=dashboard_market_plan_evidence(groups, candidates),
+            )
+        )
+    for holding in portfolio.get("top_holdings", [])[:2] if isinstance(portfolio.get("top_holdings"), list) else []:
+        if not isinstance(holding, dict) or not holding.get("symbol"):
+            continue
+        command = holding.get("primary_json_command") or "market-intel portfolio explain %s --mock --json" % holding.get("symbol")
+        items.append(
+            dashboard_plan_item(
+                "holding_review",
+                "%s %s" % (holding.get("symbol"), holding.get("name") or ""),
+                holding.get("primary_question") or "读取该持仓的行情、热点、风险和组合暴露。",
+                command,
+                "read",
+                "已确认 mock 单票复核字段和证据缺口。",
+                related_symbols=[holding.get("symbol")],
+                evidence=attention_holding_evidence(holding),
+            )
+        )
+    seen = {str(item.get("json_command") or "") for item in items if isinstance(item, dict)}
+    for gap in evidence.get("items", []) if isinstance(evidence.get("items"), list) else []:
+        if not isinstance(gap, dict):
+            continue
+        command = str(gap.get("json_command") or "")
+        if not command or command in seen:
+            continue
+        items.append(
+            dashboard_plan_item(
+                str(gap.get("item_type") or "evidence"),
+                gap.get("title") or "证据缺口",
+                "补齐 mock 缺口对应的正式证据来源。",
+                command,
+                "read",
+                gap.get("done_when") or "已补齐或记录缺失原因。",
+                related_symbols=gap.get("related_symbols", []) if isinstance(gap.get("related_symbols"), list) else [],
+                evidence=gap.get("missing_evidence", []) if isinstance(gap.get("missing_evidence"), list) else [],
+            )
+        )
+        seen.add(command)
+        if len(items) >= 6:
+            break
+    items.append(
+        dashboard_plan_item(
+            "journal_record",
+            "切换正式复盘",
+            "mock 不写 journal；导入 runtime 后再保存日报和复盘笔记。",
+            with_pool_arg("market-intel dashboard --text", pool),
+            "manual",
+            "已用 runtime 数据重新生成 dashboard，并由人工确认后留档。",
+            requires_manual=True,
+        )
+    )
+    for index, item in enumerate(items, start=1):
+        item["rank"] = index
+    return {
+        "available": bool(items),
+        "summary": dashboard_review_plan_summary(items),
+        "items": items[:10],
+        "write_policy": "mock review_plan 只安排试跑顺序；正式写入和研究结论仍需人工确认。",
+    }
+
+
+def mock_dashboard_action_lane(plan: Dict[str, object]) -> Dict[str, object]:
+    rows = []
+    for item in plan.get("items", []) if isinstance(plan.get("items"), list) else []:
+        if not isinstance(item, dict):
+            continue
+        rows.append(
+            {
+                "rank": len(rows) + 1,
+                "item_type": item.get("item_type"),
+                "title": item.get("title"),
+                "reason": item.get("reason"),
+                "json_command": item.get("json_command"),
+                "runnable": bool(item.get("runnable")),
+                "requires_manual": bool(item.get("requires_manual")),
+                "already_read": False,
+                "related_symbols": list(item.get("related_symbols", []))[:5] if isinstance(item.get("related_symbols"), list) else [],
+                "done_when": item.get("done_when"),
+            }
+        )
+    return {
+        "available": bool(rows),
+        "summary": "mock 行动队列 %s 项，其中只读 %s 项。" % (
+            len(rows),
+            sum(1 for item in rows if item.get("runnable")),
+        ),
+        "items": rows[:6],
+        "write_policy": "mock 队列只演示接力顺序；写入类命令需切换 runtime 后人工确认。",
+    }
+
+
+def mock_dashboard_handoff(pool: str, plan: Dict[str, object]) -> Dict[str, object]:
+    items = plan.get("items", []) if isinstance(plan.get("items"), list) else []
+    next_read = []
+    for item in items:
+        if not isinstance(item, dict) or not item.get("runnable") or not item.get("json_command"):
+            continue
+        next_read.append(
+            {
+                "rank": len(next_read) + 1,
+                "source": item.get("item_type"),
+                "title": item.get("title"),
+                "reason": item.get("reason"),
+                "json_command": item.get("json_command"),
+                "done_when": item.get("done_when"),
+            }
+        )
+        if len(next_read) >= 4:
+            break
+    return {
+        "available": bool(next_read),
+        "summary": "mock 示例已生成；正式使用请导入 runtime 后运行 %s。" % with_pool_arg("market-intel dashboard --text", pool),
+        "handoff_state": "demo",
+        "resume_prompt": "接手复盘：先运行 %s 理解结构，再切换 runtime。" % with_pool_arg("market-intel dashboard --mock --text", pool),
+        "next_read": next_read,
+        "manual_items": [
+            {
+                "rank": 1,
+                "source": "mock_to_runtime",
+                "title": "导入正式 runtime 数据",
+                "reason": "mock 示例不能代表真实持仓或全市场结论。",
+                "json_command": "market-intel import schema --json",
+                "done_when": "已准备行情、持仓和全 A 基础清单导入文件。",
+            }
+        ],
+        "record_templates": [],
+        "completion": {
+            "completion_state": "demo",
+            "ready_for_journal_note": False,
+            "blocking_count": 0,
+            "manual_required_count": 1,
+            "pending_count": len(next_read),
+        },
+    }
+
+
+def mock_dashboard_tiles(
+    market: Dict[str, object],
+    portfolio: Dict[str, object],
+    evidence: Dict[str, object],
+    plan: Dict[str, object],
+) -> List[Dict[str, object]]:
+    groups = market.get("top_groups", []) if isinstance(market.get("top_groups"), list) else []
+    candidates = market.get("candidates", []) if isinstance(market.get("candidates"), list) else []
+    gaps = evidence.get("items", []) if isinstance(evidence.get("items"), list) else []
+    steps = plan.get("items", []) if isinstance(plan.get("items"), list) else []
+    return [
+        dashboard_tile("market", "全市场", len(groups), market.get("summary")),
+        dashboard_tile("candidates", "候选标的", len(candidates), "mock scan 的候选复盘标的。"),
+        dashboard_tile("holdings", "持仓重点", portfolio.get("high_review_count", 0), portfolio.get("summary")),
+        dashboard_tile("pressure", "组合压力", len(portfolio.get("pressure_groups", []) if isinstance(portfolio.get("pressure_groups"), list) else []), "mock 重复链路/主题暴露。"),
+        dashboard_tile("evidence", "证据缺口", len(gaps), evidence.get("summary")),
+        dashboard_tile("handoff", "复盘步骤", len(steps), plan.get("summary")),
+    ]
+
+
+def mock_dashboard_json_command(commands: List[object], fallback: str) -> str:
+    for command in commands:
+        text = str(command or "")
+        if not text:
+            continue
+        return digest_json_variant(text)
+    return fallback
 
 
 def build_dashboard_data(
