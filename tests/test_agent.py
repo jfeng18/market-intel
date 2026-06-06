@@ -990,15 +990,21 @@ def test_dashboard_returns_one_screen_workbench(monkeypatch, tmp_path):
     assert data["portfolio_pulse"]["top_holdings"][0]["primary_json_command"].endswith("--json")
     assert data["evidence_gaps"]["items"]
     assert data["action_lane"]["items"]
+    assert data["review_plan"]["available"] is True
+    assert data["review_plan"]["items"]
+    assert data["review_plan"]["items"][0]["json_command"].endswith("--json")
+    assert data["review_plan"]["items"][0]["done_when"]
     assert data["handoff"]["next_read"]
     assert data["guardrails"]
     assert "data.market_pulse.candidates" in data["agent_contract"]["stable_fields"]
     assert "data.portfolio_pulse.top_holdings" in data["agent_contract"]["stable_fields"]
     assert "data.action_lane.items" in data["agent_contract"]["stable_fields"]
+    assert "data.review_plan.items[].json_command" in data["agent_contract"]["stable_fields"]
     assert "market-intel dashboard" in text
     assert "全市场" in text
     assert "持仓" in text
     assert "证据缺口" in text
+    assert "复盘计划" in text
     assert "行动队列" in text
     assert "不生成买卖指令" in text
     assert "buy" not in text.lower()

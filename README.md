@@ -177,6 +177,7 @@ market-intel journal timeline --text
 - `data.portfolio_pulse` 汇总个人持仓重点、变化持仓、缺行情/缺热点上下文、重复暴露和持仓复核命令。
 - `data.evidence_gaps` 只列未覆盖或待补的证据项，方便先处理数据阻塞、foundation/draft 覆盖和未读单票。
 - `data.action_lane` 给出下一组可接力命令，标明 `runnable`、`requires_manual`、`already_read` 和完成标准。
+- `data.review_plan` 把全市场扫描、持仓复核、证据缺口和人工留档压成有顺序的执行清单，每步都有 `json_command`、`step_type`、`done_when` 和相关标的。
 - `data.handoff` 保留 agent 接手提示、下一条只读命令、人工确认项和记录模板。
 - `dashboard` 仍是只读复盘入口，不写 journal，不生成买卖指令、目标价或仓位建议。
 
@@ -342,7 +343,7 @@ MARKET_INTEL_POOL_EXTRA_PATHS=data/runtime/pool_expansion.csv market-intel pool 
 
 `daily` 是复盘总入口：先做数据检查，再合并 `brief`、`map`、`watchlist`、组合暴露和 `portfolio review`，并生成今日复核任务，输出一份适合每天留档和 agent 读取的报告。
 
-`dashboard` 是推荐的日常第一屏：复用 `agent run` 的结果，但只保留全市场、持仓、证据缺口、行动队列和交接信息，适合人快速扫一眼，也适合 agent 读取稳定 contract 后继续执行。
+`dashboard` 是推荐的日常第一屏：复用 `agent run` 的结果，但只保留全市场、持仓、证据缺口、行动队列、复盘计划和交接信息，适合人快速扫一眼，也适合 agent 读取稳定 contract 后继续执行。
 
 `focus` 是日常第一屏入口：复用 `daily` 的完整计算，但只保留最强链路、数据状态、组合压力、优先标的和下一步命令，适合快速回答“今天先看什么”。每个优先标的会给出 `why_now`、`checklist`、`note_command`、`journal_ready`、`done_when` 和下一条命令，让人可以照着复核并留痕，也让 agent 能直接接力执行。
 

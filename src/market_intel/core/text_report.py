@@ -67,6 +67,8 @@ LABELS = {
     "priority_holdings": "重点持仓",
     "portfolio_pressure": "组合压力",
     "market_structure": "市场结构",
+    "market_scan": "全市场扫描",
+    "journal_record": "复盘留档",
 }
 
 QUESTION_LABELS = {
@@ -1360,6 +1362,10 @@ def render_dashboard_text(payload: Dict[str, object]) -> str:
     if evidence:
         lines.extend(["", "证据缺口"])
         lines.extend(render_dashboard_evidence_gaps(evidence))
+    plan = data.get("review_plan", {}) if isinstance(data.get("review_plan"), dict) else {}
+    if plan:
+        lines.extend(["", "复盘计划"])
+        lines.extend(render_dashboard_review_plan(plan))
     actions = data.get("action_lane", {}) if isinstance(data.get("action_lane"), dict) else {}
     if actions:
         lines.extend(["", "行动队列"])
@@ -1516,6 +1522,34 @@ def render_dashboard_action_lane(value: Dict[str, object]) -> List[str]:
                 lines.append("      命令: %s" % item.get("json_command"))
             if item.get("done_when"):
                 lines.append("      完成: %s" % item.get("done_when"))
+    if value.get("write_policy"):
+        lines.append("   策略: %s" % value.get("write_policy"))
+    return lines
+
+
+def render_dashboard_review_plan(value: Dict[str, object]) -> List[str]:
+    lines = ["- %s" % (value.get("summary") or "暂无复盘计划。")]
+    items = value.get("items", []) if isinstance(value.get("items"), list) else []
+    for item in items[:8]:
+        if not isinstance(item, dict):
+            continue
+        state = "已读" if item.get("already_read") else "只读" if item.get("step_type") == "read" else "人工"
+        lines.append(
+            "   #%s %s | %s | %s"
+            % (item.get("rank"), item.get("title"), label(item.get("item_type")), state)
+        )
+        if item.get("reason"):
+            lines.append("      原因: %s" % item.get("reason"))
+        symbols = item.get("related_symbols", []) if isinstance(item.get("related_symbols"), list) else []
+        if symbols:
+            lines.append("      标的: %s" % "、".join(str(symbol) for symbol in symbols[:5]))
+        evidence = item.get("evidence", []) if isinstance(item.get("evidence"), list) else []
+        if evidence:
+            lines.append("      证据: %s" % "；".join(str(row) for row in evidence[:3]))
+        if item.get("json_command"):
+            lines.append("      命令: %s" % item.get("json_command"))
+        if item.get("done_when"):
+            lines.append("      完成: %s" % item.get("done_when"))
     if value.get("write_policy"):
         lines.append("   策略: %s" % value.get("write_policy"))
     return lines

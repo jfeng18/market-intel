@@ -1978,6 +1978,7 @@ def build_dashboard_data(
         "evidence_gaps": dashboard_evidence_gaps(digest),
         "action_lane": dashboard_action_lane(digest),
         "handoff": dashboard_handoff(digest),
+        "review_plan": dashboard_review_plan(digest),
         "guardrails": [
             "dashboard 只整理复盘优先级和证据缺口，不生成买卖指令、目标价或仓位建议。",
             "全 A 结论受行情源、A 股基础清单和研究证据覆盖度影响。",
@@ -2204,6 +2205,222 @@ def dashboard_handoff(digest: Dict[str, object]) -> Dict[str, object]:
     }
 
 
+def dashboard_review_plan(digest: Dict[str, object]) -> Dict[str, object]:
+    items: List[Dict[str, object]] = []
+    add_dashboard_plan_market(items, digest)
+    add_dashboard_plan_portfolio(items, digest)
+    add_dashboard_plan_evidence(items, digest)
+    add_dashboard_plan_attention(items, digest)
+    add_dashboard_plan_handoff(items, digest)
+    for index, item in enumerate(items, start=1):
+        item["rank"] = index
+    return {
+        "available": bool(items),
+        "summary": dashboard_review_plan_summary(items),
+        "items": items[:10],
+        "write_policy": "review_plan 只安排复盘顺序；写入、导入和研究结论仍需人工确认。",
+    }
+
+
+def add_dashboard_plan_market(items: List[Dict[str, object]], digest: Dict[str, object]) -> None:
+    scan = digest.get("market_scan", {}) if isinstance(digest.get("market_scan"), dict) else {}
+    if not scan.get("available"):
+        return
+    groups = scan.get("top_groups", []) if isinstance(scan.get("top_groups"), list) else []
+    candidates = scan.get("top_candidates", []) if isinstance(scan.get("top_candidates"), list) else []
+    if groups or candidates:
+        items.append(
+            dashboard_plan_item(
+                "market_scan",
+                "先读全市场强弱",
+                scan.get("summary") or "确认全市场板块和候选复盘标的。",
+                "market-intel scan --runtime --json",
+                "read",
+                "已记录最强板块、候选标的和覆盖状态。",
+                related_symbols=[item.get("symbol") for item in candidates[:5] if isinstance(item, dict)],
+                evidence=dashboard_market_plan_evidence(groups, candidates),
+            )
+        )
+
+
+def dashboard_market_plan_evidence(groups: object, candidates: object) -> List[object]:
+    rows = []
+    for group in groups[:3] if isinstance(groups, list) else []:
+        if isinstance(group, dict):
+            rows.append("%s%s | 分 %s" % (dashboard_group_type_label(group.get("group_type")), group.get("name"), group.get("score")))
+    for item in candidates[:3] if isinstance(candidates, list) else []:
+        if isinstance(item, dict):
+            rows.append("%s %s | 覆盖 %s" % (item.get("symbol"), item.get("name"), item.get("coverage_state")))
+    return rows[:5]
+
+
+def dashboard_group_type_label(value: object) -> str:
+    labels = {
+        "industry": "行业",
+        "concept": "概念",
+        "index": "指数",
+        "chain": "链路",
+        "unknown": "分组",
+    }
+    return labels.get(str(value), str(value or "分组"))
+
+
+def add_dashboard_plan_portfolio(items: List[Dict[str, object]], digest: Dict[str, object]) -> None:
+    portfolio = digest.get("holding_dashboard", {}) if isinstance(digest.get("holding_dashboard"), dict) else {}
+    holdings = portfolio.get("top_holdings", []) if isinstance(portfolio.get("top_holdings"), list) else []
+    for holding in holdings[:2]:
+        if not isinstance(holding, dict) or not holding.get("symbol"):
+            continue
+        items.append(
+            dashboard_plan_item(
+                "holding_review",
+                "%s %s" % (holding.get("symbol"), holding.get("name") or ""),
+                holding.get("primary_question") or "读取该持仓的行情、热点、风险和组合暴露。",
+                holding.get("primary_json_command") or holding.get("primary_command"),
+                "read",
+                "已确认该持仓的行情、热点、风险、覆盖状态和还需补的证据。",
+                related_symbols=[holding.get("symbol")],
+                evidence=attention_holding_evidence(holding),
+            )
+        )
+
+
+def add_dashboard_plan_evidence(items: List[Dict[str, object]], digest: Dict[str, object]) -> None:
+    evidence = digest.get("evidence_checklist", {}) if isinstance(digest.get("evidence_checklist"), dict) else {}
+    for item in evidence.get("items", []) if isinstance(evidence.get("items"), list) else []:
+        if not isinstance(item, dict):
+            continue
+        if item.get("coverage_status") == "covered":
+            continue
+        if item.get("item_type") == "holding_review":
+            continue
+        items.append(
+            dashboard_plan_item(
+                str(item.get("item_type") or "evidence"),
+                item.get("title") or "证据缺口",
+                item.get("question") or "补齐该项复盘证据。",
+                item.get("json_command"),
+                "read" if digest_command_is_read_only(str(item.get("json_command") or "")) else "manual",
+                item.get("done_when") or "已补齐证据或记录无法补齐的原因。",
+                related_symbols=item.get("related_symbols", []) if isinstance(item.get("related_symbols"), list) else [],
+                evidence=item.get("missing_evidence", []) if isinstance(item.get("missing_evidence"), list) else [],
+            )
+        )
+        if len(items) >= 7:
+            return
+
+
+def add_dashboard_plan_attention(items: List[Dict[str, object]], digest: Dict[str, object]) -> None:
+    attention = digest.get("attention_queue", {}) if isinstance(digest.get("attention_queue"), dict) else {}
+    seen = {str(item.get("json_command") or "") for item in items if isinstance(item, dict)}
+    for item in attention.get("items", []) if isinstance(attention.get("items"), list) else []:
+        if not isinstance(item, dict):
+            continue
+        command = str(item.get("json_command") or "")
+        if not command or command in seen:
+            continue
+        items.append(
+            dashboard_plan_item(
+                str(item.get("item_type") or "attention"),
+                item.get("title") or "关注项",
+                item.get("reason") or "按关注队列继续复盘。",
+                command,
+                "manual" if item.get("requires_manual") else "read",
+                item.get("done_when") or "已完成该关注项。",
+                related_symbols=item.get("related_symbols", []) if isinstance(item.get("related_symbols"), list) else [],
+                evidence=item.get("evidence", []) if isinstance(item.get("evidence"), list) else [],
+                already_read=bool(item.get("already_read")),
+                requires_manual=bool(item.get("requires_manual")),
+            )
+        )
+        seen.add(command)
+        if len(items) >= 8:
+            return
+
+
+def add_dashboard_plan_handoff(items: List[Dict[str, object]], digest: Dict[str, object]) -> None:
+    handoff = digest.get("review_handoff", {}) if isinstance(digest.get("review_handoff"), dict) else {}
+    seen = {str(item.get("json_command") or "") for item in items if isinstance(item, dict)}
+    for item in handoff.get("manual_items", []) if isinstance(handoff.get("manual_items"), list) else []:
+        if not isinstance(item, dict):
+            continue
+        command = str(item.get("json_command") or "")
+        if command and command in seen:
+            continue
+        items.append(
+            dashboard_plan_item(
+                str(item.get("source") or "manual"),
+                item.get("title") or "人工确认",
+                item.get("reason") or "人工确认后再执行。",
+                command,
+                "manual",
+                item.get("done_when") or "人工确认完成。",
+                requires_manual=True,
+            )
+        )
+        if command:
+            seen.add(command)
+        if len(items) >= 9:
+            break
+    records = handoff.get("record_templates", []) if isinstance(handoff.get("record_templates"), list) else []
+    if records:
+        record = records[0] if isinstance(records[0], dict) else {}
+        items.append(
+            dashboard_plan_item(
+                "journal_record",
+                "最后留档",
+                "人工确认复盘结论后保存日报并记录笔记。",
+                record.get("prefilled_note_command") or "market-intel journal save --runtime --json",
+                "manual",
+                "日报和复盘笔记已写入 journal。",
+                requires_manual=True,
+            )
+        )
+
+
+def dashboard_plan_item(
+    item_type: str,
+    title: object,
+    reason: object,
+    command: object,
+    step_type: str,
+    done_when: object,
+    related_symbols: Optional[List[object]] = None,
+    evidence: Optional[List[object]] = None,
+    already_read: bool = False,
+    requires_manual: bool = False,
+) -> Dict[str, object]:
+    command_text = str(command or "")
+    json_command = digest_json_variant(command_text) if command_text and step_type == "read" else command_text
+    return {
+        "item_type": item_type,
+        "step_type": step_type,
+        "title": str(title or item_type),
+        "reason": str(reason or ""),
+        "json_command": json_command,
+        "runnable": bool(json_command) and step_type == "read" and digest_command_is_read_only(json_command),
+        "requires_manual": bool(requires_manual or step_type == "manual"),
+        "already_read": already_read,
+        "related_symbols": dedupe_queue_texts(related_symbols or [])[:6],
+        "evidence": dedupe_queue_texts(evidence or [])[:5],
+        "done_when": str(done_when or ""),
+    }
+
+
+def dashboard_review_plan_summary(items: List[Dict[str, object]]) -> str:
+    if not items:
+        return "暂无可执行复盘计划。"
+    read_count = sum(1 for item in items if item.get("step_type") == "read")
+    manual_count = sum(1 for item in items if item.get("requires_manual"))
+    unread_count = sum(1 for item in items if item.get("step_type") == "read" and not item.get("already_read"))
+    return "复盘步骤 %s 个：只读 %s 个，其中待读 %s 个；人工确认 %s 个。" % (
+        len(items),
+        read_count,
+        unread_count,
+        manual_count,
+    )
+
+
 def dashboard_contract() -> Dict[str, object]:
     return {
         "success": "ok=true 表示 dashboard 已生成；data.state 表示复盘是否仍需读证据或人工确认。",
@@ -2221,6 +2438,10 @@ def dashboard_contract() -> Dict[str, object]:
             "data.evidence_gaps.items",
             "data.action_lane",
             "data.action_lane.items",
+            "data.review_plan",
+            "data.review_plan.items",
+            "data.review_plan.items[].json_command",
+            "data.review_plan.items[].done_when",
             "data.handoff",
             "data.handoff.next_read",
             "data.guardrails",
