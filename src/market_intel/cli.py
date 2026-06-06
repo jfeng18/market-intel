@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from .core.agent import build_agent_briefing, build_agent_plan, command_queue_item
+from .core.agent import build_agent_briefing, build_agent_plan, command_queue_item, compact_scan_review_focus
 from .core.fixtures import load_holdings_file, load_mock_holdings, load_mock_quotes, load_quotes_file
 from .core.brief import build_daily_brief
 from .core.csv_importer import import_holdings_csv, import_quotes_csv, import_research_csv, import_schema, import_universe_csv
@@ -2684,6 +2684,7 @@ def dashboard_scan_candidates(scan: Dict[str, object]) -> List[Dict[str, object]
                 "name": item.get("name"),
                 "review_score": item.get("review_score"),
                 "coverage_state": item.get("coverage_state"),
+                "review_focus": compact_scan_review_focus(item.get("review_focus", {})),
                 "why_now": item.get("why_now"),
                 "json_command": digest_json_variant(commands[0]) if commands else "market-intel pool explain %s --runtime --json" % item.get("symbol"),
             }
@@ -3624,6 +3625,7 @@ def agent_run_digest_market_scan(briefing_data: Dict[str, object], results: List
                 "name": item.get("name"),
                 "review_score": item.get("review_score"),
                 "coverage_state": item.get("coverage_state"),
+                "review_focus": compact_scan_review_focus(item.get("review_focus", {})),
                 "why_now": item.get("why_now"),
                 "commands": list(item.get("commands", []))[:3] if isinstance(item.get("commands"), list) else [],
             }

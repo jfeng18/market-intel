@@ -232,6 +232,9 @@ def build_scan_candidates(
         research = research_status(item)
         risk_flags = candidate_risk_flags(item, quote, contexts, state["state"])
         review_score = candidate_review_score(item, quote, contexts, item.symbol in holding_symbols, risk_flags, research)
+        checklist = candidate_checklist(quote, contexts, state["state"], research, risk_flags)
+        commands = candidate_commands(item.symbol, state["state"], pool)
+        done_when = candidate_done_when(state["state"])
         rows.append(
             {
                 "rank": None,
@@ -252,9 +255,10 @@ def build_scan_candidates(
                 "review_score": review_score,
                 "priority": priority_label(review_score),
                 "why_now": candidate_why_now(item, quote, contexts, state["state"], item.symbol in holding_symbols),
-                "checklist": candidate_checklist(quote, contexts, state["state"], research, risk_flags),
-                "commands": candidate_commands(item.symbol, state["state"], pool),
-                "done_when": candidate_done_when(state["state"]),
+                "review_focus": candidate_review_focus(item, quote, contexts, state, research, risk_flags, checklist, commands, done_when),
+                "checklist": checklist,
+                "commands": commands,
+                "done_when": done_when,
             }
         )
     rows.sort(key=candidate_sort_key)
@@ -365,6 +369,90 @@ def candidate_checklist(
     if not checklist and risk_flags:
         checklist.append("核对风险标签是否影响复盘优先级。")
     return dedupe(checklist)[:5]
+
+
+def candidate_review_focus(
+    item: PoolItem,
+    quote: Quote,
+    contexts: List[Dict[str, object]],
+    coverage_state: Dict[str, object],
+    research: Dict[str, object],
+    risk_flags: List[str],
+    checklist: List[str],
+    commands: List[str],
+    done_when: str,
+) -> Dict[str, object]:
+    state = str(coverage_state.get("state") or "")
+    return {
+        "headline": candidate_review_headline(item, quote, contexts, state),
+        "classification": candidate_classification(item, contexts),
+        "coverage": {
+            "state": state,
+            "reasons": list(coverage_state.get("reasons", [])) if isinstance(coverage_state.get("reasons"), list) else [],
+            "research_status": research.get("status"),
+            "research_confirmed": bool(research.get("confirmed")),
+            "missing_research_fields": list(research.get("missing_fields", [])) if isinstance(research.get("missing_fields"), list) else [],
+        },
+        "signal_drivers": candidate_signal_drivers(quote, contexts),
+        "risk_flags": risk_flags[:8],
+        "first_check": checklist[0] if checklist else "",
+        "next_command": commands[0] if commands else "",
+        "done_when": done_when,
+    }
+
+
+def candidate_review_headline(
+    item: PoolItem,
+    quote: Quote,
+    contexts: List[Dict[str, object]],
+    coverage_state: str,
+) -> str:
+    best = contexts[0] if contexts else {}
+    context_text = "%s%s" % (group_type_label(best.get("group_type")), best.get("name")) if best else "%s/%s" % (item.primary_layer, item.primary_sub_sector)
+    return "%s %s | %s | %+s%% | 覆盖 %s" % (
+        item.symbol,
+        item.name,
+        context_text,
+        quote.change_pct,
+        coverage_state,
+    )
+
+
+def candidate_classification(item: PoolItem, contexts: List[Dict[str, object]]) -> Dict[str, object]:
+    primary_context = contexts[0] if contexts else {}
+    return {
+        "industry": item.raw.get("universe_industry"),
+        "concepts": split_universe_values(item.raw.get("universe_concepts"))[:6],
+        "index_membership": split_universe_values(item.raw.get("universe_index_membership"))[:6],
+        "primary_layer": item.primary_layer,
+        "primary_sub_sector": item.primary_sub_sector,
+        "primary_context": {
+            "group_type": primary_context.get("group_type"),
+            "name": primary_context.get("name"),
+            "score": primary_context.get("score"),
+            "rank": primary_context.get("rank"),
+        }
+        if primary_context
+        else {},
+    }
+
+
+def candidate_signal_drivers(quote: Quote, contexts: List[Dict[str, object]]) -> List[str]:
+    drivers = [
+        "change_pct=%+s" % quote.change_pct,
+        "amount_ratio=%.2f" % quote.amount_ratio,
+    ]
+    if quote.is_stage_high:
+        drivers.append("stage_high")
+    if quote.is_limit_up:
+        drivers.append("limit_up")
+    if contexts:
+        best = contexts[0]
+        drivers.append(
+            "context=%s%s score=%s"
+            % (group_type_label(best.get("group_type")), best.get("name"), best.get("score"))
+        )
+    return drivers
 
 
 def candidate_commands(symbol: object, coverage_state: str, pool: str) -> List[str]:
@@ -482,6 +570,10 @@ def scan_contract() -> Dict[str, object]:
             "data.candidate_securities[].review_score",
             "data.candidate_securities[].coverage_state",
             "data.candidate_securities[].research_status",
+            "data.candidate_securities[].review_focus",
+            "data.candidate_securities[].review_focus.classification",
+            "data.candidate_securities[].review_focus.coverage",
+            "data.candidate_securities[].review_focus.next_command",
             "data.candidate_securities[].why_now",
             "data.candidate_securities[].checklist",
             "data.candidate_securities[].commands",

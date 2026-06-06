@@ -18,14 +18,21 @@ def test_scan_mock_defaults_to_all_a_seed():
     assert data["candidate_securities"]
     assert data["candidate_securities"][0]["why_now"]
     assert data["candidate_securities"][0]["checklist"]
+    assert data["candidate_securities"][0]["review_focus"]["headline"]
+    assert data["candidate_securities"][0]["review_focus"]["classification"]["primary_context"]
+    assert data["candidate_securities"][0]["review_focus"]["coverage"]["state"] == data["candidate_securities"][0]["coverage_state"]
+    assert data["candidate_securities"][0]["review_focus"]["next_command"] == data["candidate_securities"][0]["commands"][0]
     assert data["candidate_securities"][0]["commands"][0].startswith("market-intel pool explain")
     assert data["coverage_context"]["available"] is True
     assert data["coverage_context"]["pool"] == "all-a"
     assert "data.sector_groups" in data["agent_contract"]["stable_fields"]
+    assert "data.candidate_securities[].review_focus" in data["agent_contract"]["stable_fields"]
+    assert "data.candidate_securities[].review_focus.classification" in data["agent_contract"]["stable_fields"]
     assert "data.candidate_securities[].why_now" in data["agent_contract"]["stable_fields"]
     assert "market-intel scan" in text
     assert "板块扫描" in text
     assert "候选复盘" in text
+    assert "复核焦点" in text
     assert "buy" not in text.lower()
     assert "sell" not in text.lower()
 
@@ -93,6 +100,10 @@ def test_scan_uses_a_share_universe_groups(monkeypatch, tmp_path):
     assert first["coverage_state"] == "foundation"
     assert "foundation_pool_match" in first["risk_flags"]
     assert first["research_status"]["status"] == "missing"
+    assert first["review_focus"]["classification"]["industry"] == "银行"
+    assert "股份行" in first["review_focus"]["classification"]["concepts"]
+    assert "沪深300" in first["review_focus"]["classification"]["index_membership"]
+    assert first["review_focus"]["coverage"]["missing_research_fields"] == ["thesis", "evidence", "invalidation"]
     assert first["commands"][1] == "market-intel pool research --runtime --dry-run --json"
     assert "全 A 基础清单" in text
     assert "行业银行" in text

@@ -215,6 +215,8 @@ def test_agent_briefing_ready_without_journal(monkeypatch, tmp_path):
     assert data["market_scan"]["sector_groups"]
     assert data["market_scan"]["candidate_securities"]
     assert data["market_scan"]["candidate_securities"][0]["why_now"]
+    assert data["market_scan"]["candidate_securities"][0]["review_focus"]["headline"]
+    assert data["market_scan"]["candidate_securities"][0]["review_focus"]["coverage"]["state"]
     assert "data.daily.coverage_context" in data["agent_contract"]["stable_fields"]
     assert "data.daily.coverage_context.universe.sector_profile" in data["agent_contract"]["stable_fields"]
     assert "data.market_scan" in data["agent_contract"]["stable_fields"]
@@ -959,6 +961,8 @@ def test_agent_next_returns_compact_handoff(monkeypatch, tmp_path):
     assert data["market_scan"]["available"] is True
     assert data["market_scan"]["top_groups"]
     assert data["market_scan"]["top_candidates"]
+    assert data["market_scan"]["top_candidates"][0]["review_focus"]["headline"]
+    assert data["market_scan"]["top_candidates"][0]["review_focus"]["next_command"]
     assert data["review_handoff"]["command_chain"]
     assert data["review_handoff"]["command_chain"][0]["json_command"].endswith("--json")
     assert data["security_cards"]["cards"]

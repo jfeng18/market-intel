@@ -571,6 +571,22 @@ def render_scan_candidates(value: object) -> List[str]:
         )
         if row.get("why_now"):
             lines.append("   为何现在看: %s" % row.get("why_now"))
+        focus = row.get("review_focus", {}) if isinstance(row.get("review_focus"), dict) else {}
+        if focus.get("headline"):
+            lines.append("   复核焦点: %s" % focus.get("headline"))
+        classification = focus.get("classification", {}) if isinstance(focus.get("classification"), dict) else {}
+        if classification:
+            parts = []
+            if classification.get("industry"):
+                parts.append("行业=%s" % classification.get("industry"))
+            concepts = classification.get("concepts", []) if isinstance(classification.get("concepts"), list) else []
+            if concepts:
+                parts.append("概念=%s" % ",".join(str(value) for value in concepts[:3]))
+            indexes = classification.get("index_membership", []) if isinstance(classification.get("index_membership"), list) else []
+            if indexes:
+                parts.append("指数=%s" % ",".join(str(value) for value in indexes[:3]))
+            if parts:
+                lines.append("   分类: %s" % " | ".join(parts))
         checklist = row.get("checklist", []) if isinstance(row.get("checklist"), list) else []
         if checklist:
             lines.append("   核对: %s" % "；".join(str(item) for item in checklist[:3]))

@@ -253,10 +253,50 @@ def compact_scan_candidate(item: Dict[str, object]) -> Dict[str, object]:
             if isinstance(context, dict)
         ],
         "risk_flags": list(item.get("risk_flags", []))[:8] if isinstance(item.get("risk_flags"), list) else [],
+        "review_focus": compact_scan_review_focus(item.get("review_focus", {})),
         "why_now": item.get("why_now"),
         "checklist": list(item.get("checklist", []))[:5] if isinstance(item.get("checklist"), list) else [],
         "commands": list(item.get("commands", []))[:4] if isinstance(item.get("commands"), list) else [],
         "done_when": item.get("done_when"),
+    }
+
+
+def compact_scan_review_focus(value: object) -> Dict[str, object]:
+    focus = value if isinstance(value, dict) else {}
+    classification = focus.get("classification", {}) if isinstance(focus.get("classification"), dict) else {}
+    coverage = focus.get("coverage", {}) if isinstance(focus.get("coverage"), dict) else {}
+    primary_context = classification.get("primary_context", {}) if isinstance(classification.get("primary_context"), dict) else {}
+    return {
+        "headline": focus.get("headline"),
+        "classification": {
+            "industry": classification.get("industry"),
+            "concepts": list(classification.get("concepts", []))[:4] if isinstance(classification.get("concepts"), list) else [],
+            "index_membership": list(classification.get("index_membership", []))[:4] if isinstance(classification.get("index_membership"), list) else [],
+            "primary_layer": classification.get("primary_layer"),
+            "primary_sub_sector": classification.get("primary_sub_sector"),
+            "primary_context": {
+                "group_type": primary_context.get("group_type"),
+                "name": primary_context.get("name"),
+                "score": primary_context.get("score"),
+                "rank": primary_context.get("rank"),
+            }
+            if primary_context
+            else {},
+        },
+        "coverage": {
+            "state": coverage.get("state"),
+            "reasons": list(coverage.get("reasons", []))[:4] if isinstance(coverage.get("reasons"), list) else [],
+            "research_status": coverage.get("research_status"),
+            "research_confirmed": bool(coverage.get("research_confirmed")),
+            "missing_research_fields": list(coverage.get("missing_research_fields", []))[:4]
+            if isinstance(coverage.get("missing_research_fields"), list)
+            else [],
+        },
+        "signal_drivers": list(focus.get("signal_drivers", []))[:5] if isinstance(focus.get("signal_drivers"), list) else [],
+        "risk_flags": list(focus.get("risk_flags", []))[:6] if isinstance(focus.get("risk_flags"), list) else [],
+        "first_check": focus.get("first_check"),
+        "next_command": focus.get("next_command"),
+        "done_when": focus.get("done_when"),
     }
 
 
