@@ -84,8 +84,8 @@ class Quote:
             amount_ratio=float(value.get("amount_ratio") or 0),
             turnover_rate=float(value.get("turnover_rate") or 0),
             amplitude_pct=float(value.get("amplitude_pct") or 0),
-            is_limit_up=bool(value.get("is_limit_up")),
-            is_stage_high=bool(value.get("is_stage_high")),
+            is_limit_up=parse_bool(value.get("is_limit_up")),
+            is_stage_high=parse_bool(value.get("is_stage_high")),
             intraday_fade_pct=float(value.get("intraday_fade_pct") or 0),
             source=str(value.get("source") or "mock"),
         )
@@ -164,3 +164,20 @@ def optional_float(value: Any) -> Optional[float]:
     if value is None or value == "":
         return None
     return float(value)
+
+
+def parse_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    if isinstance(value, (int, float)):
+        return value != 0
+    text = str(value).strip().lower()
+    if text in {"", "-", "--", "nan", "none", "null"}:
+        return False
+    if text in {"1", "true", "yes", "y", "是", "涨停", "新高", "√"}:
+        return True
+    if text in {"0", "false", "no", "n", "否", "未涨停", "不是", "x"}:
+        return False
+    raise ValueError("invalid boolean value: %r" % value)

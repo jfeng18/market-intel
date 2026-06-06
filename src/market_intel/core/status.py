@@ -144,9 +144,13 @@ def latest_trade_date(quotes: List[Quote]) -> Optional[date]:
 
 
 def build_readiness(validation: Dict[str, object], freshness: Dict[str, object]) -> Dict[str, object]:
-    error_count = int(validation.get("summary", {}).get("error_count", 0)) if isinstance(validation.get("summary"), dict) else 0
+    validation_error_count = (
+        int(validation.get("summary", {}).get("error_count", 0)) if isinstance(validation.get("summary"), dict) else 0
+    )
     warning_count = int(validation.get("summary", {}).get("warning_count", 0)) if isinstance(validation.get("summary"), dict) else 0
+    freshness_error_count = len(freshness.get("errors", [])) if isinstance(freshness.get("errors"), list) else 0
     freshness_warning_count = len(freshness.get("warnings", [])) if isinstance(freshness.get("warnings"), list) else 0
+    error_count = validation_error_count + freshness_error_count
     if error_count:
         state = "blocked"
     elif warning_count or freshness_warning_count:

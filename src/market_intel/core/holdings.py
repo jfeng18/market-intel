@@ -18,9 +18,11 @@ def calculate_holding_impacts(items: List[PoolItem], holdings: List[Holding]) ->
     overlap_groups = Counter()
 
     for impact in impacts:
+        exposure_groups = set()
         for exposure in impact["exposures"]:
-            exposure_counter["%s/%s" % (exposure["layer"], exposure["sub_sector"])] += 1
-        for group in impact["overlap_groups"]:
+            exposure_groups.add("%s/%s" % (exposure["layer"], exposure["sub_sector"]))
+        exposure_counter.update(exposure_groups)
+        for group in set(impact["overlap_groups"]):
             overlap_groups[group] += 1
 
     repeated_exposures = [

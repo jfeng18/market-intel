@@ -1,4 +1,4 @@
-from market_intel.core.normalize import find_pool_item
+from market_intel.core.normalize import find_pool_item, normalize_row
 from market_intel.core.pool_loader import load_pool
 
 
@@ -52,3 +52,24 @@ def test_non_security_rows_are_flagged_and_not_tradable():
     assert non_security
     assert all(not item.tradable for item in non_security)
 
+
+def test_pending_marker_rows_do_not_recover_symbol_from_desc():
+    item = normalize_row(
+        {
+            "status": "pending",
+            "priority": "P2",
+            "section": "1.1 AI 算力芯片（GPU / AI 加速器）",
+            "level": "🇨🇳 中国梯队",
+            "company": "摩尔线程",
+            "code": "科创板",
+            "desc": "国产 GPGPU 第二梯队 | 展示 256GPU 超节点",
+            "notes": "",
+        },
+        raw_row=8,
+    )
+
+    assert item.symbol is None
+    assert item.instrument_type == "pending_listing"
+    assert item.tradable is False
+    assert "pending_listing" in item.data_quality_flags
+    assert "column_shift_suspected" not in item.data_quality_flags
