@@ -265,7 +265,7 @@ market-intel pool coverage --holdings-file data/runtime/holdings.json --json
 
 ```bash
 market-intel pool expansion --runtime --output data/runtime/pool_expansion.csv --json
-market-intel pool expansion --review-file data/runtime/pool_expansion.csv --json
+market-intel pool expansion --review-file data/runtime/pool_expansion.csv --text
 MARKET_INTEL_POOL_EXTRA_PATHS=data/runtime/pool_expansion.csv market-intel pool coverage --runtime --text
 ```
 

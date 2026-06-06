@@ -9,7 +9,7 @@ from market_intel.cli import (
     handle_pool_explain,
     handle_pool_list,
 )
-from market_intel.core.text_report import render_pool_coverage_text, render_pool_explain_text
+from market_intel.core.text_report import render_pool_coverage_text, render_pool_expansion_text, render_pool_explain_text
 
 
 def test_pool_list_returns_json_envelope():
@@ -197,6 +197,24 @@ def test_pool_expansion_review_accepts_reviewed_rows(tmp_path):
     assert data["ready_rows"][0]["normalized"]["primary_layer"] == "其他"
     assert "MARKET_INTEL_POOL_EXTRA_PATHS=" in data["next_commands"][0]
     assert str(expansion_file) not in json.dumps(payload, ensure_ascii=False)
+
+
+def test_pool_expansion_text_renderer_for_review(tmp_path):
+    expansion_file = tmp_path / "pool_expansion.csv"
+    expansion_file.write_text(
+        "status,priority,section,level,company,code,desc,notes\n"
+        "candidate,P2,待确认 / 持仓补充,待确认,平安银行,000001,持仓未匹配当前复盘池,source=test\n",
+        encoding="utf-8",
+    )
+
+    text = render_pool_expansion_text(handle_pool_expansion("all-a", review_file=str(expansion_file)))
+
+    assert "market-intel pool expansion" in text
+    assert "review blocked" in text
+    assert "POOL_EXPANSION_STATUS_NOT_READY" in text
+    assert "下一步" in text
+    assert "buy" not in text.lower()
+    assert "sell" not in text.lower()
 
 
 def test_pool_expansion_review_rejects_conflicting_options(tmp_path):
@@ -440,3 +458,29 @@ def test_pool_expansion_review_cli_smoke(tmp_path, cli_cmd):
     assert result.returncode == 1
     assert payload["command"] == "pool.expansion"
     assert payload["data"]["review_state"] == "blocked"
+
+
+def test_pool_expansion_review_text_cli_smoke(tmp_path, cli_cmd):
+    expansion_file = tmp_path / "pool_expansion.csv"
+    expansion_file.write_text(
+        "status,priority,section,level,company,code,desc,notes\n"
+        "candidate,P2,待确认 / 持仓补充,待确认,平安银行,000001,持仓未匹配当前复盘池,source=test\n",
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        cli_cmd(
+            "pool",
+            "expansion",
+            "--review-file",
+            str(expansion_file),
+            "--text",
+        ),
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 1
+    assert "market-intel pool expansion" in result.stdout
+    assert "review blocked" in result.stdout
+    assert "POOL_EXPANSION_STATUS_NOT_READY" in result.stdout

@@ -42,6 +42,7 @@ from .core.text_report import (
     render_focus_text,
     render_market_map_text,
     render_pool_coverage_text,
+    render_pool_expansion_text,
     render_pool_explain_text,
     render_journal_entry_text,
     render_journal_compare_text,
@@ -85,6 +86,7 @@ def build_parser() -> argparse.ArgumentParser:
     expansion_parser.add_argument("--review-file")
     expansion_parser.add_argument("--dry-run", action="store_true")
     expansion_parser.add_argument("--json", action="store_true", dest="as_json")
+    expansion_parser.add_argument("--text", action="store_true")
 
     explain_parser = pool_subparsers.add_parser("explain")
     explain_parser.add_argument("symbol")
@@ -322,6 +324,9 @@ def main(argv: Optional[List[str]] = None) -> int:
                 args.review_file,
                 args.dry_run,
             )
+            if args.text:
+                print(render_pool_expansion_text(result))
+                return 0 if result["ok"] else 1
         elif args.resource == "pool" and args.action == "explain":
             result = handle_pool_explain(args.pool, args.symbol, args.runtime)
             if args.text and result["ok"]:

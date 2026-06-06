@@ -189,6 +189,91 @@ def render_pool_coverage_text(payload: Dict[str, object]) -> str:
     return "\n".join(lines)
 
 
+def render_pool_expansion_text(payload: Dict[str, object]) -> str:
+    data = payload.get("data", {})
+    if not isinstance(data, dict):
+        return "market-intel pool expansion\n\n无数据。"
+
+    lines = [
+        "market-intel pool expansion",
+        "",
+        "状态",
+    ]
+    if "review_state" in data:
+        lines.append(
+            "- review %s | 行 %s | ready %s | blocked %s"
+            % (
+                data.get("review_state"),
+                data.get("row_count", 0),
+                data.get("ready_count", 0),
+                data.get("blocked_count", 0),
+            )
+        )
+    else:
+        lines.append(
+            "- export | 行 %s | written %s | dry_run %s | output %s"
+            % (
+                data.get("record_count", 0),
+                data.get("written"),
+                data.get("dry_run"),
+                data.get("output"),
+            )
+        )
+
+    lines.extend(["", "阻断项"])
+    lines.extend(render_expansion_blockers(data.get("blockers", [])))
+    lines.extend(["", "可用行"])
+    lines.extend(render_expansion_ready_rows(data.get("ready_rows", data.get("rows", []))))
+    lines.extend(["", "下一步"])
+    lines.extend(render_command_list(data.get("next_commands", [])))
+    lines.extend(["", "边界", "- 只导出或审查候选补池 CSV，不自动修改主复盘池。", "- 通过 review 后仍建议用 overlay 跑 coverage/focus 复核。"])
+    return "\n".join(lines)
+
+
+def render_expansion_blockers(value: object) -> List[str]:
+    rows = value if isinstance(value, list) else []
+    if not rows:
+        return ["- 暂无阻断项。"]
+    lines = []
+    for row in rows[:8]:
+        if not isinstance(row, dict):
+            continue
+        detail = row.get("detail", {}) if isinstance(row.get("detail"), dict) else {}
+        lines.append(
+            "- %s | row %s | %s | %s"
+            % (
+                row.get("code"),
+                detail.get("row", "-"),
+                detail.get("symbol") or detail.get("path") or "",
+                row.get("message"),
+            )
+        )
+    return lines
+
+
+def render_expansion_ready_rows(value: object) -> List[str]:
+    rows = value if isinstance(value, list) else []
+    if not rows:
+        return ["- 暂无可用行。"]
+    lines = []
+    for row in rows[:8]:
+        if not isinstance(row, dict):
+            continue
+        normalized = row.get("normalized", {}) if isinstance(row.get("normalized"), dict) else {}
+        lines.append(
+            "- row %s | %s %s | %s / %s | %s"
+            % (
+                row.get("row", "-"),
+                row.get("symbol") or "",
+                row.get("name") or "",
+                normalized.get("primary_layer") or "",
+                normalized.get("primary_sub_sector") or "",
+                row.get("review_state") or "",
+            )
+        )
+    return lines
+
+
 def render_named_counts(value: object, empty: str) -> List[str]:
     rows = value if isinstance(value, list) else []
     if not rows:
