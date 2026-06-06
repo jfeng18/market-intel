@@ -98,6 +98,14 @@ def test_pool_coverage_reports_a_share_universe(monkeypatch, tmp_path):
     assert data["universe"]["industry_count"] == 2
     assert data["universe"]["concept_count"] == 4
     assert data["universe"]["index_membership_count"] == 3
+    profile = data["universe"]["sector_profile"]
+    assert profile["record_count"] == 2
+    assert profile["industry_coverage_ratio"] == 1
+    assert profile["concept_coverage_ratio"] == 1
+    assert profile["index_coverage_ratio"] == 1
+    assert profile["top_industries"][0] == {"name": "银行", "count": 1}
+    assert profile["missing_field_counts"] == {"industry": 0, "concepts": 0, "index_membership": 0}
+    assert profile["missing_field_samples"] == []
     assert coverage["matched_count"] == 1
     assert coverage["unmatched_count"] == 0
     assert coverage["foundation_matched_count"] == 1
@@ -110,6 +118,8 @@ def test_pool_coverage_reports_a_share_universe(monkeypatch, tmp_path):
     assert any(action["id"] == "export_research_queue" for action in data["next_actions"])
     assert all(gap["id"] != "all_a_seed_only" for gap in data["gaps"])
     assert "data.universe" in data["agent_contract"]["stable_fields"]
+    assert "data.universe.sector_profile" in data["agent_contract"]["stable_fields"]
+    assert "data.universe.sector_profile.top_industries" in data["agent_contract"]["stable_fields"]
     assert str(universe_file) not in json.dumps(payload, ensure_ascii=False)
 
 
@@ -127,8 +137,38 @@ def test_pool_coverage_text_renders_a_share_universe(monkeypatch, tmp_path):
     assert "全 A 基础清单" in text
     assert "a_share_universe_v1" in text
     assert "来源文件: a_share_universe.csv" in text
+    assert "字段覆盖 | 行业 100.0% | 概念 100.0% | 指数 100.0%" in text
+    assert "头部行业: 银行(1)" in text
     assert "000001 平安银行" in text
     assert "研究证据任务" in text
+
+
+def test_pool_coverage_reports_universe_sector_profile_gaps(monkeypatch, tmp_path):
+    universe_file = tmp_path / "a_share_universe.csv"
+    universe_file.write_text(
+        "证券代码,证券名称,行业,概念,指数成分,上市状态\n"
+        "000001,平安银行,银行,,沪深300,listed\n"
+        "600519,贵州茅台,,白酒;消费,,listed\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("MARKET_INTEL_A_SHARE_UNIVERSE_PATHS", str(universe_file))
+
+    payload = handle_pool_coverage("all-a")
+    profile = payload["data"]["universe"]["sector_profile"]
+    text = render_pool_coverage_text(payload)
+
+    assert payload["ok"] is True
+    assert profile["industry_coverage_ratio"] == 0.5
+    assert profile["concept_coverage_ratio"] == 0.5
+    assert profile["index_coverage_ratio"] == 0.5
+    assert profile["missing_field_counts"] == {"industry": 1, "concepts": 1, "index_membership": 1}
+    assert profile["coverage_flags"] == ["industry_missing", "concepts_missing", "index_membership_missing"]
+    assert profile["missing_field_samples"][0]["symbol"] == "000001"
+    assert profile["missing_field_samples"][0]["missing_fields"] == ["concepts"]
+    assert any(action["id"] == "complete_a_share_universe_fields" for action in payload["data"]["next_actions"])
+    assert "字段覆盖 | 行业 50.0% | 概念 50.0% | 指数 50.0%" in text
+    assert "缺字段 | 行业 1 | 概念 1 | 指数 1" in text
+    assert "待补 000001 平安银行 | concepts" in text
 
 
 def test_pool_research_exports_foundation_research_draft(monkeypatch, tmp_path):

@@ -420,6 +420,7 @@ def universe_summary(items: List[PoolItem]) -> Dict[str, object]:
             "industry_count": 0,
             "concept_count": 0,
             "index_membership_count": 0,
+            "sector_profile": empty_sector_profile(),
             "sample_items": [],
         }
 
@@ -439,6 +440,7 @@ def universe_summary(items: List[PoolItem]) -> Dict[str, object]:
         "industry_count": len(industries),
         "concept_count": len(concepts),
         "index_membership_count": len(indexes),
+        "sector_profile": universe_sector_profile(universe_items),
         "sample_items": [
             {
                 "symbol": item.symbol,
@@ -450,6 +452,101 @@ def universe_summary(items: List[PoolItem]) -> Dict[str, object]:
             for item in universe_items[:8]
         ],
     }
+
+
+def empty_sector_profile() -> Dict[str, object]:
+    return {
+        "record_count": 0,
+        "industry_covered_count": 0,
+        "concept_covered_count": 0,
+        "index_covered_count": 0,
+        "industry_coverage_ratio": 0,
+        "concept_coverage_ratio": 0,
+        "index_coverage_ratio": 0,
+        "top_industries": [],
+        "top_concepts": [],
+        "top_indexes": [],
+        "missing_field_counts": {
+            "industry": 0,
+            "concepts": 0,
+            "index_membership": 0,
+        },
+        "missing_field_samples": [],
+        "coverage_flags": [],
+    }
+
+
+def universe_sector_profile(universe_items: List[PoolItem]) -> Dict[str, object]:
+    record_count = len(universe_items)
+    industry_counter = Counter()
+    concept_counter = Counter()
+    index_counter = Counter()
+    missing_counts = Counter()
+    missing_samples = []
+    industry_covered = 0
+    concept_covered = 0
+    index_covered = 0
+    for item in universe_items:
+        industry = str(item.raw.get("universe_industry") or "").strip()
+        concepts = split_universe_values(item.raw.get("universe_concepts"))
+        indexes = split_universe_values(item.raw.get("universe_index_membership"))
+        missing_fields = []
+        if industry:
+            industry_counter.update([industry])
+            industry_covered += 1
+        else:
+            missing_counts.update(["industry"])
+            missing_fields.append("industry")
+        if concepts:
+            concept_counter.update(concepts)
+            concept_covered += 1
+        else:
+            missing_counts.update(["concepts"])
+            missing_fields.append("concepts")
+        if indexes:
+            index_counter.update(indexes)
+            index_covered += 1
+        else:
+            missing_counts.update(["index_membership"])
+            missing_fields.append("index_membership")
+        if missing_fields and len(missing_samples) < 8:
+            missing_samples.append(
+                {
+                    "symbol": item.symbol,
+                    "name": item.name,
+                    "missing_fields": missing_fields,
+                }
+            )
+    flags = []
+    if missing_counts.get("industry"):
+        flags.append("industry_missing")
+    if missing_counts.get("concepts"):
+        flags.append("concepts_missing")
+    if missing_counts.get("index_membership"):
+        flags.append("index_membership_missing")
+    return {
+        "record_count": record_count,
+        "industry_covered_count": industry_covered,
+        "concept_covered_count": concept_covered,
+        "index_covered_count": index_covered,
+        "industry_coverage_ratio": coverage_ratio(industry_covered, record_count),
+        "concept_coverage_ratio": coverage_ratio(concept_covered, record_count),
+        "index_coverage_ratio": coverage_ratio(index_covered, record_count),
+        "top_industries": counter_dicts(industry_counter, limit=10),
+        "top_concepts": counter_dicts(concept_counter, limit=10),
+        "top_indexes": counter_dicts(index_counter, limit=10),
+        "missing_field_counts": {
+            "industry": missing_counts.get("industry", 0),
+            "concepts": missing_counts.get("concepts", 0),
+            "index_membership": missing_counts.get("index_membership", 0),
+        },
+        "missing_field_samples": missing_samples,
+        "coverage_flags": flags,
+    }
+
+
+def coverage_ratio(count: int, total: int) -> float:
+    return round(count / total, 4) if total else 0
 
 
 def split_universe_values(value: object) -> List[str]:
@@ -923,6 +1020,16 @@ def coverage_next_actions(
                 "done_when": "已确认基础清单的行业、概念和指数成分字段覆盖情况。",
             }
         )
+        profile = universe.get("sector_profile", {}) if isinstance(universe.get("sector_profile"), dict) else {}
+        if profile.get("coverage_flags"):
+            actions.append(
+                {
+                    "rank": len(actions) + 1,
+                    "id": "complete_a_share_universe_fields",
+                    "command": "market-intel import universe <a_share_universe.csv> --runtime --dry-run --json",
+                    "done_when": "已补齐 A 股基础清单缺失的行业、概念或指数成分字段，并通过 dry-run 校验。",
+                }
+            )
     if not holdings_coverage.get("available"):
         actions.append(
             {
@@ -999,6 +1106,9 @@ def coverage_contract() -> Dict[str, object]:
             "data.cn_a_board_distribution",
             "data.data_quality",
             "data.universe",
+            "data.universe.sector_profile",
+            "data.universe.sector_profile.top_industries",
+            "data.universe.sector_profile.missing_field_samples",
             "data.holdings_coverage",
             "data.expansion_queue",
             "data.research_queue",

@@ -293,6 +293,37 @@ def render_universe_summary(value: object) -> List[str]:
     ]
     if source_files:
         lines.append("- 来源文件: %s" % ", ".join(str(item) for item in source_files[:5]))
+    profile = data.get("sector_profile", {}) if isinstance(data.get("sector_profile"), dict) else {}
+    if profile:
+        lines.append(
+            "- 字段覆盖 | 行业 %.1f%% | 概念 %.1f%% | 指数 %.1f%%"
+            % (
+                float(profile.get("industry_coverage_ratio") or 0) * 100,
+                float(profile.get("concept_coverage_ratio") or 0) * 100,
+                float(profile.get("index_coverage_ratio") or 0) * 100,
+            )
+        )
+        industries = profile.get("top_industries", []) if isinstance(profile.get("top_industries"), list) else []
+        if industries:
+            lines.append(
+                "- 头部行业: %s"
+                % "；".join("%s(%s)" % (item.get("name"), item.get("count")) for item in industries[:5] if isinstance(item, dict))
+            )
+        missing_counts = profile.get("missing_field_counts", {}) if isinstance(profile.get("missing_field_counts"), dict) else {}
+        if any(int(value or 0) for value in missing_counts.values()):
+            lines.append(
+                "- 缺字段 | 行业 %s | 概念 %s | 指数 %s"
+                % (
+                    missing_counts.get("industry", 0),
+                    missing_counts.get("concepts", 0),
+                    missing_counts.get("index_membership", 0),
+                )
+            )
+            samples = profile.get("missing_field_samples", []) if isinstance(profile.get("missing_field_samples"), list) else []
+            for item in samples[:3]:
+                if isinstance(item, dict):
+                    fields = item.get("missing_fields", []) if isinstance(item.get("missing_fields"), list) else []
+                    lines.append("- 待补 %s %s | %s" % (item.get("symbol") or "-", item.get("name") or "-", "/".join(str(field) for field in fields)))
     sample_items = data.get("sample_items", []) if isinstance(data.get("sample_items"), list) else []
     for item in sample_items[:5]:
         if not isinstance(item, dict):
