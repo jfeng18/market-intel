@@ -689,7 +689,7 @@ def handle_pool_quality(pool: str, flag: str, limit: int = 12) -> Dict[str, Any]
     return envelope(
         command="pool.quality",
         data=data,
-        warnings=pool_warnings(items),
+        warnings=[],
         source="pool:%s" % pool,
         ok=bool(data.get("found")),
         errors=[] if data.get("found") else [error("POOL_QUALITY_FLAG_NOT_FOUND", "No pool items match this data quality flag.", {"flag": flag})],

@@ -511,20 +511,28 @@ def test_pool_quality_focuses_data_quality_flag():
 
     assert payload["ok"] is True
     assert payload["command"] == "pool.quality"
+    assert payload["warnings"] == []
     assert data["flag"] == "invalid_symbol"
     assert data["found"] is True
     assert data["severity"] == "high"
     assert data["affected_count"] > 0
     assert data["sample_count"] == 3
     assert data["samples"][0]["raw_row"]
+    assert data["samples"][0]["source_file"]
+    assert data["samples"][0]["raw_company"]
+    assert data["samples"][0]["raw_desc"]
+    assert data["samples"][0]["fix_hint"]
     assert data["suggested_action"]
     assert data["done_when"]
     assert data["next_commands"][0] == "market-intel pool quality invalid_symbol --json"
     assert "data.samples[].raw_row" in data["agent_contract"]["stable_fields"]
+    assert "data.samples[].source_file" in data["agent_contract"]["stable_fields"]
+    assert "data.samples[].fix_hint" in data["agent_contract"]["stable_fields"]
     assert "market-intel pool quality" in text
     assert "invalid_symbol" in text
     assert "完成标准" in text
     assert "row" in text
+    assert "修复提示" in text
     assert "交易动作" not in text
     assert "buy" not in text.lower()
     assert "sell" not in text.lower()

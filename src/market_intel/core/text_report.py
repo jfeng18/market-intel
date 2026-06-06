@@ -286,8 +286,9 @@ def render_pool_quality_text(payload: Dict[str, object]) -> str:
             continue
         flags = sample.get("flags", []) if isinstance(sample.get("flags"), list) else []
         lines.append(
-            "- row %s | %s %s | code=%s | section=%s | flags=%s"
+            "- %s:row %s | %s %s | code=%s | section=%s | flags=%s"
             % (
+                sample.get("source_file") or "pool",
                 sample.get("raw_row"),
                 sample.get("symbol") or "未上市",
                 sample.get("name"),
@@ -296,6 +297,13 @@ def render_pool_quality_text(payload: Dict[str, object]) -> str:
                 ",".join(str(flag) for flag in flags[:4]),
             )
         )
+        if sample.get("raw_company") or sample.get("raw_desc"):
+            lines.append(
+                "  原始: company=%s | desc=%s"
+                % (sample.get("raw_company") or "", sample.get("raw_desc") or "")
+            )
+        if sample.get("fix_hint"):
+            lines.append("  修复提示: %s" % sample.get("fix_hint"))
     lines.extend(["", "下一步"])
     lines.extend(render_list(data.get("next_commands", []), empty="暂无下一步。"))
     lines.extend(["", "边界", "- %s" % (data.get("write_policy") or "只读复核，不自动修改数据。")])

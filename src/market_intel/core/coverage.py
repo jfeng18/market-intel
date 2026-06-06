@@ -100,8 +100,8 @@ def build_data_quality_detail(pool: str, items: List[PoolItem], flag: str, limit
             "agent_contract": data_quality_detail_contract(),
             "write_policy": "只读复核数据质量样本；不自动修改 pool CSV 或 runtime 文件。",
         }
-    samples = queue_item.get("samples", []) if isinstance(queue_item.get("samples"), list) else []
-    limited_samples = samples[: max(0, int(limit or 0))]
+    flagged_items = [item for item in items if clean_flag in item.data_quality_flags]
+    limited_samples = data_quality_detail_samples(clean_flag, flagged_items, max(0, int(limit or 0)))
     return {
         "pool": pool,
         "flag": clean_flag,
@@ -128,6 +128,52 @@ def build_data_quality_detail(pool: str, items: List[PoolItem], flag: str, limit
         "agent_contract": data_quality_detail_contract(),
         "write_policy": "只读复核数据质量样本；不自动修改 pool CSV 或 runtime 文件。",
     }
+
+
+def data_quality_detail_samples(flag: str, items: List[PoolItem], limit: int) -> List[Dict[str, object]]:
+    return [data_quality_detail_sample(flag, item) for item in items[:limit]]
+
+
+def data_quality_detail_sample(flag: str, item: PoolItem) -> Dict[str, object]:
+    raw = item.raw
+    return {
+        "symbol": item.symbol,
+        "name": item.name,
+        "instrument_type": item.instrument_type,
+        "tradable": item.tradable,
+        "raw_row": raw.get("raw_row"),
+        "source_file": raw.get("pool_source_file"),
+        "source": raw.get("pool_source"),
+        "raw_company": raw.get("raw_company"),
+        "raw_code": raw.get("raw_code"),
+        "raw_desc": raw.get("raw_desc"),
+        "raw_section": raw.get("raw_section"),
+        "raw_level": raw.get("raw_level"),
+        "flags": sorted(set(item.data_quality_flags)),
+        "fix_hint": data_quality_fix_hint(flag, item),
+    }
+
+
+def data_quality_fix_hint(flag: str, item: PoolItem) -> str:
+    raw = item.raw
+    if flag == "invalid_symbol":
+        if "pending_listing" in item.data_quality_flags:
+            return "若该行是未上市公司，保留 pending 状态并确认 code 为上市地/阶段；若已上市，把 code 改成 6 位 A 股代码。"
+        if "non_security_row" in item.data_quality_flags:
+            return "若该行是行业指标或说明行，保留非证券标记；若是个股，补真实证券代码并确认公司名。"
+        return "把 code 修正为 6 位 A 股代码、港股/台股/韩股/美股格式，或把该行改成明确的非证券/待上市说明。"
+    if flag == "column_shift_suspected":
+        return "核对 company/code/desc 是否错位；修正后应让 company=公司名、code=证券代码、desc=一句话逻辑。"
+    if flag == "missing_role":
+        return "在 level 或 desc 中补充该公司角色，例如龙头、核心、弹性、设备、材料、服务或其他可复核定位。"
+    if flag == "unknown_layer":
+        return "把 section 调整到可识别的行业/主题层级，或扩展层级映射规则覆盖该 section。"
+    if flag == "duplicate_symbol_exposure":
+        rows = raw.get("merged_raw_rows")
+        if isinstance(rows, list) and rows:
+            return "核对同一 symbol 的多行暴露是否都应保留；若是重复描述，合并 CSV 行。关联 raw_row=%s。" % ",".join(str(row) for row in rows)
+        return "核对同一 symbol 的多链路暴露是否真实；保留合理暴露，合并重复行。"
+    return data_quality_flag_meta(flag)["suggested_action"]
 
 
 def export_expansion_queue_csv(
@@ -760,6 +806,7 @@ def data_quality_queue_samples(items: List[PoolItem]) -> List[Dict[str, object]]
                 "symbol": item.symbol,
                 "name": item.name,
                 "raw_row": item.raw.get("raw_row"),
+                "source_file": item.raw.get("pool_source_file"),
                 "raw_code": item.raw.get("raw_code"),
                 "raw_section": item.raw.get("raw_section"),
                 "raw_level": item.raw.get("raw_level"),
@@ -1308,7 +1355,11 @@ def data_quality_detail_contract() -> Dict[str, object]:
             "data.affected_count",
             "data.samples",
             "data.samples[].raw_row",
+            "data.samples[].source_file",
             "data.samples[].raw_code",
+            "data.samples[].raw_company",
+            "data.samples[].raw_desc",
+            "data.samples[].fix_hint",
             "data.suggested_action",
             "data.done_when",
             "data.next_commands",
