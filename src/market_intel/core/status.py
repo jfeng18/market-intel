@@ -82,7 +82,19 @@ def build_freshness(max_quote_age_days: int, today: date) -> Dict[str, object]:
             "warnings": [],
         }
     trade_dates = sorted(set(quote.trade_date for quote in quotes if quote.trade_date))
+    date_errors = quote_trade_date_errors(quotes)
     latest = latest_trade_date(quotes)
+    if date_errors:
+        return {
+            "ok": False,
+            "max_quote_age_days": max_quote_age_days,
+            "trade_dates": trade_dates,
+            "latest_trade_date": latest.isoformat() if latest else None,
+            "quote_age_days": (today - latest).days if latest else None,
+            "is_stale": True,
+            "errors": date_errors,
+            "warnings": [],
+        }
     if latest is None:
         return {
             "ok": False,
@@ -127,6 +139,32 @@ def build_freshness(max_quote_age_days: int, today: date) -> Dict[str, object]:
         "errors": [],
         "warnings": warnings,
     }
+
+
+def quote_trade_date_errors(quotes: List[Quote]) -> List[Dict[str, object]]:
+    errors = []
+    for index, quote in enumerate(quotes):
+        text = str(quote.trade_date or "").strip()
+        if not text:
+            errors.append(
+                {
+                    "code": "QUOTE_TRADE_DATE_MISSING",
+                    "message": "行情缺少 trade_date。",
+                    "detail": {"index": index, "symbol": quote.symbol},
+                }
+            )
+            continue
+        try:
+            date.fromisoformat(text[:10])
+        except ValueError:
+            errors.append(
+                {
+                    "code": "QUOTE_TRADE_DATE_INVALID",
+                    "message": "行情 trade_date 不是 ISO 日期。",
+                    "detail": {"index": index, "symbol": quote.symbol, "trade_date": text},
+                }
+            )
+    return errors
 
 
 def missing_freshness() -> Dict[str, object]:
