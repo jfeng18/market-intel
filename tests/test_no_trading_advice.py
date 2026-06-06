@@ -6,6 +6,7 @@ from market_intel.cli import (
     handle_agent_run,
     handle_brief,
     handle_daily,
+    handle_dashboard,
     handle_holdings_impact,
     handle_hotspots,
     handle_import_holdings,
@@ -27,6 +28,7 @@ from market_intel.cli import (
     handle_pool_list,
     handle_portfolio_explain,
     handle_portfolio_review,
+    handle_scan,
 )
 
 
@@ -55,6 +57,7 @@ def test_pool_outputs_do_not_contain_trading_advice_fields(monkeypatch, tmp_path
         handle_agent_plan("ai-energy", max_quote_age_days=9999),
         handle_agent_briefing("ai-energy", max_quote_age_days=9999),
         handle_agent_run("ai-energy", max_quote_age_days=9999, max_steps=5),
+        handle_dashboard("ai-energy", max_quote_age_days=9999, max_steps=5),
         handle_portfolio_review("ai-energy", use_mock=True),
         handle_portfolio_review("ai-energy", use_mock=False, use_runtime=True),
         handle_portfolio_explain("ai-energy", "300308", use_mock=True),
@@ -64,6 +67,7 @@ def test_pool_outputs_do_not_contain_trading_advice_fields(monkeypatch, tmp_path
         handle_holdings_impact("ai-energy", use_mock=True),
         handle_brief("ai-energy", use_mock=True),
         handle_daily("ai-energy", use_mock=True),
+        handle_scan("ai-energy", use_mock=True),
         handle_import_schema(),
         handle_import_quotes("examples/quotes.csv.example", dry_run=True),
         handle_import_holdings("examples/holdings.csv.example", dry_run=True),

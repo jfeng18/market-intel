@@ -85,6 +85,7 @@ PYTHONPATH=src python3 -m market_intel.cli brief --mock --text
 PYTHONPATH=src python3 -m market_intel.cli watchlist --mock --text
 PYTHONPATH=src python3 -m market_intel.cli map --mock --text
 PYTHONPATH=src python3 -m market_intel.cli daily --mock --text
+PYTHONPATH=src python3 -m market_intel.cli dashboard --text
 PYTHONPATH=src python3 -m market_intel.cli focus --mock --text
 ```
 
@@ -105,6 +106,7 @@ market-intel brief --mock --text
 market-intel watchlist --mock --text
 market-intel map --mock --text
 market-intel daily --mock --text
+market-intel dashboard --text
 market-intel focus --mock --text
 market-intel focus --mock --text --pool ai-energy
 ```
@@ -123,6 +125,7 @@ market-intel import quotes examples/quotes.csv.example --runtime --json
 market-intel import holdings examples/holdings.csv.example --runtime --json
 market-intel import universe examples/a_share_universe.csv.example --runtime --json
 market-intel import research examples/research_notes.csv.example --runtime --json
+market-intel dashboard --text
 market-intel agent plan --json
 market-intel agent briefing --text
 market-intel agent run --json
@@ -166,6 +169,16 @@ market-intel journal timeline --text
 - `data.security_risk_profile` 按标的聚合风险登记、证据、复核问题、记录命令和单票命令，方便直接看某只票为什么排在前面。
 - `data.review_tasks[].note_prerequisite` 与 `data.security_review_queue[].note_prerequisite` 会标明记录复盘笔记前是否需要先保存日报留档；agent 应先执行其中的 `archive_command`，再执行对应的 `journal note`。
 - `data.command_queue` 把日报里的复核、留档和记录命令整理成扁平队列；agent 应按 `rank` 执行，跳过 `runnable=false` 的命令，并尊重 `requires_prior_command`。
+
+`dashboard` 是日常第一屏工作台：
+
+- 默认面向 `all-a`，复用 `agent run` 的只读复盘结果，把全市场扫描、持仓压力、证据缺口、行动队列和交接压缩到一屏。
+- `data.market_pulse` 汇总全市场板块、候选复盘标的、覆盖状态、why_now 和下一条只读 JSON 命令。
+- `data.portfolio_pulse` 汇总个人持仓重点、变化持仓、缺行情/缺热点上下文、重复暴露和持仓复核命令。
+- `data.evidence_gaps` 只列未覆盖或待补的证据项，方便先处理数据阻塞、foundation/draft 覆盖和未读单票。
+- `data.action_lane` 给出下一组可接力命令，标明 `runnable`、`requires_manual`、`already_read` 和完成标准。
+- `data.handoff` 保留 agent 接手提示、下一条只读命令、人工确认项和记录模板。
+- `dashboard` 仍是只读复盘入口，不写 journal，不生成买卖指令、目标价或仓位建议。
 
 `agent briefing` 是日常复盘工作台入口：
 
@@ -231,6 +244,8 @@ market-intel journal timeline --text
 market-intel validate runtime --json
 market-intel agent plan --text
 market-intel agent plan --json
+market-intel dashboard --text
+market-intel dashboard --json
 market-intel agent briefing --text
 market-intel agent briefing --json
 market-intel agent run --text
@@ -326,6 +341,8 @@ MARKET_INTEL_POOL_EXTRA_PATHS=data/runtime/pool_expansion.csv market-intel pool 
 `map` 是链路地图：按行业/主题层级聚合热点、持仓暴露、重复暴露和风险复核点，适合复盘时先看结构。当前种子池包含算力、运力、存力、电力、人才密度等 AI 相关层级，后续会扩展到全 A 行业和概念层级。
 
 `daily` 是复盘总入口：先做数据检查，再合并 `brief`、`map`、`watchlist`、组合暴露和 `portfolio review`，并生成今日复核任务，输出一份适合每天留档和 agent 读取的报告。
+
+`dashboard` 是推荐的日常第一屏：复用 `agent run` 的结果，但只保留全市场、持仓、证据缺口、行动队列和交接信息，适合人快速扫一眼，也适合 agent 读取稳定 contract 后继续执行。
 
 `focus` 是日常第一屏入口：复用 `daily` 的完整计算，但只保留最强链路、数据状态、组合压力、优先标的和下一步命令，适合快速回答“今天先看什么”。每个优先标的会给出 `why_now`、`checklist`、`note_command`、`journal_ready`、`done_when` 和下一条命令，让人可以照着复核并留痕，也让 agent 能直接接力执行。
 

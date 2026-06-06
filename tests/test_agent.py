@@ -7,6 +7,7 @@ from market_intel.cli import (
     handle_agent_next,
     handle_agent_plan,
     handle_agent_run,
+    handle_dashboard,
     handle_import_holdings,
     handle_import_quotes,
     handle_import_research,
@@ -14,7 +15,7 @@ from market_intel.cli import (
     handle_journal_note,
     handle_journal_save,
 )
-from market_intel.core.text_report import render_agent_briefing_text, render_agent_next_text, render_agent_plan_text, render_agent_run_text
+from market_intel.core.text_report import render_agent_briefing_text, render_agent_next_text, render_agent_plan_text, render_agent_run_text, render_dashboard_text
 
 
 def import_runtime_examples(monkeypatch, tmp_path):
@@ -968,6 +969,42 @@ def test_agent_next_returns_compact_handoff(monkeypatch, tmp_path):
     assert "sell" not in text.lower()
 
 
+def test_dashboard_returns_one_screen_workbench(monkeypatch, tmp_path):
+    import_runtime_examples(monkeypatch, tmp_path)
+
+    payload = handle_dashboard("all-a", max_quote_age_days=9999, max_steps=5)
+    data = payload["data"]
+    text = render_dashboard_text(payload)
+
+    assert payload["ok"] is True
+    assert payload["command"] == "dashboard"
+    assert data["pool"] == "all-a"
+    assert data["state"] in {"needs_review", "ready_for_note", "blocked_review"}
+    assert data["tiles"]
+    assert data["market_pulse"]["available"] is True
+    assert data["market_pulse"]["top_groups"]
+    assert data["market_pulse"]["candidates"]
+    assert data["market_pulse"]["candidates"][0]["json_command"].endswith("--json")
+    assert data["portfolio_pulse"]["available"] is True
+    assert data["portfolio_pulse"]["top_holdings"]
+    assert data["portfolio_pulse"]["top_holdings"][0]["primary_json_command"].endswith("--json")
+    assert data["evidence_gaps"]["items"]
+    assert data["action_lane"]["items"]
+    assert data["handoff"]["next_read"]
+    assert data["guardrails"]
+    assert "data.market_pulse.candidates" in data["agent_contract"]["stable_fields"]
+    assert "data.portfolio_pulse.top_holdings" in data["agent_contract"]["stable_fields"]
+    assert "data.action_lane.items" in data["agent_contract"]["stable_fields"]
+    assert "market-intel dashboard" in text
+    assert "全市场" in text
+    assert "持仓" in text
+    assert "证据缺口" in text
+    assert "行动队列" in text
+    assert "不生成买卖指令" in text
+    assert "buy" not in text.lower()
+    assert "sell" not in text.lower()
+
+
 def test_agent_next_can_focus_symbol(monkeypatch, tmp_path):
     import_runtime_examples(monkeypatch, tmp_path)
 
@@ -1245,3 +1282,41 @@ def test_agent_next_cli_smoke(monkeypatch, tmp_path, cli_cmd):
     symbol_data = json.loads(symbol_result.stdout)
     assert symbol_data["data"]["symbol"] == "300308"
     assert symbol_data["data"]["security_cards"]["cards"][0]["symbol"] == "300308"
+
+
+def test_dashboard_cli_smoke(monkeypatch, tmp_path, cli_cmd):
+    monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(tmp_path / "runtime"))
+    handle_import_quotes("examples/quotes.csv.example", use_runtime=True)
+    handle_import_holdings("examples/holdings.csv.example", use_runtime=True)
+
+    json_result = subprocess.run(
+        cli_cmd(
+            "dashboard",
+            "--max-quote-age-days",
+            "9999",
+            "--max-steps",
+            "3",
+            "--json",
+        ),
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    text_result = subprocess.run(
+        cli_cmd(
+            "dashboard",
+            "--max-quote-age-days",
+            "9999",
+            "--max-steps",
+            "3",
+            "--text",
+        ),
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+
+    data = json.loads(json_result.stdout)
+    assert data["command"] == "dashboard"
+    assert data["data"]["market_pulse"]["candidates"]
+    assert "market-intel dashboard" in text_result.stdout

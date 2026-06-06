@@ -37,6 +37,7 @@ from .core.status import build_runtime_status
 from .core.text_report import (
     render_brief_text,
     render_agent_briefing_text,
+    render_dashboard_text,
     render_agent_next_text,
     render_agent_plan_text,
     render_agent_run_text,
@@ -198,6 +199,15 @@ def build_parser() -> argparse.ArgumentParser:
     daily_parser.add_argument("--pool", default=DEFAULT_POOL)
     daily_parser.add_argument("--json", action="store_true", dest="as_json")
     daily_parser.add_argument("--text", action="store_true")
+
+    dashboard_parser = subparsers.add_parser("dashboard")
+    dashboard_parser.add_argument("--pool", default=DEFAULT_POOL)
+    dashboard_parser.add_argument("--top", type=int, default=5)
+    dashboard_parser.add_argument("--map-top", type=int, default=2)
+    dashboard_parser.add_argument("--max-quote-age-days", type=int, default=3)
+    dashboard_parser.add_argument("--max-steps", type=int, default=8)
+    dashboard_parser.add_argument("--json", action="store_true", dest="as_json")
+    dashboard_parser.add_argument("--text", action="store_true")
 
     focus_parser = subparsers.add_parser("focus")
     focus_parser.add_argument("--mock", action="store_true")
@@ -473,6 +483,11 @@ def main(argv: Optional[List[str]] = None) -> int:
             if args.text and result["ok"]:
                 print(render_daily_report_text(result))
                 return 0
+        elif args.resource == "dashboard":
+            result = handle_dashboard(args.pool, args.top, args.map_top, args.max_quote_age_days, args.max_steps)
+            if args.text:
+                print(render_dashboard_text(result))
+                return 0 if result["ok"] else 1
         elif args.resource == "focus":
             result = handle_focus(
                 args.pool,
@@ -943,6 +958,7 @@ def handle_scan(
     data = build_market_scan(items, quotes, holdings=holdings, top=top, candidate_top=candidate_top, pool=pool)
     data["pool"] = pool
     data["mode"] = scan_mode(use_mock, use_runtime, quotes_file)
+    localize_scan_commands(data, pool, data["mode"])
     data["coverage_context"] = daily_coverage_context(pool, items, holdings)
     data["sources"] = {
         "quotes": {
@@ -975,6 +991,46 @@ def scan_runtime_missing_files() -> List[str]:
     paths = runtime_paths()
     quotes_path = Path(paths["quotes"])
     return [] if quotes_path.exists() else [str(quotes_path)]
+
+
+def localize_scan_commands(data: Dict[str, object], pool: str, mode: object) -> None:
+    mode_text = str(mode or "")
+    candidates = data.get("candidate_securities", []) if isinstance(data.get("candidate_securities"), list) else []
+    for item in candidates:
+        if not isinstance(item, dict):
+            continue
+        commands = item.get("commands", []) if isinstance(item.get("commands"), list) else []
+        item["commands"] = [localize_scan_command(str(command), pool, mode_text) for command in commands if command]
+    actions = data.get("next_actions", []) if isinstance(data.get("next_actions"), list) else []
+    for item in actions:
+        if isinstance(item, dict) and item.get("command"):
+            item["command"] = localize_scan_command(str(item.get("command")), pool, mode_text)
+
+
+def localize_scan_command(command: str, pool: str, mode: str) -> str:
+    if mode == "runtime":
+        if "pool explain" in command and " --runtime" not in command:
+            return with_pool_arg(command.replace(" --text", " --runtime --text"), pool)
+        if "scan " in command and " --runtime" not in command:
+            return with_pool_arg(command.replace(" --text", " --runtime --text"), pool)
+        if "focus " in command and " --runtime" not in command:
+            return with_pool_arg(command.replace(" --text", " --runtime --text"), pool)
+        return with_pool_arg(command, pool)
+    if mode == "mock":
+        if "pool explain" in command:
+            return with_pool_arg(command.replace(" --runtime", ""), pool)
+        if "scan " in command:
+            return with_pool_arg(command.replace(" --runtime", " --mock"), pool)
+        if "focus " in command:
+            return with_pool_arg(command.replace(" --runtime", " --mock"), pool)
+    if mode == "file":
+        if "pool explain" in command:
+            return with_pool_arg(command.replace(" --runtime", ""), pool)
+        if "scan " in command:
+            return with_pool_arg("market-intel scan --json", pool)
+        if "focus " in command:
+            return with_pool_arg("market-intel focus --json", pool)
+    return with_pool_arg(command, pool)
 
 
 def handle_holdings_impact(
@@ -1883,6 +1939,296 @@ def handle_agent_next(
     )
 
 
+def handle_dashboard(
+    pool: str = DEFAULT_POOL,
+    top: int = 5,
+    map_top: int = 2,
+    max_quote_age_days: int = 3,
+    max_steps: int = 8,
+) -> Dict[str, Any]:
+    run_payload = handle_agent_run(pool, top=top, map_top=map_top, max_quote_age_days=max_quote_age_days, max_steps=max_steps)
+    run_data = run_payload.get("data", {}) if isinstance(run_payload.get("data"), dict) else {}
+    digest = run_data.get("review_digest", {}) if isinstance(run_data.get("review_digest"), dict) else {}
+    data = build_dashboard_data(pool, run_data, digest, max_steps=max_steps)
+    return envelope(
+        command="dashboard",
+        data=data,
+        warnings=run_payload.get("warnings", []) if isinstance(run_payload.get("warnings"), list) else [],
+        errors=run_payload.get("errors", []) if isinstance(run_payload.get("errors"), list) else [],
+        source=run_payload.get("meta", {}).get("source") if isinstance(run_payload.get("meta"), dict) else None,
+        ok=bool(run_payload.get("ok")),
+    )
+
+
+def build_dashboard_data(
+    pool: str,
+    run_data: Dict[str, object],
+    digest: Dict[str, object],
+    max_steps: int,
+) -> Dict[str, object]:
+    return {
+        "pool": pool,
+        "state": dashboard_state(run_data, digest),
+        "summary": dashboard_summary(run_data, digest),
+        "source_agent_run_state": run_data.get("state"),
+        "run_limits": run_data.get("run_limits", {"max_steps": max_steps, "read_only_only": True, "writes_are_skipped": True}),
+        "tiles": dashboard_tiles(digest),
+        "market_pulse": dashboard_market_pulse(digest),
+        "portfolio_pulse": dashboard_portfolio_pulse(digest),
+        "evidence_gaps": dashboard_evidence_gaps(digest),
+        "action_lane": dashboard_action_lane(digest),
+        "handoff": dashboard_handoff(digest),
+        "guardrails": [
+            "dashboard 只整理复盘优先级和证据缺口，不生成买卖指令、目标价或仓位建议。",
+            "全 A 结论受行情源、A 股基础清单和研究证据覆盖度影响。",
+            "写入 journal 或导入 runtime 的命令需要人工确认后执行。",
+        ],
+        "agent_contract": dashboard_contract(),
+    }
+
+
+def dashboard_state(run_data: Dict[str, object], digest: Dict[str, object]) -> str:
+    if not digest.get("available"):
+        return "blocked" if str(run_data.get("state") or "").startswith("blocked") else "degraded"
+    completion = digest.get("review_completion", {}) if isinstance(digest.get("review_completion"), dict) else {}
+    if safe_int(completion.get("blocking_count")):
+        return "blocked_review"
+    if safe_int(completion.get("manual_required_count")) or safe_int(completion.get("pending_count")):
+        return "needs_review"
+    return "ready_for_note"
+
+
+def dashboard_summary(run_data: Dict[str, object], digest: Dict[str, object]) -> str:
+    if not digest.get("available"):
+        return str(run_data.get("summary") or "runtime 暂不可生成复盘工作台。")
+    market = digest.get("market_scan", {}) if isinstance(digest.get("market_scan"), dict) else {}
+    portfolio = digest.get("holding_dashboard", {}) if isinstance(digest.get("holding_dashboard"), dict) else {}
+    completion = digest.get("review_completion", {}) if isinstance(digest.get("review_completion"), dict) else {}
+    return "全市场候选 %s 个，持仓重点 %s 个；复盘状态 %s，待读 %s 个，需人工 %s 个。" % (
+        len(market.get("top_candidates", []) if isinstance(market.get("top_candidates"), list) else []),
+        portfolio.get("high_review_count", 0),
+        completion.get("completion_state") or "unknown",
+        completion.get("pending_count", 0),
+        completion.get("manual_required_count", 0),
+    )
+
+
+def dashboard_tiles(digest: Dict[str, object]) -> List[Dict[str, object]]:
+    scan = digest.get("market_scan", {}) if isinstance(digest.get("market_scan"), dict) else {}
+    portfolio = digest.get("holding_dashboard", {}) if isinstance(digest.get("holding_dashboard"), dict) else {}
+    pressure = digest.get("portfolio_pressure", {}) if isinstance(digest.get("portfolio_pressure"), dict) else {}
+    evidence = digest.get("evidence_checklist", {}) if isinstance(digest.get("evidence_checklist"), dict) else {}
+    completion = digest.get("review_completion", {}) if isinstance(digest.get("review_completion"), dict) else {}
+    return [
+        dashboard_tile("market", "全市场", len(scan.get("top_groups", []) if isinstance(scan.get("top_groups"), list) else []), scan.get("summary")),
+        dashboard_tile("candidates", "候选标的", len(scan.get("top_candidates", []) if isinstance(scan.get("top_candidates"), list) else []), "来自 scan 的候选复盘标的。"),
+        dashboard_tile("holdings", "持仓重点", portfolio.get("high_review_count", 0), portfolio.get("summary")),
+        dashboard_tile("pressure", "组合压力", pressure.get("group_count", 0), pressure.get("summary")),
+        dashboard_tile("evidence", "证据缺口", dashboard_pending_evidence_count(evidence), evidence.get("summary")),
+        dashboard_tile("handoff", "待读/人工", "%s/%s" % (completion.get("pending_count", 0), completion.get("manual_required_count", 0)), completion.get("summary")),
+    ]
+
+
+def dashboard_tile(tile_id: str, label_text: str, value: object, detail: object) -> Dict[str, object]:
+    return {
+        "id": tile_id,
+        "label": label_text,
+        "value": value,
+        "detail": detail,
+    }
+
+
+def dashboard_market_pulse(digest: Dict[str, object]) -> Dict[str, object]:
+    scan = digest.get("market_scan", {}) if isinstance(digest.get("market_scan"), dict) else {}
+    structure = digest.get("market_structure", {}) if isinstance(digest.get("market_structure"), dict) else {}
+    return {
+        "available": bool(scan.get("available") or structure),
+        "summary": scan.get("summary") or structure.get("summary") or "暂无全市场扫描。",
+        "scan_mode": scan.get("scan_mode"),
+        "quote_count": scan.get("quote_count", 0),
+        "matched_quote_count": scan.get("matched_quote_count", 0),
+        "top_groups": list(scan.get("top_groups", []))[:4] if isinstance(scan.get("top_groups"), list) else [],
+        "seed_chains": list(structure.get("top_chains", []))[:3] if isinstance(structure.get("top_chains"), list) else [],
+        "candidates": dashboard_scan_candidates(scan),
+        "questions": list(scan.get("questions", []))[:4] if isinstance(scan.get("questions"), list) else [],
+        "write_policy": scan.get("write_policy") or "只读市场扫描，不生成交易指令。",
+    }
+
+
+def dashboard_scan_candidates(scan: Dict[str, object]) -> List[Dict[str, object]]:
+    rows = []
+    for item in scan.get("top_candidates", []) if isinstance(scan.get("top_candidates"), list) else []:
+        if not isinstance(item, dict):
+            continue
+        commands = item.get("commands", []) if isinstance(item.get("commands"), list) else []
+        rows.append(
+            {
+                "rank": item.get("rank"),
+                "symbol": item.get("symbol"),
+                "name": item.get("name"),
+                "review_score": item.get("review_score"),
+                "coverage_state": item.get("coverage_state"),
+                "why_now": item.get("why_now"),
+                "json_command": digest_json_variant(commands[0]) if commands else "market-intel pool explain %s --runtime --json" % item.get("symbol"),
+            }
+        )
+    return rows[:5]
+
+
+def dashboard_portfolio_pulse(digest: Dict[str, object]) -> Dict[str, object]:
+    dashboard = digest.get("holding_dashboard", {}) if isinstance(digest.get("holding_dashboard"), dict) else {}
+    pressure = digest.get("portfolio_pressure", {}) if isinstance(digest.get("portfolio_pressure"), dict) else {}
+    return {
+        "available": bool(dashboard.get("available")),
+        "summary": dashboard.get("summary") or "暂无持仓复盘。",
+        "holding_count": dashboard.get("holding_count", 0),
+        "high_review_count": dashboard.get("high_review_count", 0),
+        "changed_holding_count": dashboard.get("changed_holding_count", 0),
+        "buckets": dashboard.get("buckets", {}) if isinstance(dashboard.get("buckets"), dict) else {},
+        "top_holdings": dashboard_portfolio_holdings(dashboard),
+        "pressure_groups": list(pressure.get("groups", []))[:3] if isinstance(pressure.get("groups"), list) else [],
+        "questions": list(dashboard.get("questions", []))[:4] if isinstance(dashboard.get("questions"), list) else [],
+        "write_policy": dashboard.get("write_policy") or "只读持仓复盘，不自动修改持仓或写入 journal。",
+    }
+
+
+def dashboard_portfolio_holdings(dashboard: Dict[str, object]) -> List[Dict[str, object]]:
+    rows = []
+    for item in dashboard.get("top_holdings", []) if isinstance(dashboard.get("top_holdings"), list) else []:
+        if not isinstance(item, dict):
+            continue
+        rows.append(
+            {
+                "rank": len(rows) + 1,
+                "symbol": item.get("symbol"),
+                "name": item.get("name"),
+                "priority": item.get("priority"),
+                "review_score": item.get("review_score"),
+                "coverage_state": item.get("coverage_state"),
+                "change_priority": item.get("change_priority"),
+                "primary_question": item.get("primary_question"),
+                "primary_json_command": item.get("primary_json_command"),
+                "risk_flags": list(item.get("risk_flags", []))[:5] if isinstance(item.get("risk_flags"), list) else [],
+            }
+        )
+    return rows[:5]
+
+
+def dashboard_evidence_gaps(digest: Dict[str, object]) -> Dict[str, object]:
+    evidence = digest.get("evidence_checklist", {}) if isinstance(digest.get("evidence_checklist"), dict) else {}
+    repair = digest.get("data_repair_plan", {}) if isinstance(digest.get("data_repair_plan"), dict) else {}
+    items = evidence.get("items", []) if isinstance(evidence.get("items"), list) else []
+    gaps = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        if item.get("coverage_status") == "covered":
+            continue
+        gaps.append(
+            {
+                "rank": len(gaps) + 1,
+                "item_type": item.get("item_type"),
+                "title": item.get("title"),
+                "coverage_status": item.get("coverage_status"),
+                "coverage_label": item.get("coverage_label"),
+                "related_symbols": list(item.get("related_symbols", []))[:5] if isinstance(item.get("related_symbols"), list) else [],
+                "missing_evidence": list(item.get("missing_evidence", []))[:4] if isinstance(item.get("missing_evidence"), list) else [],
+                "json_command": item.get("json_command"),
+                "done_when": item.get("done_when"),
+            }
+        )
+    return {
+        "available": bool(gaps or repair.get("available")),
+        "summary": evidence.get("summary") or repair.get("summary") or "暂无证据缺口。",
+        "data_repair": repair if isinstance(repair, dict) and repair.get("available") else {"available": False},
+        "items": gaps[:6],
+        "write_policy": "只整理证据充分性；不生成交易指令或自动写入 journal。",
+    }
+
+
+def dashboard_pending_evidence_count(evidence: Dict[str, object]) -> int:
+    return sum(
+        1
+        for item in evidence.get("items", []) if isinstance(evidence.get("items"), list)
+        if isinstance(item, dict) and item.get("coverage_status") != "covered"
+    )
+
+
+def dashboard_action_lane(digest: Dict[str, object]) -> Dict[str, object]:
+    attention = digest.get("attention_queue", {}) if isinstance(digest.get("attention_queue"), dict) else {}
+    items = attention.get("items", []) if isinstance(attention.get("items"), list) else []
+    rows = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        rows.append(
+            {
+                "rank": len(rows) + 1,
+                "item_type": item.get("item_type"),
+                "title": item.get("title"),
+                "reason": item.get("reason"),
+                "json_command": item.get("json_command"),
+                "runnable": bool(item.get("runnable")),
+                "requires_manual": bool(item.get("requires_manual")),
+                "already_read": bool(item.get("already_read")),
+                "related_symbols": list(item.get("related_symbols", []))[:5] if isinstance(item.get("related_symbols"), list) else [],
+                "done_when": item.get("done_when"),
+            }
+        )
+    return {
+        "available": bool(rows),
+        "summary": attention.get("summary") or "暂无关注队列。",
+        "items": rows[:6],
+        "write_policy": attention.get("write_policy") or "队列只整理关注顺序；写入类命令需人工确认。",
+    }
+
+
+def dashboard_handoff(digest: Dict[str, object]) -> Dict[str, object]:
+    handoff = digest.get("review_handoff", {}) if isinstance(digest.get("review_handoff"), dict) else {}
+    completion = digest.get("review_completion", {}) if isinstance(digest.get("review_completion"), dict) else {}
+    return {
+        "available": bool(handoff.get("available")),
+        "summary": handoff.get("summary") or completion.get("summary") or "暂无交接信息。",
+        "handoff_state": handoff.get("handoff_state"),
+        "resume_prompt": handoff.get("resume_prompt"),
+        "next_read": list(handoff.get("next_read", []))[:4] if isinstance(handoff.get("next_read"), list) else [],
+        "manual_items": list(handoff.get("manual_items", []))[:4] if isinstance(handoff.get("manual_items"), list) else [],
+        "record_templates": list(handoff.get("record_templates", []))[:3] if isinstance(handoff.get("record_templates"), list) else [],
+        "completion": {
+            "completion_state": completion.get("completion_state"),
+            "ready_for_journal_note": bool(completion.get("ready_for_journal_note")),
+            "blocking_count": completion.get("blocking_count", 0),
+            "manual_required_count": completion.get("manual_required_count", 0),
+            "pending_count": completion.get("pending_count", 0),
+        },
+    }
+
+
+def dashboard_contract() -> Dict[str, object]:
+    return {
+        "success": "ok=true 表示 dashboard 已生成；data.state 表示复盘是否仍需读证据或人工确认。",
+        "stable_fields": [
+            "data.state",
+            "data.summary",
+            "data.tiles",
+            "data.market_pulse",
+            "data.market_pulse.top_groups",
+            "data.market_pulse.candidates",
+            "data.portfolio_pulse",
+            "data.portfolio_pulse.top_holdings",
+            "data.portfolio_pulse.pressure_groups",
+            "data.evidence_gaps",
+            "data.evidence_gaps.items",
+            "data.action_lane",
+            "data.action_lane.items",
+            "data.handoff",
+            "data.handoff.next_read",
+            "data.guardrails",
+        ],
+        "boundary": "dashboard 是只读复盘工作台；不自动写 journal，不生成交易指令。",
+    }
+
+
 def filter_agent_next_cards_for_symbol(cards: Dict[str, object], symbol: str) -> Dict[str, object]:
     wanted = str(symbol)
     rows = [
@@ -2371,6 +2717,7 @@ def agent_run_digest_data_quality(validation: Dict[str, object], results: List[D
 def agent_run_digest_data_repair_plan(digest: Dict[str, object]) -> Dict[str, object]:
     data_quality = digest.get("data_quality", {}) if isinstance(digest.get("data_quality"), dict) else {}
     issues = []
+    seen = set()
     for severity, values in (
         ("error", data_quality.get("errors", []) if isinstance(data_quality.get("errors"), list) else []),
         ("warning", data_quality.get("warnings", []) if isinstance(data_quality.get("warnings"), list) else []),
@@ -2378,6 +2725,10 @@ def agent_run_digest_data_repair_plan(digest: Dict[str, object]) -> Dict[str, ob
         for issue_item in values:
             if not isinstance(issue_item, dict):
                 continue
+            key = data_repair_issue_key(issue_item, severity)
+            if key in seen:
+                continue
+            seen.add(key)
             issues.append(data_repair_item(issue_item, severity))
     issues.sort(key=lambda item: (0 if item.get("severity") == "error" else 1, str(item.get("symbol") or ""), str(item.get("code") or "")))
     grouped = group_data_repair_items(issues)
@@ -2389,6 +2740,16 @@ def agent_run_digest_data_repair_plan(digest: Dict[str, object]) -> Dict[str, ob
         "commands": data_repair_commands(issues),
         "write_policy": "仅提示修复步骤，不自动修改 runtime 文件。",
     }
+
+
+def data_repair_issue_key(issue_item: Dict[str, object], severity: str) -> tuple:
+    return (
+        severity,
+        str(issue_item.get("code") or ""),
+        str(issue_item.get("symbol") or ""),
+        str(issue_item.get("path") or ""),
+        str(issue_item.get("index") or ""),
+    )
 
 
 def data_repair_item(issue_item: Dict[str, object], severity: str) -> Dict[str, object]:
