@@ -10,6 +10,22 @@
 
 竞争力不放在替代行情/交易/社区 App，而放在“个人复盘操作系统”：把全 A 热点、主题池、个人持仓、风险暴露、复核清单、agent 命令队列和 journal 留痕串成每天可执行的闭环。
 
+## 竞争力与边界
+
+市场上成熟股票 App 已经覆盖了实时行情、交易入口、资讯流、社区讨论、研报检索、条件选股和基础诊股。`market-intel` 不和这些能力正面对拼，核心差异是：
+
+- **个人复盘闭环**：从全 A 复盘池、主题链路、行情/持仓输入、风险暴露、复核清单到 journal 留痕，形成每天可重复执行的流程。
+- **agent-native**：所有核心命令输出稳定 JSON、readiness 状态、下一步命令队列和完成标准，方便外部 agent 接力，而不是依赖截图或页面点击。
+- **持仓优先**：不只看市场热度，也检查个人持仓是否被复盘池覆盖、是否重复暴露、是否缺行情或缺上下文。
+- **可解释结构化**：把事实、信号、风险、待验证问题和边界拆开，避免黑盒分数直接变成买卖建议。
+- **本地私有数据友好**：默认只使用仓库数据、示例数据和用户提供的 runtime 文件；报告不需要公开个人持仓。
+
+明确不做：
+
+- 不替代行情终端、交易软件、券商 App 或社区资讯流。
+- 不输出买卖指令、目标价或仓位建议。
+- 不承诺自动化收益；它服务的是复盘质量、风险识别和决策留痕。
+
 首版设计文档：`docs/design.md`
 
 协作交接文档：`docs/handoff.md`
@@ -51,6 +67,7 @@ PYTHONPATH=src python3 -m market_intel.cli focus --mock --text
 ```bash
 PYTHONPATH=src python3 -m market_intel.cli pool list --pool all-a --json
 PYTHONPATH=src python3 -m market_intel.cli pool coverage --text
+PYTHONPATH=src python3 -m market_intel.cli pool coverage --mock --text
 PYTHONPATH=src python3 -m market_intel.cli pool coverage --pool ai-energy --json
 PYTHONPATH=src python3 -m market_intel.cli pool list --pool ai-energy --json
 PYTHONPATH=src python3 -m market_intel.cli pool explain 002837 --json
@@ -74,6 +91,7 @@ python3 -m pip install -e .
 market-intel pool explain 002837 --json
 market-intel pool explain 002837 --text
 market-intel pool coverage --text
+market-intel pool coverage --runtime --text
 market-intel hotspots --mock --json
 market-intel holdings impact --mock --json
 market-intel portfolio review --mock --text
@@ -104,6 +122,7 @@ market-intel agent briefing --text
 market-intel agent run --json
 market-intel status runtime --json
 market-intel validate runtime --json
+market-intel pool coverage --runtime --text
 market-intel daily --runtime --text
 market-intel portfolio review --runtime --text
 market-intel portfolio explain 002837 --runtime --text

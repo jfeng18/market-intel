@@ -2,15 +2,13 @@
 
 > 版本：v0.2 reviewed  
 > 日期：2026-05-22  
-> 作者：Livermore  
-> 审查：Codex  
 > 项目定位：独立市场情报系统 / 投研雷达 / 人机共用分析平台  
 
 ---
 
 ## 0. 一句话定义
 
-`market-intel` 是一个独立的市场情报系统：以“AI 能量公式”大股票池为底座，整合宏观经济、行业景气、个股质量、消息驱动和资金行为，帮助人和 agent 判断：**市场真正追捧的是哪条链、哪类资产、哪种逻辑，以及当前动作的风险在哪里。**
+`market-intel` 是一个独立的市场情报系统：以全 A 复盘池为目标 universe，整合宏观经济、行业景气、个股质量、消息驱动、资金行为和个人持仓，帮助人和 agent 判断：**市场真正追捧的是哪条链、哪类资产、哪种逻辑，以及当前复盘还缺哪些证据。**
 
 它不是自动交易系统，不输出“买/卖/持有”指令；它输出结构化事实、信号、解释、风险和待验证问题。
 
@@ -28,6 +26,8 @@
 - 持仓、观察池、外部观点、公司档案分别散在不同系统里。
 - 人类需要可视化，agent 需要稳定 JSON；单纯 CLI 不够，单纯 GUI 也不够。
 
+成熟股票 App 已经擅长实时行情、交易入口、资讯流、社区讨论、研报检索、条件选股和基础诊股。`market-intel` 的竞争力不在替代这些入口，而在把外部输入和本地数据组织成可复盘、可追踪、可交接的个人工作流。
+
 ### 1.2 核心目标
 
 建立一个从“宏观 → 行业 → 个股 → 消息 → 资金行为”的全链路雷达：
@@ -38,25 +38,25 @@
 4. 把持仓和观察池放进同一张地图里看。
 5. 让人用 GUI 看全局，让 agent 用 CLI 做自动化分析。
 
+### 1.3 竞争力
+
+`market-intel` 的差异化能力：
+
+- 个人复盘闭环：从全 A 复盘池、主题链路、行情/持仓输入、风险暴露、复核清单到 journal 留痕。
+- agent-native：核心命令输出稳定 JSON、readiness 状态、下一步命令队列、完成标准和边界说明。
+- 持仓优先：检查个人持仓是否被复盘池覆盖、是否重复暴露、是否缺行情或缺热点上下文。
+- 可解释结构化：区分事实、信号、风险、待验证问题，不把黑盒分数伪装成结论。
+- 本地私有数据友好：默认只读取仓库数据、示例数据和用户提供的 runtime 文件。
+
 ---
 
 ## 2. 设计原则
 
 ### 2.1 独立项目
 
-`market-intel` 必须是独立仓库，不和现有系统搅在一起。
+`market-intel` 必须是独立仓库，默认不依赖外部私有系统。后续可以通过 adapter 接入行情、公告、研报、持仓、公司档案或市场状态数据，但核心命令必须在离线示例数据上可测试、可运行。
 
-现有系统定位：
-
-| 系统 | 职责 | market-intel 的使用方式 |
-|---|---|---|
-| `tradegov` | 交易事实、持仓、快照、交易预案 | adapter：读取持仓、交易、风险暴露 |
-| `researchgov` | 外部观点、报告、claim | adapter：读取观点池、消息影响、历史验证 |
-| `companygov` | 公司档案、标的逻辑 | adapter：读取个股档案和待验证问题 |
-| `decision-cockpit` | 盘中纪律检查台 | 下游消费者：接收 market-intel 信号，但仍只给 checklist |
-| `marketregime` | 市场状态识别 | adapter：读取市场环境，或作为宏观/市场层输入 |
-
-原则：**可调用、可吸收、不污染。**
+原则：**可调用、可吸收、不污染、可脱离外部服务运行。**
 
 ### 2.2 CLI + GUI 双入口
 
@@ -112,11 +112,16 @@ market-intel/
 
 ---
 
-## 4. 核心数据底座：AI 能量公式大池子
+## 4. 核心数据底座：全 A 复盘池
 
 ### 4.1 来源
 
-首批池子来自：
+当前默认池子：
+
+- `all-a`：面向全 A 的目标 universe，目前以种子覆盖运行。
+- `ai-energy`：保留为主题池，用于 AI 算力、运力、存力、电力等链路的结构化样例。
+
+首批种子数据来自：
 
 - `data/pools/ai_energy_map_2026-05-17.md`
 - `data/pools/ai_energy_pool_2026-05-19.csv`
@@ -144,6 +149,8 @@ market-intel/
 1. 原样保留 `raw_status/raw_priority/raw_section/raw_level/raw_company/raw_code/raw_desc/raw_notes`。
 2. 派生 `symbol/name/market/layer/sub_sector/role/logic/priority/tradable/data_quality_flags`。
 
+全 A 化的下一步是接入更完整的 A 股基础池，包括行业、概念、指数成分、自选股和持仓导入。任何全市场结论都必须标明当前覆盖范围，`all-a` 在完整基础池接入前只能标记为种子覆盖。
+
 ### 4.3 标的标准字段
 
 每个标的至少应有：
@@ -160,8 +167,8 @@ market-intel/
 | `logic` | 一句话核心逻辑 |
 | `priority` | P1/P2/P3 |
 | `tradable` | 是否可交易 |
-| `company_profile_status` | 是否已有 companygov 档案 |
-| `research_status` | 是否已有 researchgov claim |
+| `profile_status` | 是否已有公司档案或基础资料 |
+| `research_status` | 是否已有研究证据或观点记录 |
 | `validation_signals` | 后续验证信号 |
 | `exposures` | 同一证券在不同链路中的暴露列表 |
 | `data_quality_flags` | 代码异常、字段错位、非证券条目、重复归属等 |
@@ -423,7 +430,7 @@ market-intel hotspots --mock --json
 market-intel holdings impact --mock --json
 ```
 
-P0 不接真实行情、不接真实新闻、不读写 tradegov/researchgov/companygov，只使用本仓库数据和 mock fixtures。
+P0 不接真实行情、不接真实新闻、不读写外部私有系统，只使用本仓库数据和 mock fixtures。
 
 ### 7.3 输出原则
 
@@ -527,8 +534,8 @@ AI 能力
 - 角色定位
 - 资金异动
 - 消息驱动
-- companygov 档案摘要
-- researchgov claims
+- 公司档案摘要
+- 研究证据和观点记录
 - 风险点
 - 待验证问题
 
@@ -536,15 +543,13 @@ AI 能力
 
 ## 9. Adapters 设计
 
-## 9.1 tradegov adapter
+## 9.1 holdings adapter
 
 读取：
 
 - 当前持仓
 - 可卖数量
 - 成本
-- 最近交易
-- 交易预案
 - 行为标签
 
 用途：
@@ -553,7 +558,7 @@ AI 能力
 - 判断重复暴露
 - 判断仓位压力
 
-## 9.2 researchgov adapter
+## 9.2 research adapter
 
 读取：
 
@@ -569,7 +574,7 @@ AI 能力
 - 行业/个股逻辑验证
 - 信源质量回顾
 
-## 9.3 companygov adapter
+## 9.3 company adapter
 
 读取：
 
@@ -584,7 +589,7 @@ AI 能力
 - 是否已有研究基础
 - 是否需要补档案
 
-## 9.4 marketregime adapter
+## 9.4 market regime adapter
 
 读取：
 
@@ -604,9 +609,9 @@ AI 能力
 
 - 腾讯实时行情接口
 - AkShare / 东方财富行情
-- researchgov 已沉淀观点
-- companygov 公司档案
-- tradegov 持仓和交易
+- 本地研究观点记录
+- 本地公司档案
+- 用户导入的持仓
 - 用户手工导入的 HTML / 研报 / 文章
 
 ### 10.2 后续增强源
@@ -625,19 +630,19 @@ AI 能力
 
 ### MVP 目标
 
-先做一个可用的“AI 池子雷达”，不一开始追求全能。
+先做一个可用的“全 A 种子复盘雷达”，不一开始追求全能。
 
 ### 11.1 P0：离线池子解释器
 
-目标：无网络、无外部系统依赖，先让 agent 稳定读取和解释 AI 大池子。
+目标：无网络、无外部系统依赖，先让 agent 稳定读取和解释默认复盘池。
 
 必须完成：
 
-1. 读取 AI 能量公式大池子 CSV。
+1. 读取默认复盘池 CSV。
 2. 标准化 `symbol/name/market/layer/sub_sector/role/priority/tradable`。
 3. 标记 `instrument_type` 和 `data_quality_flags`。
 4. 合并同一证券的多链路 `exposures`。
-5. `market-intel pool list --pool ai-energy --json`。
+5. `market-intel pool list --pool all-a --json`。
 6. `market-intel pool explain <symbol> --json`。
 7. pytest 覆盖 CSV 解析、字段错位、重复暴露、JSON 外壳。
 
@@ -682,7 +687,7 @@ AI 能力
 - 实时高频盘口
 - 一开始接入所有海外数据源
 - 一开始做复杂 GUI
-- 自动写入 tradegov / researchgov / companygov
+- 自动写入外部私有系统
 
 ---
 
@@ -712,7 +717,7 @@ AI 能力
 
 ### M3：观点与公司档案联动
 
-- 只读接入 researchgov / companygov
+- 只读接入研究记录和公司档案
 - 输出逻辑解释和待验证问题
 
 ### M4：GUI MVP
@@ -754,23 +759,23 @@ AI 能力
 - 先 CLI 和数据模型，再 GUI。
 - GUI 只展示已有稳定字段，不手工编故事。
 
-### 13.4 和现有系统边界混乱
+### 13.4 和外部系统边界混乱
 
 防护：
 
-- adapters 只读现有系统，写入必须显式命令。
-- market-intel 不替代 tradegov / researchgov / companygov。
+- adapters 默认只读外部数据，写入必须显式命令。
+- market-intel 不替代行情、交易、研究、档案或社区系统。
 
 ---
 
-## 14. 对江沅交易系统的意义
+## 14. 产品意义
 
-这个项目不是为了“找到神票”。
+这个项目不是为了“找到神票”，也不是为了复制一个行情 App。
 
 它真正服务三件事：
 
-1. **看清资金在哪一层。** 不是所有 AI 都一样。
-2. **避免重复暴露。** 比如华强和拓维本质都在华为/昇腾线里。
+1. **看清资金在哪一层。** 不是所有题材都处在同一个产业位置。
+2. **避免重复暴露。** 同一持仓组合可能在主题、客户、供应链或情绪风格上高度重叠。
 3. **让交易有上下文。** 宏观、行业、个股、消息、资金行为同时看，而不是只看分时。
 
 最终目标：
@@ -788,4 +793,4 @@ AI 能力
 3. `market-intel pool explain <symbol>`：解释某标的在哪条链。
 4. `market-intel hotspots --mock`：用模拟行情跑通热点评分。
 5. `market-intel holdings impact --mock`：用模拟持仓跑通重复暴露。
-6. 写 `docs/review.md`，后续交给 Claude/qwen 开发前对齐边界。
+6. 写 `docs/review.md`，用于开发前对齐边界。

@@ -174,6 +174,8 @@ def render_pool_coverage_text(payload: Dict[str, object]) -> str:
     lines.extend(render_named_counts(data.get("cn_a_board_distribution", []), empty="暂无 A 股板块分布。"))
     lines.extend(["", "层级分布"])
     lines.extend(render_coverage_layers(data.get("layer_distribution", [])))
+    lines.extend(["", "持仓覆盖"])
+    lines.extend(render_holdings_coverage(data.get("holdings_coverage", {})))
     lines.extend(["", "覆盖缺口"])
     lines.extend(render_coverage_gaps(data.get("gaps", [])))
     lines.extend(["", "数据质量"])
@@ -208,6 +210,48 @@ def render_coverage_layers(value: object) -> List[str]:
             "- %s | 条目 %s | 可交易 %s | A 股 %s"
             % (row.get("layer"), row.get("item_count"), row.get("tradable_count"), row.get("cn_a_count"))
         )
+    return lines
+
+
+def render_holdings_coverage(value: object) -> List[str]:
+    coverage = value if isinstance(value, dict) else {}
+    if not coverage.get("available"):
+        return ["- %s" % (coverage.get("reason") or "未提供持仓。")]
+
+    ratio = coverage.get("matched_ratio", 0)
+    try:
+        ratio_text = "%.1f%%" % (float(ratio) * 100)
+    except (TypeError, ValueError):
+        ratio_text = "0.0%"
+    lines = [
+        "- 持仓 %s | 已覆盖 %s | 未覆盖 %s | 覆盖率 %s"
+        % (
+            coverage.get("holding_count", 0),
+            coverage.get("matched_count", 0),
+            coverage.get("unmatched_count", 0),
+            ratio_text,
+        )
+    ]
+    if coverage.get("summary"):
+        lines.append("   摘要: %s" % coverage.get("summary"))
+
+    unmatched = coverage.get("unmatched", []) if isinstance(coverage.get("unmatched"), list) else []
+    if unmatched:
+        rendered = []
+        for row in unmatched[:6]:
+            if isinstance(row, dict):
+                rendered.append("%s %s" % (row.get("symbol"), row.get("name") or ""))
+        if rendered:
+            lines.append("   未覆盖: %s" % "；".join(rendered))
+
+    matched = coverage.get("matched", []) if isinstance(coverage.get("matched"), list) else []
+    if matched:
+        rendered = []
+        for row in matched[:5]:
+            if isinstance(row, dict):
+                rendered.append("%s %s/%s" % (row.get("symbol"), row.get("primary_layer"), row.get("primary_sub_sector")))
+        if rendered:
+            lines.append("   已覆盖样例: %s" % "；".join(rendered))
     return lines
 
 

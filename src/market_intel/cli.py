@@ -70,6 +70,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     coverage_parser = pool_subparsers.add_parser("coverage")
     coverage_parser.add_argument("--pool", default=DEFAULT_POOL)
+    coverage_parser.add_argument("--mock", action="store_true")
+    coverage_parser.add_argument("--runtime", action="store_true")
+    coverage_parser.add_argument("--holdings-file")
     coverage_parser.add_argument("--json", action="store_true", dest="as_json")
     coverage_parser.add_argument("--text", action="store_true")
 
@@ -295,7 +298,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         if args.resource == "pool" and args.action == "list":
             result = handle_pool_list(args.pool)
         elif args.resource == "pool" and args.action == "coverage":
-            result = handle_pool_coverage(args.pool)
+            result = handle_pool_coverage(args.pool, args.mock, args.holdings_file, args.runtime)
             if args.text and result["ok"]:
                 print(render_pool_coverage_text(result))
                 return 0
@@ -515,9 +518,31 @@ def handle_pool_list(pool: str) -> Dict[str, Any]:
     )
 
 
-def handle_pool_coverage(pool: str) -> Dict[str, Any]:
+def handle_pool_coverage(
+    pool: str,
+    use_mock: bool = False,
+    holdings_file: Optional[str] = None,
+    use_runtime: bool = False,
+) -> Dict[str, Any]:
     items = load_pool(pool)
-    data = build_pool_coverage(pool, items)
+    holdings = None
+    holdings_source = None
+    if use_runtime:
+        paths = runtime_paths()
+        holdings_path = Path(paths["holdings"])
+        if not holdings_path.exists():
+            return pool_coverage_runtime_error(pool)
+        holdings_file = paths["holdings"]
+    if use_mock or holdings_file:
+        holdings, holdings_mode, raw_source = resolve_holdings(use_mock, holdings_file)
+        holdings_source = {
+            "provided": True,
+            "mode": "runtime" if use_runtime else holdings_mode,
+            "source": privacy_safe_source(raw_source, "holdings", "runtime" if use_runtime else holdings_mode),
+        }
+
+    data = build_pool_coverage(pool, items, holdings=holdings)
+    data["holdings_source"] = holdings_source or {"provided": False}
     return envelope(
         command="pool.coverage",
         data=data,
@@ -5545,6 +5570,30 @@ def runtime_error(command: str, missing: List[str]) -> Dict[str, Any]:
         source=str(default_pool_path()),
         ok=False,
     )
+
+
+def pool_coverage_runtime_error(pool: str) -> Dict[str, Any]:
+    return envelope(
+        command="pool.coverage",
+        errors=[
+            error(
+                "RUNTIME_HOLDINGS_NOT_INITIALIZED",
+                "Runtime holdings file is missing. Run: market-intel init runtime",
+                {"missing": ["holdings.json"]},
+            )
+        ],
+        source="pool:%s" % pool,
+        ok=False,
+    )
+
+
+def privacy_safe_source(source: object, kind: str, mode: str) -> str:
+    text = str(source or "")
+    if mode == "mock":
+        return text
+    if mode == "runtime":
+        return "runtime_%s" % kind
+    return "%s_file" % kind
 
 
 def brief_mode(
