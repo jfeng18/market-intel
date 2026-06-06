@@ -1,8 +1,8 @@
 # market-intel 数据模型 v0
 
-> 日期：2026-05-22  
-> 状态：P0/P1 开发契约  
-> 范围：AI 能量公式池子、mock 行情、mock 持仓影响  
+> 日期：2026-05-22
+> 状态：P0/P1 开发契约
+> 范围：AI 能量公式池子、mock 行情、mock 持仓影响
 
 ---
 
@@ -192,7 +192,7 @@ P1 使用 mock quote；真实行情接入放到 P2。
 
 ## 7. HoldingExposure
 
-P1 使用 mock holdings；真实 tradegov 只读接入放到后续阶段。
+P1 使用 mock holdings；真实外部持仓源只读接入放到后续阶段。
 
 ```json
 {
@@ -254,4 +254,3 @@ P0/P1 只定义模型，不实现真实新闻扫描。
   "questions": []
 }
 ```
-

@@ -28,6 +28,8 @@
 
 首版设计文档：`docs/design.md`
 
+产品定位与竞争力：`docs/product.md`
+
 协作交接文档：`docs/handoff.md`
 
 ## 开发工作流
