@@ -71,6 +71,53 @@ def test_explicit_pool_path_ignores_extra_pool_paths(monkeypatch, tmp_path):
     assert find_pool_item(items, "000003") is None
 
 
+def test_load_pool_can_overlay_a_share_universe(monkeypatch, tmp_path):
+    universe_file = tmp_path / "a_share_universe.csv"
+    universe_file.write_text(
+        "证券代码,证券名称,行业,概念,指数成分,上市状态\n"
+        "000001,平安银行,银行,股份行;金融科技,沪深300;深证100,listed\n"
+        "600519,贵州茅台,食品饮料,白酒;消费,上证50;沪深300,listed\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("MARKET_INTEL_A_SHARE_UNIVERSE_PATHS", str(universe_file))
+
+    items = load_pool("all-a")
+    pingan = find_pool_item(items, "000001")
+    maotai = find_pool_item(items, "600519")
+
+    assert pingan is not None
+    assert pingan.name == "平安银行"
+    assert pingan.primary_layer == "行业"
+    assert pingan.primary_sub_sector == "银行"
+    assert pingan.raw["pool_source"] == "universe:a_share_universe.csv"
+    assert pingan.raw["pool_source_file"] == "a_share_universe.csv"
+    assert pingan.raw["universe_schema"] == "a_share_universe_v1"
+    assert pingan.raw["universe_industry"] == "银行"
+    assert pingan.raw["universe_concepts"] == "股份行;金融科技"
+    assert str(universe_file) not in str(pingan.to_dict())
+    assert maotai is not None
+    assert maotai.primary_sub_sector == "食品饮料"
+
+
+def test_a_share_universe_metadata_survives_existing_seed_merge(monkeypatch, tmp_path):
+    universe_file = tmp_path / "a_share_universe.csv"
+    universe_file.write_text(
+        "symbol,name,industry,concepts,index_membership,listing_status\n"
+        "002837,英维克,机械设备,液冷;数据中心,中证1000,listed\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("MARKET_INTEL_A_SHARE_UNIVERSE_PATHS", str(universe_file))
+
+    items = load_pool("all-a")
+    item = find_pool_item(items, "002837")
+
+    assert item is not None
+    assert item.primary_layer == "电力"
+    assert item.raw["universe_schema"] == "a_share_universe_v1"
+    assert item.raw["universe_industry"] == "机械设备"
+    assert "universe:a_share_universe.csv" in item.raw["merged_pool_sources"]
+
+
 def test_unknown_pool_lists_supported_pools():
     with pytest.raises(ValueError) as exc:
         load_pool("unknown")

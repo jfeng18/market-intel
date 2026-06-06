@@ -34,6 +34,7 @@ def build_pool_coverage(
     tradable = [item for item in items if item.tradable and item.symbol]
     cn_a = [item for item in tradable if item.market == "CN_A"]
     data_quality = data_quality_summary(items)
+    universe = universe_summary(items)
     scope = str(definition.get("scope") or "")
     holdings_coverage = build_holdings_coverage(items, holdings)
     expansion_queue = build_expansion_queue(pool, scope, holdings_coverage)
@@ -42,7 +43,7 @@ def build_pool_coverage(
         "scope": scope,
         "description": definition.get("description"),
         "status": coverage_status(scope, data_quality),
-        "summary": coverage_summary(pool, scope, items, tradable, cn_a, data_quality),
+        "summary": coverage_summary(pool, scope, items, tradable, cn_a, data_quality, universe),
         "counts": {
             "items": len(items),
             "tradable": len(tradable),
@@ -55,12 +56,13 @@ def build_pool_coverage(
         "layer_distribution": layer_rows(items),
         "cn_a_board_distribution": counter_rows(cn_a_board(item.symbol) for item in cn_a),
         "data_quality": data_quality,
+        "universe": universe,
         "holdings_coverage": holdings_coverage,
         "expansion_queue": expansion_queue,
-        "gaps": coverage_gaps(scope, items, cn_a, data_quality, holdings_coverage),
-        "next_actions": coverage_next_actions(pool, scope, holdings_coverage, expansion_queue),
+        "gaps": coverage_gaps(scope, items, cn_a, data_quality, holdings_coverage, universe),
+        "next_actions": coverage_next_actions(pool, scope, holdings_coverage, expansion_queue, universe),
         "agent_contract": coverage_contract(),
-        "guardrails": coverage_guardrails(scope),
+        "guardrails": coverage_guardrails(scope, universe),
     }
 
 
@@ -303,14 +305,77 @@ def coverage_summary(
     tradable: List[PoolItem],
     cn_a: List[PoolItem],
     data_quality: Dict[str, object],
+    universe: Dict[str, object],
 ) -> str:
     base = (
         "%s 当前 %s 个条目、%s 个可交易标的、%s 个 A 股标的；数据质量待复核 %s 个。"
         % (pool, len(items), len(tradable), len(cn_a), data_quality.get("flagged_item_count", 0))
     )
     if scope == "all_a_seed":
+        if universe.get("available"):
+            return base + "已接入 A 股基础清单 %s 条，但仍是种子覆盖，需要继续补行业/概念/指数成分和研究证据。" % (
+                universe.get("record_count", 0)
+            )
         return base + "这是全 A 种子覆盖，不应当作完整全 A 覆盖。"
     return base
+
+
+def universe_summary(items: List[PoolItem]) -> Dict[str, object]:
+    universe_items = [
+        item
+        for item in items
+        if str(item.raw.get("pool_source") or "").startswith("universe:") or item.raw.get("universe_schema")
+    ]
+    if not universe_items:
+        return {
+            "available": False,
+            "record_count": 0,
+            "source_files": [],
+            "industry_count": 0,
+            "concept_count": 0,
+            "index_membership_count": 0,
+            "sample_items": [],
+        }
+
+    industries = {str(item.raw.get("universe_industry") or "").strip() for item in universe_items}
+    concepts = set()
+    indexes = set()
+    for item in universe_items:
+        concepts.update(split_universe_values(item.raw.get("universe_concepts")))
+        indexes.update(split_universe_values(item.raw.get("universe_index_membership")))
+    industries.discard("")
+    source_files = sorted({str(item.raw.get("pool_source_file") or "") for item in universe_items if item.raw.get("pool_source_file")})
+    return {
+        "available": True,
+        "schema": "a_share_universe_v1",
+        "record_count": len(universe_items),
+        "source_files": source_files,
+        "industry_count": len(industries),
+        "concept_count": len(concepts),
+        "index_membership_count": len(indexes),
+        "sample_items": [
+            {
+                "symbol": item.symbol,
+                "name": item.name,
+                "industry": item.raw.get("universe_industry"),
+                "concepts": item.raw.get("universe_concepts"),
+                "index_membership": item.raw.get("universe_index_membership"),
+            }
+            for item in universe_items[:8]
+        ],
+    }
+
+
+def split_universe_values(value: object) -> List[str]:
+    text = str(value or "").strip()
+    if not text:
+        return []
+    parts = []
+    for chunk in text.replace("，", ";").replace(",", ";").replace("|", ";").replace("/", ";").split(";"):
+        chunk = chunk.strip()
+        if chunk:
+            parts.append(chunk)
+    return parts
 
 
 def data_quality_summary(items: List[PoolItem]) -> Dict[str, object]:
@@ -424,6 +489,7 @@ def build_holdings_coverage(
     unmatched_count = len(unmatched)
     ratio = round(matched_count / holding_count, 4) if holding_count else 0
     draft_count = sum(1 for row in matched if row.get("coverage_state") == "draft")
+    foundation_count = sum(1 for row in matched if row.get("coverage_state") == "foundation")
     needs_review_count = sum(1 for row in matched if row.get("coverage_state") != "confirmed")
     flags = []
     if unmatched:
@@ -437,6 +503,7 @@ def build_holdings_coverage(
         "unmatched_count": unmatched_count,
         "confirmed_count": matched_count - needs_review_count,
         "draft_matched_count": draft_count,
+        "foundation_matched_count": foundation_count,
         "needs_review_count": needs_review_count,
         "matched_ratio": ratio,
         "matched": matched[:20],
@@ -472,9 +539,13 @@ def matched_coverage_state(item: PoolItem) -> Dict[str, object]:
         reasons.append("candidate_status")
     if str(raw.get("pool_source") or "").startswith("extra:"):
         reasons.append("extra_pool_overlay")
+    if str(raw.get("pool_source") or "").startswith("universe:") or raw.get("universe_schema"):
+        reasons.append("a_share_universe_foundation")
     if any(is_pending_text(raw.get(field)) for field in ("raw_section", "raw_level", "raw_desc")):
         reasons.append("pending_fields")
     if reasons:
+        if "a_share_universe_foundation" in reasons and len(reasons) == 1:
+            return {"state": "foundation", "reasons": sorted(set(reasons))}
         return {"state": "draft", "reasons": sorted(set(reasons))}
     return {"state": "confirmed", "reasons": []}
 
@@ -548,9 +619,10 @@ def coverage_gaps(
     cn_a: List[PoolItem],
     data_quality: Dict[str, object],
     holdings_coverage: Dict[str, object],
+    universe: Dict[str, object],
 ) -> List[Dict[str, object]]:
     gaps = []
-    if scope == "all_a_seed":
+    if scope == "all_a_seed" and not universe.get("available"):
         gaps.append(
             {
                 "id": "all_a_seed_only",
@@ -558,6 +630,23 @@ def coverage_gaps(
                 "message": "当前 all-a 仍是种子覆盖，尚未接入完整 A 股行业、概念或指数成分。",
             }
         )
+    if scope == "all_a_seed" and universe.get("available"):
+        if not universe.get("industry_count"):
+            gaps.append(
+                {
+                    "id": "a_share_industry_missing",
+                    "severity": "high",
+                    "message": "A 股基础清单已接入，但缺少行业字段，无法形成全 A 行业复盘底座。",
+                }
+            )
+        if not universe.get("concept_count") and not universe.get("index_membership_count"):
+            gaps.append(
+                {
+                    "id": "a_share_theme_sources_missing",
+                    "severity": "medium",
+                    "message": "A 股基础清单缺少概念或指数成分字段，主题/板块复盘仍会偏薄。",
+                }
+            )
     if len(cn_a) < max(100, len(items) // 2):
         gaps.append(
             {
@@ -598,6 +687,7 @@ def coverage_next_actions(
     scope: str,
     holdings_coverage: Dict[str, object],
     expansion_queue: List[Dict[str, object]],
+    universe: Dict[str, object],
 ) -> List[Dict[str, object]]:
     actions = [
         {
@@ -607,13 +697,22 @@ def coverage_next_actions(
             "done_when": "已确认当前复盘池的覆盖边界、市场分布、层级分布和数据质量短板。",
         }
     ]
-    if scope == "all_a_seed":
+    if scope == "all_a_seed" and not universe.get("available"):
         actions.append(
             {
                 "rank": 2,
                 "id": "expand_all_a_sources",
-                "command": "market-intel import schema --json",
-                "done_when": "已准备行业、概念、指数成分或自选股 CSV/JSON 的导入格式。",
+                "command": "MARKET_INTEL_A_SHARE_UNIVERSE_PATHS=data/runtime/a_share_universe.csv market-intel pool coverage --text",
+                "done_when": "已准备 A 股基础清单 CSV，并确认 coverage 的 universe.available=true。",
+            }
+        )
+    elif scope == "all_a_seed" and universe.get("available"):
+        actions.append(
+            {
+                "rank": 2,
+                "id": "review_a_share_universe",
+                "command": "MARKET_INTEL_A_SHARE_UNIVERSE_PATHS=data/runtime/a_share_universe.csv market-intel pool coverage --json",
+                "done_when": "已确认基础清单的行业、概念和指数成分字段覆盖情况。",
             }
         )
     if not holdings_coverage.get("available"):
@@ -674,6 +773,7 @@ def coverage_contract() -> Dict[str, object]:
             "data.layer_distribution",
             "data.cn_a_board_distribution",
             "data.data_quality",
+            "data.universe",
             "data.holdings_coverage",
             "data.expansion_queue",
             "data.gaps",
@@ -688,10 +788,13 @@ def pool_arg(pool: str) -> str:
     return "" if pool == "all-a" else " --pool %s" % pool
 
 
-def coverage_guardrails(scope: str) -> List[str]:
+def coverage_guardrails(scope: str, universe: Dict[str, object]) -> List[str]:
     guardrails = ["覆盖度用于判断复盘池边界，不生成买卖指令、目标价或仓位建议。"]
     if scope == "all_a_seed":
-        guardrails.append("all-a 当前为种子覆盖；接入行业/概念/指数成分数据前，应降权解读全 A 结论。")
+        if universe.get("available"):
+            guardrails.append("all-a 已接入 A 股基础清单，但基础清单只代表覆盖底座，不等于完成研究证据和主题解释。")
+        else:
+            guardrails.append("all-a 当前为种子覆盖；接入行业/概念/指数成分数据前，应降权解读全 A 结论。")
     else:
         guardrails.append("主题池只说明该主题覆盖，不代表全市场结论。")
     return guardrails

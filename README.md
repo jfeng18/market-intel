@@ -254,6 +254,13 @@ market-intel holdings impact --runtime --json
 
 `pool coverage` 是复盘池覆盖度自检：给出 pool 范围、状态、A 股数量、市场分布、层级分布、数据质量标记、覆盖缺口和下一步命令。当前 `all-a` 会明确标记为 seed 覆盖，提醒 agent 和人不要把它当作完整全 A 结论。
 
+可以先用 A 股基础清单扩展 `all-a` 的底座覆盖。CSV 支持 `symbol/name/industry/concepts/index_membership/listing_status`，也支持常见中文列名如 `证券代码/证券名称/行业/概念/指数成分/上市状态`。基础清单只代表“代码、名称、行业、概念、指数成分”的覆盖，不等于研究证据完成；匹配到基础清单的持仓会进入待复核覆盖队列。
+
+```bash
+MARKET_INTEL_A_SHARE_UNIVERSE_PATHS=examples/a_share_universe.csv.example market-intel pool coverage --text
+MARKET_INTEL_A_SHARE_UNIVERSE_PATHS=data/runtime/a_share_universe.csv market-intel pool coverage --runtime --text
+```
+
 传入持仓源后，它还会检查个人持仓是否已被复盘池覆盖：
 
 ```bash
@@ -358,3 +365,4 @@ market-intel import holdings holdings.csv --output data/runtime/holdings.json --
 - `examples/holdings.example.json`
 - `examples/quotes.csv.example`
 - `examples/holdings.csv.example`
+- `examples/a_share_universe.csv.example`

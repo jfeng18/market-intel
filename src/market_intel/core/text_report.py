@@ -172,6 +172,8 @@ def render_pool_coverage_text(payload: Dict[str, object]) -> str:
     lines.extend(render_named_counts(data.get("market_distribution", []), empty="暂无市场分布。"))
     lines.extend(["", "A 股板块"])
     lines.extend(render_named_counts(data.get("cn_a_board_distribution", []), empty="暂无 A 股板块分布。"))
+    lines.extend(["", "全 A 基础清单"])
+    lines.extend(render_universe_summary(data.get("universe", {})))
     lines.extend(["", "层级分布"])
     lines.extend(render_coverage_layers(data.get("layer_distribution", [])))
     lines.extend(["", "持仓覆盖"])
@@ -228,6 +230,40 @@ def render_pool_expansion_text(payload: Dict[str, object]) -> str:
     lines.extend(render_command_list(data.get("next_commands", [])))
     lines.extend(["", "边界", "- 只导出或审查候选补池 CSV，不自动修改主复盘池。", "- 通过 review 后仍建议用 overlay 跑 coverage/focus 复核。"])
     return "\n".join(lines)
+
+
+def render_universe_summary(value: object) -> List[str]:
+    data = value if isinstance(value, dict) else {}
+    if not data.get("available"):
+        return ["- 未接入 A 股基础清单。"]
+    source_files = data.get("source_files", []) if isinstance(data.get("source_files"), list) else []
+    lines = [
+        "- 已接入 | schema %s | 记录 %s | 行业 %s | 概念 %s | 指数 %s"
+        % (
+            data.get("schema") or "UNKNOWN",
+            data.get("record_count", 0),
+            data.get("industry_count", 0),
+            data.get("concept_count", 0),
+            data.get("index_membership_count", 0),
+        )
+    ]
+    if source_files:
+        lines.append("- 来源文件: %s" % ", ".join(str(item) for item in source_files[:5]))
+    sample_items = data.get("sample_items", []) if isinstance(data.get("sample_items"), list) else []
+    for item in sample_items[:5]:
+        if not isinstance(item, dict):
+            continue
+        lines.append(
+            "- %s %s | %s | %s | %s"
+            % (
+                item.get("symbol") or "-",
+                item.get("name") or "-",
+                item.get("industry") or "行业待补",
+                item.get("concepts") or "概念待补",
+                item.get("index_membership") or "指数待补",
+            )
+        )
+    return lines
 
 
 def render_expansion_blockers(value: object) -> List[str]:
@@ -321,10 +357,11 @@ def render_holdings_coverage(value: object) -> List[str]:
     ]
     if coverage.get("needs_review_count"):
         lines.append(
-            "   待复核覆盖: %s | 正式覆盖: %s | 草稿匹配: %s"
+            "   待复核覆盖: %s | 正式覆盖: %s | 基础覆盖: %s | 草稿匹配: %s"
             % (
                 coverage.get("needs_review_count", 0),
                 coverage.get("confirmed_count", 0),
+                coverage.get("foundation_matched_count", 0),
                 coverage.get("draft_matched_count", 0),
             )
         )

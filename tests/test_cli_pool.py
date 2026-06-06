@@ -70,6 +70,60 @@ def test_pool_coverage_mock_holdings_reports_personal_coverage():
     assert payload["meta"]["source"] == "pool:all-a"
 
 
+def test_pool_coverage_reports_a_share_universe(monkeypatch, tmp_path):
+    universe_file = tmp_path / "a_share_universe.csv"
+    universe_file.write_text(
+        "证券代码,证券名称,行业,概念,指数成分,上市状态\n"
+        "000001,平安银行,银行,股份行;金融科技,沪深300;深证100,listed\n"
+        "600519,贵州茅台,食品饮料,白酒;消费,上证50;沪深300,listed\n",
+        encoding="utf-8",
+    )
+    holdings_file = tmp_path / "holdings.json"
+    holdings_file.write_text(
+        json.dumps({"holdings": [{"symbol": "000001", "name": "平安银行"}]}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("MARKET_INTEL_A_SHARE_UNIVERSE_PATHS", str(universe_file))
+
+    payload = handle_pool_coverage("all-a", holdings_file=str(holdings_file))
+    data = payload["data"]
+    coverage = data["holdings_coverage"]
+
+    assert payload["ok"] is True
+    assert data["universe"]["available"] is True
+    assert data["universe"]["record_count"] == 2
+    assert data["universe"]["source_files"] == ["a_share_universe.csv"]
+    assert data["universe"]["industry_count"] == 2
+    assert data["universe"]["concept_count"] == 4
+    assert data["universe"]["index_membership_count"] == 3
+    assert coverage["matched_count"] == 1
+    assert coverage["unmatched_count"] == 0
+    assert coverage["foundation_matched_count"] == 1
+    assert coverage["matched"][0]["coverage_state"] == "foundation"
+    assert "a_share_universe_foundation" in coverage["matched"][0]["coverage_state_reasons"]
+    assert any(gap["id"] == "draft_pool_matches" for gap in data["gaps"])
+    assert all(gap["id"] != "all_a_seed_only" for gap in data["gaps"])
+    assert "data.universe" in data["agent_contract"]["stable_fields"]
+    assert str(universe_file) not in json.dumps(payload, ensure_ascii=False)
+
+
+def test_pool_coverage_text_renders_a_share_universe(monkeypatch, tmp_path):
+    universe_file = tmp_path / "a_share_universe.csv"
+    universe_file.write_text(
+        "证券代码,证券名称,行业,概念,指数成分,上市状态\n"
+        "000001,平安银行,银行,股份行;金融科技,沪深300;深证100,listed\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("MARKET_INTEL_A_SHARE_UNIVERSE_PATHS", str(universe_file))
+
+    text = render_pool_coverage_text(handle_pool_coverage("all-a"))
+
+    assert "全 A 基础清单" in text
+    assert "a_share_universe_v1" in text
+    assert "来源文件: a_share_universe.csv" in text
+    assert "000001 平安银行" in text
+
+
 def test_pool_coverage_file_holdings_reports_unmatched_gap(tmp_path):
     holdings_file = tmp_path / "holdings.json"
     holdings_file.write_text(

@@ -122,7 +122,7 @@ import/runtime -> status/readiness -> pool coverage -> pool expansion review
 
 ### P0：全 A 覆盖底座
 
-- 引入 A 股基础清单和行业/概念/指数成分输入格式。
+- 引入 A 股基础清单和行业/概念/指数成分输入格式；当前可通过 `MARKET_INTEL_A_SHARE_UNIVERSE_PATHS` 叠加 `a_share_universe_v1` CSV。
 - 让 `pool coverage` 明确展示全 A 覆盖范围、缺口和草稿状态。
 - 保持所有输出不泄露本机路径和用户身份信息。
 

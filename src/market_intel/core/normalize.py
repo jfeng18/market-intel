@@ -112,6 +112,7 @@ def merge_pool_items(items: List[PoolItem]) -> List[PoolItem]:
         existing.priority = best_priority(existing.priority, item.priority)
         existing.raw.setdefault("merged_raw_rows", [existing.raw.get("raw_row")])
         existing.raw["merged_raw_rows"].append(item.raw.get("raw_row"))
+        merge_raw_metadata(existing.raw, item.raw)
 
     for item in merged.values():
         if len(item.exposures) > 1:
@@ -119,6 +120,29 @@ def merge_pool_items(items: List[PoolItem]) -> List[PoolItem]:
         apply_primary_exposure(item)
         item.data_quality_flags = sorted(set(item.data_quality_flags))
     return [merged[key] for key in order]
+
+
+def merge_raw_metadata(existing: Dict[str, object], incoming: Dict[str, object]) -> None:
+    append_raw_list(existing, "merged_pool_sources", existing.get("pool_source"))
+    append_raw_list(existing, "merged_pool_sources", incoming.get("pool_source"))
+    append_raw_list(existing, "merged_pool_source_files", existing.get("pool_source_file"))
+    append_raw_list(existing, "merged_pool_source_files", incoming.get("pool_source_file"))
+    if incoming.get("universe_schema"):
+        existing["universe_schema"] = incoming.get("universe_schema")
+        existing["universe_source_file"] = incoming.get("universe_source_file")
+        existing["universe_industry"] = incoming.get("universe_industry")
+        existing["universe_concepts"] = incoming.get("universe_concepts")
+        existing["universe_index_membership"] = incoming.get("universe_index_membership")
+        existing["universe_listing_status"] = incoming.get("universe_listing_status")
+
+
+def append_raw_list(raw: Dict[str, object], key: str, value: object) -> None:
+    text = str(value or "").strip()
+    if not text:
+        return
+    values = raw.setdefault(key, [])
+    if isinstance(values, list) and text not in values:
+        values.append(text)
 
 
 def pool_item_primary_exposure(item: PoolItem) -> Exposure:
@@ -273,6 +297,8 @@ def priority_rank(priority: str) -> int:
 
 def infer_layer(section: str) -> str:
     section = section or ""
+    if section.startswith("行业 /"):
+        return "行业"
     if section.startswith("1."):
         return "算力"
     if section.startswith("2."):
@@ -289,6 +315,8 @@ def infer_layer(section: str) -> str:
 def infer_sub_sector(section: str) -> str:
     text = re.sub(r"^\d+(?:\.\d+)?\s*", "", section or "").strip()
     text = text.replace("🆕", "").strip()
+    if text.startswith("行业 /"):
+        return text.split("/", 1)[1].strip() or "行业待补"
     if "AI 服务器" in text:
         return "AI 服务器"
     if "半导体设备" in text:
