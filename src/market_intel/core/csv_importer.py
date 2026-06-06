@@ -31,6 +31,16 @@ HOLDING_ALIASES = {
     "source": ["source", "来源", "数据源"],
 }
 
+UNIVERSE_ALIASES = {
+    "symbol": ["symbol", "code", "ticker", "stock_code", "证券代码", "股票代码", "代码", "标的代码"],
+    "name": ["name", "company", "证券名称", "股票名称", "名称", "公司名称"],
+    "industry": ["industry", "行业", "申万行业", "中信行业", "所属行业"],
+    "concepts": ["concepts", "concept", "概念", "主题", "概念板块", "题材"],
+    "index_membership": ["index_membership", "indices", "index", "指数", "指数成分", "成分指数"],
+    "listing_status": ["listing_status", "status", "上市状态", "状态"],
+    "source": ["source", "来源", "数据源"],
+}
+
 
 def import_quotes_csv(
     csv_path: Path,
@@ -53,7 +63,7 @@ def import_quotes_csv(
             if record:
                 records.append(record)
     if not errors and not records:
-        errors.append(issue("NO_QUOTE_RECORDS", "CSV 中没有可导入的行情记录。", {"path": str(csv_path)}))
+        errors.append(issue("NO_QUOTE_RECORDS", "CSV 中没有可导入的行情记录。", {"path": command_path(csv_path)}))
 
     written = False
     if not errors and not dry_run and output_path is not None:
@@ -62,8 +72,8 @@ def import_quotes_csv(
 
     return {
         "kind": "quotes",
-        "input": str(csv_path),
-        "output": str(output_path) if output_path else None,
+        "input": command_path(csv_path),
+        "output": command_path(output_path) if output_path else None,
         "record_key": "quotes",
         "record_count": len(records),
         "dry_run": dry_run,
@@ -95,7 +105,7 @@ def import_holdings_csv(
             if record:
                 records.append(record)
     if not errors and not records:
-        errors.append(issue("NO_HOLDING_RECORDS", "CSV 中没有可导入的持仓记录。", {"path": str(csv_path)}))
+        errors.append(issue("NO_HOLDING_RECORDS", "CSV 中没有可导入的持仓记录。", {"path": command_path(csv_path)}))
 
     written = False
     if not errors and not dry_run and output_path is not None:
@@ -104,8 +114,8 @@ def import_holdings_csv(
 
     return {
         "kind": "holdings",
-        "input": str(csv_path),
-        "output": str(output_path) if output_path else None,
+        "input": command_path(csv_path),
+        "output": command_path(output_path) if output_path else None,
         "record_key": "holdings",
         "record_count": len(records),
         "dry_run": dry_run,
@@ -113,6 +123,48 @@ def import_holdings_csv(
         "preview": records[:5],
         "canonical_schema": holding_schema(),
         "next_commands": next_commands("holdings", written, runtime, output_path),
+        "warnings": warnings,
+        "errors": errors,
+    }
+
+
+def import_universe_csv(
+    csv_path: Path,
+    output_path: Optional[Path],
+    dry_run: bool = False,
+    runtime: bool = False,
+) -> Dict[str, object]:
+    rows, read_errors = read_csv_rows(csv_path)
+    warnings: List[Dict[str, object]] = []
+    errors: List[Dict[str, object]] = list(read_errors)
+    records: List[Dict[str, object]] = []
+
+    if not errors:
+        for index, row in enumerate(rows):
+            record, row_warnings, row_errors = parse_universe_row(row, index, csv_path)
+            warnings.extend(row_warnings)
+            errors.extend(row_errors)
+            if record:
+                records.append(record)
+    if not errors and not records:
+        errors.append(issue("NO_UNIVERSE_RECORDS", "CSV 中没有可导入的 A 股基础清单记录。", {"path": command_path(csv_path)}))
+
+    written = False
+    if not errors and not dry_run and output_path is not None:
+        write_universe_csv(output_path, records)
+        written = True
+
+    return {
+        "kind": "universe",
+        "input": command_path(csv_path),
+        "output": command_path(output_path) if output_path else None,
+        "record_key": "universe",
+        "record_count": len(records),
+        "dry_run": dry_run,
+        "written": written,
+        "preview": records[:5],
+        "canonical_schema": universe_schema(),
+        "next_commands": next_commands("universe", written, runtime, output_path),
         "warnings": warnings,
         "errors": errors,
     }
@@ -156,6 +208,23 @@ def import_schema() -> Dict[str, object]:
                 "market-intel import holdings examples/holdings.csv.example --runtime --json",
                 "market-intel import holdings holdings.csv --output data/runtime/holdings.json --json",
                 "market-intel import holdings holdings.csv --dry-run --json",
+            ],
+        },
+        "universe": {
+            "record_key": "universe",
+            "accepted_columns": UNIVERSE_ALIASES,
+            "canonical_schema": universe_schema(),
+            "defaults": {
+                "industry": "行业待补",
+                "concepts": "",
+                "index_membership": "",
+                "listing_status": "listed",
+                "source": "csv:<filename>",
+            },
+            "example_commands": [
+                "market-intel import universe examples/a_share_universe.csv.example --runtime --json",
+                "market-intel import universe a_share_universe.csv --output data/runtime/a_share_universe.csv --json",
+                "market-intel import universe a_share_universe.csv --dry-run --json",
             ],
         },
         "agent_contract": {
@@ -269,17 +338,56 @@ def parse_holding_row(
     }, warnings, errors
 
 
+def parse_universe_row(
+    row: Dict[str, str],
+    index: int,
+    csv_path: Path,
+) -> Tuple[Optional[Dict[str, object]], List[Dict[str, object]], List[Dict[str, object]]]:
+    warnings: List[Dict[str, object]] = []
+    errors: List[Dict[str, object]] = []
+    symbol = normalize_symbol(get_value(row, UNIVERSE_ALIASES["symbol"]))
+    if not symbol:
+        return None, warnings, [issue("MISSING_SYMBOL", "A 股基础清单记录缺少证券代码。", {"index": index})]
+    if not re.match(r"^\d{6}$", symbol):
+        return None, warnings, [
+            issue("INVALID_UNIVERSE_SYMBOL", "A 股基础清单只接受 6 位 A 股代码。", {"index": index, "symbol": symbol})
+        ]
+
+    name = get_value(row, UNIVERSE_ALIASES["name"])
+    if is_empty(name):
+        name = symbol
+        warnings.append(default_warning("UNIVERSE_NAME_DEFAULTED", index, symbol, "name", name))
+    industry = get_value(row, UNIVERSE_ALIASES["industry"])
+    if is_empty(industry):
+        industry = "行业待补"
+        warnings.append(default_warning("UNIVERSE_FIELD_DEFAULTED", index, symbol, "industry", industry))
+    listing_status = get_value(row, UNIVERSE_ALIASES["listing_status"])
+    if is_empty(listing_status):
+        listing_status = "listed"
+        warnings.append(default_warning("UNIVERSE_FIELD_DEFAULTED", index, symbol, "listing_status", listing_status))
+
+    return {
+        "symbol": symbol,
+        "name": str(name),
+        "industry": str(industry),
+        "concepts": get_value(row, UNIVERSE_ALIASES["concepts"]) or "",
+        "index_membership": get_value(row, UNIVERSE_ALIASES["index_membership"]) or "",
+        "listing_status": str(listing_status),
+        "source": get_value(row, UNIVERSE_ALIASES["source"]) or "csv:%s" % csv_path.name,
+    }, warnings, errors
+
+
 def read_csv_rows(path: Path) -> Tuple[List[Dict[str, str]], List[Dict[str, object]]]:
     if not path.exists():
-        return [], [issue("CSV_FILE_NOT_FOUND", "CSV 文件不存在。", {"path": str(path)})]
+        return [], [issue("CSV_FILE_NOT_FOUND", "CSV 文件不存在。", {"path": command_path(path)})]
     try:
         with path.open(encoding="utf-8-sig", newline="") as handle:
             reader = csv.DictReader(handle)
             if not reader.fieldnames:
-                return [], [issue("CSV_HEADER_MISSING", "CSV 缺少表头。", {"path": str(path)})]
+                return [], [issue("CSV_HEADER_MISSING", "CSV 缺少表头。", {"path": command_path(path)})]
             return list(reader), []
     except Exception as exc:
-        return [], [issue("CSV_READ_ERROR", str(exc), {"path": str(path)})]
+        return [], [issue("CSV_READ_ERROR", str(exc), {"path": command_path(path)})]
 
 
 def write_json_records(path: Path, key: str, records: List[Dict[str, object]]) -> None:
@@ -287,6 +395,16 @@ def write_json_records(path: Path, key: str, records: List[Dict[str, object]]) -
     with path.open("w", encoding="utf-8") as handle:
         json.dump({key: records}, handle, ensure_ascii=False, indent=2)
         handle.write("\n")
+
+
+def write_universe_csv(path: Path, records: List[Dict[str, object]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fields = [row["field"] for row in universe_schema()]
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fields)
+        writer.writeheader()
+        for record in records:
+            writer.writerow({field: record.get(field, "") for field in fields})
 
 
 def quote_schema() -> List[Dict[str, object]]:
@@ -315,24 +433,54 @@ def holding_schema() -> List[Dict[str, object]]:
     ]
 
 
+def universe_schema() -> List[Dict[str, object]]:
+    return [
+        {"field": "symbol", "type": "string", "required": True},
+        {"field": "name", "type": "string", "required": True},
+        {"field": "industry", "type": "string", "required": True},
+        {"field": "concepts", "type": "string", "required": False},
+        {"field": "index_membership", "type": "string", "required": False},
+        {"field": "listing_status", "type": "string", "required": False},
+        {"field": "source", "type": "string", "required": False},
+    ]
+
+
 def next_commands(kind: str, written: bool, runtime: bool, output_path: Optional[Path]) -> List[str]:
     if not written:
         return []
+    path_text = command_path(output_path) if output_path else ""
     if not runtime:
         if kind == "quotes":
             return [
-                "market-intel hotspots --quotes-file %s --json" % output_path,
-                "market-intel daily --quotes-file %s --holdings-file <holdings.json> --json" % output_path,
+                "market-intel hotspots --quotes-file %s --json" % path_text,
+                "market-intel daily --quotes-file %s --holdings-file <holdings.json> --json" % path_text,
+            ]
+        if kind == "universe":
+            return [
+                "MARKET_INTEL_A_SHARE_UNIVERSE_PATHS=%s market-intel pool coverage --text" % path_text,
+                "MARKET_INTEL_A_SHARE_UNIVERSE_PATHS=%s market-intel pool coverage --runtime --text" % path_text,
             ]
         return [
-            "market-intel holdings impact --holdings-file %s --json" % output_path,
-            "market-intel daily --quotes-file <quotes.json> --holdings-file %s --json" % output_path,
+            "market-intel holdings impact --holdings-file %s --json" % path_text,
+            "market-intel daily --quotes-file <quotes.json> --holdings-file %s --json" % path_text,
+        ]
+    if kind == "universe":
+        return [
+            "market-intel pool coverage --text",
+            "market-intel pool coverage --runtime --text",
+            "market-intel focus --runtime --text",
         ]
     return [
         "market-intel validate runtime --json",
         "market-intel daily --runtime --json",
         "market-intel daily --runtime --text",
     ]
+
+
+def command_path(path: Optional[Path]) -> str:
+    if path is None:
+        return ""
+    return str(path) if not path.is_absolute() else path.name
 
 
 def get_value(row: Dict[str, str], aliases: Iterable[str]) -> Optional[str]:

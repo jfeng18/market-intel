@@ -46,10 +46,33 @@ def extra_pool_paths() -> List[Path]:
 
 
 def a_share_universe_paths() -> List[Path]:
+    paths = []
+    runtime_path = runtime_universe_path()
+    if runtime_path.exists():
+        paths.append(runtime_path)
     configured = os.environ.get(A_SHARE_UNIVERSE_ENV)
-    if not configured:
-        return []
-    return [Path(value) for value in configured.split(os.pathsep) if value.strip()]
+    if configured:
+        paths.extend(Path(value) for value in configured.split(os.pathsep) if value.strip())
+    return dedupe_paths(paths)
+
+
+def runtime_universe_path() -> Path:
+    configured = os.environ.get("MARKET_INTEL_RUNTIME_DIR")
+    if configured:
+        return Path(configured) / "a_share_universe.csv"
+    return repo_root() / "data" / "runtime" / "a_share_universe.csv"
+
+
+def dedupe_paths(paths: List[Path]) -> List[Path]:
+    result = []
+    seen = set()
+    for path in paths:
+        key = str(path)
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(path)
+    return result
 
 
 def load_pool(pool: str = DEFAULT_POOL, path: Optional[Path] = None) -> List[PoolItem]:

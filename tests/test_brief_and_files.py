@@ -109,14 +109,18 @@ def test_brief_text_cli_smoke(cli_cmd):
 
 
 def test_runtime_init_and_brief(monkeypatch, tmp_path):
-    monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(tmp_path / "runtime"))
+    runtime = tmp_path / "runtime"
+    monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(runtime))
 
     init_payload = handle_init_runtime(force=False)
     assert init_payload["ok"] is True
     assert init_payload["data"]["files"][0]["status"] == "written"
+    assert (runtime / "a_share_universe.csv").exists()
+    assert str(runtime) not in str(init_payload)
 
     kept_payload = handle_init_runtime(force=False)
     assert kept_payload["data"]["files"][0]["status"] == "kept"
+    assert str(runtime) not in str(kept_payload)
 
     brief_payload = handle_brief("ai-energy", use_mock=False, use_runtime=True, top=2)
     assert brief_payload["ok"] is True

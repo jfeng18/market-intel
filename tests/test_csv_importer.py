@@ -6,6 +6,8 @@ from market_intel.cli import (
     handle_import_holdings,
     handle_import_quotes,
     handle_import_schema,
+    handle_import_universe,
+    handle_pool_coverage,
 )
 from market_intel.core.fixtures import load_holdings_file, load_quotes_file
 
@@ -18,6 +20,8 @@ def test_import_schema_is_agent_friendly():
     assert payload["data"]["agent_contract"]["success"]
     assert payload["data"]["quotes"]["accepted_columns"]["symbol"]
     assert payload["data"]["holdings"]["canonical_schema"]
+    assert payload["data"]["universe"]["accepted_columns"]["symbol"]
+    assert payload["data"]["universe"]["canonical_schema"]
 
 
 def test_import_quotes_dry_run_normalizes_chinese_csv(tmp_path):
@@ -52,6 +56,38 @@ def test_import_holdings_writes_output(tmp_path):
     assert payload["data"]["written"] is True
     assert holdings[0].symbol == "002837"
     assert holdings[0].quantity == 1000
+
+
+def test_import_universe_dry_run_normalizes_chinese_csv(tmp_path):
+    csv_path = tmp_path / "a_share_universe.csv"
+    csv_path.write_text(
+        "证券代码,证券名称,行业,概念,指数成分\n000001,平安银行,银行,股份行;金融科技,沪深300\n",
+        encoding="utf-8",
+    )
+
+    payload = handle_import_universe(str(csv_path), dry_run=True)
+    preview = payload["data"]["preview"][0]
+
+    assert payload["ok"] is True
+    assert payload["command"] == "import.universe"
+    assert payload["data"]["dry_run"] is True
+    assert payload["data"]["written"] is False
+    assert preview["symbol"] == "000001"
+    assert preview["name"] == "平安银行"
+    assert preview["industry"] == "银行"
+    assert preview["concepts"] == "股份行;金融科技"
+    assert preview["listing_status"] == "listed"
+    assert str(csv_path) not in json.dumps(payload, ensure_ascii=False)
+
+
+def test_import_universe_rejects_non_a_share_symbol(tmp_path):
+    csv_path = tmp_path / "a_share_universe.csv"
+    csv_path.write_text("证券代码,证券名称,行业\nNVDA,英伟达,海外科技\n", encoding="utf-8")
+
+    payload = handle_import_universe(str(csv_path), dry_run=True)
+
+    assert payload["ok"] is False
+    assert payload["errors"][0]["code"] == "INVALID_UNIVERSE_SYMBOL"
 
 
 def test_import_requires_output_or_dry_run(tmp_path):
@@ -102,6 +138,34 @@ def test_import_runtime_then_daily(monkeypatch, tmp_path):
     assert daily_payload["data"]["mode"] == "runtime"
 
 
+def test_import_universe_runtime_then_pool_coverage(monkeypatch, tmp_path):
+    runtime = tmp_path / "runtime"
+    monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(runtime))
+    universe_csv = tmp_path / "a_share_universe.csv"
+    holdings_json = tmp_path / "holdings.json"
+    universe_csv.write_text(
+        "证券代码,证券名称,行业,概念,指数成分\n000001,平安银行,银行,股份行;金融科技,沪深300\n",
+        encoding="utf-8",
+    )
+    holdings_json.write_text(
+        json.dumps({"holdings": [{"symbol": "000001", "name": "平安银行"}]}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    import_payload = handle_import_universe(str(universe_csv), use_runtime=True)
+    coverage_payload = handle_pool_coverage("all-a", holdings_file=str(holdings_json))
+
+    assert import_payload["ok"] is True
+    assert import_payload["data"]["output"] == "a_share_universe.csv"
+    assert (runtime / "a_share_universe.csv").exists()
+    assert coverage_payload["ok"] is True
+    assert coverage_payload["data"]["universe"]["available"] is True
+    assert coverage_payload["data"]["holdings_coverage"]["matched_count"] == 1
+    assert coverage_payload["data"]["holdings_coverage"]["foundation_matched_count"] == 1
+    assert str(universe_csv) not in json.dumps(import_payload, ensure_ascii=False)
+    assert str(runtime) not in json.dumps(import_payload, ensure_ascii=False)
+
+
 def test_import_schema_cli_smoke(cli_cmd):
     result = subprocess.run(
         cli_cmd("import", "schema", "--json"),
@@ -137,3 +201,26 @@ def test_import_quotes_cli_smoke(tmp_path, cli_cmd):
 
     assert payload["ok"] is True
     assert payload["data"]["preview"][0]["symbol"] == "002837"
+
+
+def test_import_universe_cli_smoke(tmp_path, cli_cmd):
+    csv_path = tmp_path / "a_share_universe.csv"
+    csv_path.write_text("证券代码,证券名称,行业\n000001,平安银行,银行\n", encoding="utf-8")
+
+    result = subprocess.run(
+        cli_cmd(
+            "import",
+            "universe",
+            str(csv_path),
+            "--dry-run",
+            "--json",
+        ),
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    payload = json.loads(result.stdout)
+
+    assert payload["ok"] is True
+    assert payload["command"] == "import.universe"
+    assert payload["data"]["preview"][0]["symbol"] == "000001"

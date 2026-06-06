@@ -119,6 +119,7 @@ market-intel init runtime --json
 market-intel import schema --json
 market-intel import quotes examples/quotes.csv.example --runtime --json
 market-intel import holdings examples/holdings.csv.example --runtime --json
+market-intel import universe examples/a_share_universe.csv.example --runtime --json
 market-intel agent plan --json
 market-intel agent briefing --text
 market-intel agent run --json
@@ -257,9 +258,12 @@ market-intel holdings impact --runtime --json
 可以先用 A 股基础清单扩展 `all-a` 的底座覆盖。CSV 支持 `symbol/name/industry/concepts/index_membership/listing_status`，也支持常见中文列名如 `证券代码/证券名称/行业/概念/指数成分/上市状态`。基础清单只代表“代码、名称、行业、概念、指数成分”的覆盖，不等于研究证据完成；匹配到基础清单的持仓会进入待复核覆盖队列。
 
 ```bash
-MARKET_INTEL_A_SHARE_UNIVERSE_PATHS=examples/a_share_universe.csv.example market-intel pool coverage --text
-MARKET_INTEL_A_SHARE_UNIVERSE_PATHS=data/runtime/a_share_universe.csv market-intel pool coverage --runtime --text
+market-intel import universe examples/a_share_universe.csv.example --runtime --json
+market-intel pool coverage --text
+market-intel pool coverage --runtime --text
 ```
+
+`market-intel init runtime --json` 也会生成 `data/runtime/a_share_universe.csv` 模板。需要临时叠加额外清单时，仍可使用 `MARKET_INTEL_A_SHARE_UNIVERSE_PATHS=...`。
 
 传入持仓源后，它还会检查个人持仓是否已被复盘池覆盖：
 
@@ -357,6 +361,7 @@ market-intel import quotes examples/quotes.csv.example --dry-run --json
 market-intel import holdings examples/holdings.csv.example --dry-run --json
 market-intel import quotes quotes.csv --output data/runtime/quotes.json --json
 market-intel import holdings holdings.csv --output data/runtime/holdings.json --json
+market-intel import universe a_share_universe.csv --output data/runtime/a_share_universe.csv --json
 ```
 
 可参考：

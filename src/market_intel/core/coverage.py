@@ -702,8 +702,8 @@ def coverage_next_actions(
             {
                 "rank": 2,
                 "id": "expand_all_a_sources",
-                "command": "MARKET_INTEL_A_SHARE_UNIVERSE_PATHS=data/runtime/a_share_universe.csv market-intel pool coverage --text",
-                "done_when": "已准备 A 股基础清单 CSV，并确认 coverage 的 universe.available=true。",
+                "command": "market-intel import universe examples/a_share_universe.csv.example --runtime --json",
+                "done_when": "已导入 A 股基础清单 CSV，并确认 coverage 的 universe.available=true。",
             }
         )
     elif scope == "all_a_seed" and universe.get("available"):
@@ -711,7 +711,7 @@ def coverage_next_actions(
             {
                 "rank": 2,
                 "id": "review_a_share_universe",
-                "command": "MARKET_INTEL_A_SHARE_UNIVERSE_PATHS=data/runtime/a_share_universe.csv market-intel pool coverage --json",
+                "command": "market-intel pool coverage --json",
                 "done_when": "已确认基础清单的行业、概念和指数成分字段覆盖情况。",
             }
         )

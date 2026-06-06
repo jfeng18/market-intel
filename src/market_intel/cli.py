@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional
 from .core.agent import build_agent_briefing, build_agent_plan, command_queue_item
 from .core.fixtures import load_holdings_file, load_mock_holdings, load_mock_quotes, load_quotes_file
 from .core.brief import build_daily_brief
-from .core.csv_importer import import_holdings_csv, import_quotes_csv, import_schema
+from .core.csv_importer import import_holdings_csv, import_quotes_csv, import_schema, import_universe_csv
 from .core.coverage import build_pool_coverage, export_expansion_queue_csv, review_expansion_csv
 from .core.daily import build_daily_report, validate_daily_files
 from .core.focus import build_focus_report
@@ -204,6 +204,13 @@ def build_parser() -> argparse.ArgumentParser:
     import_holdings_parser.add_argument("--output")
     import_holdings_parser.add_argument("--dry-run", action="store_true")
     import_holdings_parser.add_argument("--json", action="store_true", dest="as_json")
+
+    import_universe_parser = import_subparsers.add_parser("universe")
+    import_universe_parser.add_argument("csv_path")
+    import_universe_parser.add_argument("--runtime", action="store_true")
+    import_universe_parser.add_argument("--output")
+    import_universe_parser.add_argument("--dry-run", action="store_true")
+    import_universe_parser.add_argument("--json", action="store_true", dest="as_json")
 
     init_parser = subparsers.add_parser("init")
     init_subparsers = init_parser.add_subparsers(dest="action")
@@ -434,6 +441,13 @@ def main(argv: Optional[List[str]] = None) -> int:
             )
         elif args.resource == "import" and args.action == "holdings":
             result = handle_import_holdings(
+                args.csv_path,
+                args.runtime,
+                args.output,
+                args.dry_run,
+            )
+        elif args.resource == "import" and args.action == "universe":
+            result = handle_import_universe(
                 args.csv_path,
                 args.runtime,
                 args.output,
@@ -1257,6 +1271,24 @@ def handle_import_holdings(
     return import_envelope("import.holdings", data)
 
 
+def handle_import_universe(
+    csv_path: str,
+    use_runtime: bool = False,
+    output: Optional[str] = None,
+    dry_run: bool = False,
+) -> Dict[str, Any]:
+    target = resolve_import_output("universe", use_runtime, output, dry_run)
+    if target.get("error"):
+        return import_config_error("import.universe", target["error"], csv_path)
+    data = import_universe_csv(
+        Path(csv_path),
+        target["path"],
+        dry_run=dry_run,
+        runtime=use_runtime,
+    )
+    return import_envelope("import.universe", data)
+
+
 def resolve_import_output(
     kind: str,
     use_runtime: bool,
@@ -1342,7 +1374,7 @@ def handle_init_runtime(force: bool = False) -> Dict[str, Any]:
     return envelope(
         command="init.runtime",
         data=data,
-        source="examples/quotes.example.json;examples/holdings.example.json",
+        source="examples/quotes.example.json;examples/holdings.example.json;examples/a_share_universe.csv.example",
     )
 
 
