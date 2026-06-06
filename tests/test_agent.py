@@ -901,6 +901,8 @@ def test_agent_briefing_text_renderer(monkeypatch, tmp_path):
     assert "journal note --section" in text
     assert "组合暴露" in text
     assert "全市场扫描" in text
+    assert "焦点:" in text
+    assert "下一条:" in text
     assert "标的复核队列" in text
     assert "最强链路" in text
     assert "观察清单" in text
@@ -919,6 +921,8 @@ def test_agent_run_text_renderer(monkeypatch, tmp_path):
     assert "market-intel agent run" in text
     assert "复盘摘要" in text
     assert "全市场扫描" in text
+    assert "焦点:" in text
+    assert "下一条:" in text
     assert "市场结构" in text
     assert "组合压力" in text
     assert "持仓仪表盘" in text
@@ -977,6 +981,8 @@ def test_agent_next_returns_compact_handoff(monkeypatch, tmp_path):
     assert "market-intel agent next" in text
     assert "覆盖底座" in text
     assert "全市场扫描" in text
+    assert "焦点:" in text
+    assert "下一条:" in text
     assert "命令链" in text
     assert "单票卡片" in text
     assert "buy" not in text.lower()
@@ -1007,6 +1013,7 @@ def test_dashboard_returns_one_screen_workbench(monkeypatch, tmp_path):
     assert data["market_pulse"]["available"] is True
     assert data["market_pulse"]["top_groups"]
     assert data["market_pulse"]["candidates"]
+    assert data["market_pulse"]["candidates"][0]["review_focus"]["headline"]
     assert data["market_pulse"]["candidates"][0]["json_command"].endswith("--json")
     assert data["portfolio_pulse"]["available"] is True
     assert data["portfolio_pulse"]["top_holdings"]
@@ -1035,6 +1042,8 @@ def test_dashboard_returns_one_screen_workbench(monkeypatch, tmp_path):
     assert "覆盖底座" in text
     assert "全 A: 已接入 | 记录 16" in text
     assert "全市场" in text
+    assert "焦点:" in text
+    assert "下一条:" in text
     assert "持仓" in text
     assert "证据缺口" in text
     assert "复盘计划" in text
@@ -1073,6 +1082,7 @@ def test_dashboard_mock_returns_demo_workbench_without_runtime(monkeypatch, tmp_
     assert data["coverage_context"]["universe"]["available"] is False
     assert data["market_pulse"]["available"] is True
     assert data["market_pulse"]["candidates"]
+    assert data["market_pulse"]["candidates"][0]["review_focus"]["headline"]
     assert data["market_pulse"]["candidates"][0]["json_command"].endswith("--json")
     assert data["portfolio_pulse"]["available"] is True
     assert data["portfolio_pulse"]["top_holdings"]
@@ -1088,6 +1098,8 @@ def test_dashboard_mock_returns_demo_workbench_without_runtime(monkeypatch, tmp_
     assert data["handoff"]["next_read"]
     assert any("mock" in item for item in data["guardrails"])
     assert "mock 示例" in text
+    assert "焦点:" in text
+    assert "下一条:" in text
     assert "覆盖底座" in text
     assert "全 A: 未接入" in text
     assert "market-intel dashboard" in text

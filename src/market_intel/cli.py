@@ -2131,6 +2131,7 @@ def mock_dashboard_candidate(pool: str, item: Dict[str, object]) -> Dict[str, ob
         "name": item.get("name"),
         "review_score": item.get("review_score"),
         "coverage_state": item.get("coverage_state"),
+        "review_focus": compact_scan_review_focus(item.get("review_focus", {})),
         "why_now": item.get("why_now"),
         "json_command": mock_dashboard_json_command(commands, fallback),
     }

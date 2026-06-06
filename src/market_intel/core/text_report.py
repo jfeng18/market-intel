@@ -1532,6 +1532,7 @@ def render_dashboard_market_pulse(value: Dict[str, object]) -> List[str]:
             )
             if item.get("why_now"):
                 lines.append("      原因: %s" % item.get("why_now"))
+            lines.extend(render_compact_review_focus(item.get("review_focus", {}), indent="      "))
             if item.get("json_command"):
                 lines.append("      命令: %s" % item.get("json_command"))
     questions = value.get("questions", []) if isinstance(value.get("questions"), list) else []
@@ -1788,7 +1789,26 @@ def render_agent_next_market_scan(value: Dict[str, object]) -> List[str]:
                     item.get("coverage_state"),
                 )
             )
+            lines.extend(render_compact_review_focus(item.get("review_focus", {}), indent="      "))
     return lines
+
+
+def render_compact_review_focus(value: object, indent: str = "   ") -> List[str]:
+    focus = value if isinstance(value, dict) else {}
+    if not focus:
+        return []
+    lines = []
+    if focus.get("headline"):
+        lines.append("%s焦点: %s" % (indent, focus.get("headline")))
+    coverage = focus.get("coverage", {}) if isinstance(focus.get("coverage"), dict) else {}
+    missing = coverage.get("missing_research_fields", []) if isinstance(coverage.get("missing_research_fields"), list) else []
+    if missing:
+        lines.append("%s缺口: %s" % (indent, "、".join(str(item) for item in missing[:3])))
+    if focus.get("first_check"):
+        lines.append("%s核对: %s" % (indent, focus.get("first_check")))
+    if focus.get("next_command"):
+        lines.append("%s下一条: %s" % (indent, focus.get("next_command")))
+    return lines[:4]
 
 
 def render_agent_run_digest(value: object) -> List[str]:
@@ -1833,6 +1853,7 @@ def render_agent_run_digest(value: object) -> List[str]:
                         item.get("coverage_state"),
                     )
                 )
+                lines.extend(render_compact_review_focus(item.get("review_focus", {}), indent="      "))
     repair = digest.get("data_repair_plan", {}) if isinstance(digest.get("data_repair_plan"), dict) else {}
     if repair and repair.get("available"):
         lines.extend(render_agent_run_data_repair_plan(repair))
@@ -3790,6 +3811,7 @@ def render_briefing_market_scan(value: object) -> List[str]:
                     item.get("coverage_state"),
                 )
             )
+            lines.extend(render_compact_review_focus(item.get("review_focus", {}), indent="      "))
     return lines
 
 
