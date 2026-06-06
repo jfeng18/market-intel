@@ -1,6 +1,7 @@
 import json
 
 from market_intel.cli import handle_init_runtime, handle_validate_runtime
+from market_intel.core.models import Quote
 
 
 def test_validate_runtime_after_init(monkeypatch, tmp_path):
@@ -85,3 +86,24 @@ def test_validate_runtime_duplicate_symbols_warn(monkeypatch, tmp_path):
     assert payload["ok"] is True
     assert "DUPLICATE_QUOTE_SYMBOL" in warning_codes
     assert "DUPLICATE_HOLDING_SYMBOL" in warning_codes
+
+
+def test_quote_from_dict_parses_string_booleans():
+    quote = Quote.from_dict(
+        {
+            "symbol": "002837",
+            "trade_date": "2026-06-06",
+            "last_price": 1,
+            "change_pct": 1,
+            "amount": 1,
+            "amount_ratio": 1,
+            "turnover_rate": 1,
+            "amplitude_pct": 1,
+            "is_limit_up": "false",
+            "is_stage_high": "0",
+            "intraday_fade_pct": 0,
+        }
+    )
+
+    assert quote.is_limit_up is False
+    assert quote.is_stage_high is False

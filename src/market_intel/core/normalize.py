@@ -38,7 +38,7 @@ def normalize_row(row: Dict[str, str], raw_row: int) -> PoolItem:
     recovered_symbol, recovered_logic = recover_symbol_from_desc(raw_desc)
     column_shift = False
 
-    if symbol is None and recovered_symbol:
+    if symbol is None and recovered_symbol and can_recover_symbol(raw_code, raw_company, raw_desc):
         symbol = recovered_symbol
         column_shift = True
         flags.append("column_shift_suspected")
@@ -222,6 +222,10 @@ def recover_symbol_from_desc(desc: str) -> Tuple[Optional[str], str]:
     logic = desc[: match.start()] + desc[match.end() :]
     logic = logic.strip(" |")
     return symbol, logic
+
+
+def can_recover_symbol(raw_code: str, raw_company: str, raw_desc: str) -> bool:
+    return infer_instrument_type(raw_code, None, raw_company, raw_desc) == "unknown"
 
 
 def infer_instrument_type(raw_code: str, symbol: Optional[str], raw_company: str, raw_desc: str) -> str:
