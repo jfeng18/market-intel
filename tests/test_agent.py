@@ -913,20 +913,43 @@ def test_agent_next_surfaces_foundation_holding_review(monkeypatch, tmp_path):
     assert "a_share_universe_foundation" in card["coverage_state_reasons"]
     assert "foundation_pool_match" in card["risk_flags"]
     assert card["research_workflow"][0]["json_command"].startswith("market-intel pool research")
-    assert any(step["json_command"].startswith("market-intel import research") for step in card["research_workflow"])
+    assert any(step["json_command"].startswith("market-intel import research") and "--dry-run" in step["json_command"] for step in card["research_workflow"])
+    assert any(step["json_command"].startswith("market-intel import research") and "--runtime" in step["json_command"] for step in card["research_workflow"])
+    assert card["research_workflow"][-1]["json_command"] == "market-intel pool coverage --runtime --json"
     assert any(item["source"] == "foundation_research" for item in data["review_handoff"]["manual_items"])
+    manual_research_items = [
+        item
+        for item in data["review_handoff"]["manual_items"]
+        if item["source"] == "foundation_research"
+    ]
+    assert len(manual_research_items) == 1
+    assert manual_research_items[0]["requires_manual"] is True
+    workflow_steps = manual_research_items[0]["workflow_steps"]
+    assert any(step["json_command"].endswith("--dry-run --json") and step["requires_manual"] is False for step in workflow_steps)
+    assert workflow_steps[-1]["json_command"] == "market-intel pool coverage --runtime --json"
     research_steps = [
         item
         for item in data["review_handoff"]["command_chain"]
         if item["source"] == "foundation_research"
     ]
     assert research_steps
-    assert all(item["step_type"] == "manual" for item in research_steps)
-    assert all(item["requires_manual"] is True for item in research_steps)
+    assert any("--dry-run" in item["json_command"] for item in research_steps)
+    assert any(item["json_command"] == "market-intel pool coverage --runtime --json" for item in research_steps)
+    assert any(item["requires_manual"] is False for item in research_steps)
+    assert any(item["requires_manual"] is True for item in research_steps)
+    assert any(item["runnable"] is True for item in research_steps)
+    assert any(item["runnable"] is False for item in research_steps)
+    dry_run_step = next(item for item in research_steps if "--dry-run" in item["json_command"])
+    assert dry_run_step["step_type"] == "read"
+    assert dry_run_step["runnable"] is True
+    import_step = next(item for item in research_steps if item["json_command"].startswith("market-intel import research") and "--runtime" in item["json_command"])
+    assert import_step["step_type"] == "manual"
+    assert import_step["runnable"] is False
     assert any("全 A 基础清单" in gap for gap in card["open_gaps"])
     assert card["next_json_command"].startswith("market-intel portfolio explain 000001")
     assert "data.security_cards.cards[].coverage_state" in data["agent_contract"]["stable_fields"]
     assert "data.security_cards.cards[].research_workflow" in data["agent_contract"]["stable_fields"]
+    assert "data.review_handoff.manual_items[].workflow_steps" in data["agent_contract"]["stable_fields"]
     assert "覆盖: foundation" in text or "覆盖: 基础" in text
     assert "研究流程" in text
     assert "证伪风险" in text

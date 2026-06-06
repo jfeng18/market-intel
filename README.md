@@ -8,7 +8,7 @@
 - GUI：后续可选界面，展示热点、异动、资金追捧、宏观/行业/个股/消息联动。
 - 独立项目：不依赖外部私有系统，默认只读取本仓库数据、示例数据和用户提供的 runtime 文件。
 
-竞争力不放在替代行情/交易/社区 App，而放在“个人复盘操作系统”：把全 A 热点、主题池、个人持仓、风险暴露、复核清单、agent 命令队列和 journal 留痕串成每天可执行的闭环。
+竞争力不放在替代行情/交易/社区 App，而放在“个人复盘操作系统”：把全 A 热点、行业/主题池、个人持仓、风险暴露、研究证据、复核清单、agent 命令队列和 journal 留痕串成每天可执行的闭环。
 
 ## 竞争力与边界
 
@@ -17,6 +17,8 @@
 - **个人复盘闭环**：从全 A 复盘池、主题链路、行情/持仓输入、风险暴露、复核清单到 journal 留痕，形成每天可重复执行的流程。
 - **agent-native**：所有核心命令输出稳定 JSON、readiness 状态、下一步命令队列和完成标准，方便外部 agent 接力，而不是依赖截图或页面点击。
 - **持仓优先**：不只看市场热度，也检查个人持仓是否被复盘池覆盖、是否重复暴露、是否缺行情或缺上下文。
+- **全 A 兼容**：默认目标是全 A 复盘，不局限于 AI 主题；AI 池只是种子样例，后续行业、概念、指数成分和持仓驱动补池都会纳入同一套覆盖状态。
+- **证据闭环**：基础清单命中的标的不会直接视为已研究，必须补齐核心逻辑、关键证据和证伪风险，经过 dry-run、runtime 导入和 coverage 复验后才关闭缺口。
 - **可解释结构化**：把事实、信号、风险、待验证问题和边界拆开，避免黑盒分数直接变成买卖建议。
 - **本地私有数据友好**：默认只使用仓库数据、示例数据和用户提供的 runtime 文件；报告不需要公开个人持仓。
 
@@ -215,7 +217,7 @@ market-intel journal timeline --text
 - 它复用 `agent run` 的只读复核结果，只返回 `review_handoff`、`review_completion` 和 `security_cards`。
 - `data.review_handoff.command_chain` 给出去重后的继续复盘命令链，区分只读步骤和人工确认步骤。
 - `--symbol <代码>` 可以只输出某只持仓的单票卡片和相关命令链，适合快速接手单票复核。
-- foundation 持仓会在 `security_cards.cards[].research_workflow` 和 `review_handoff.manual_items` 中给出 `pool research -> import research --dry-run -> import research --runtime -> coverage` 的补证据路径；它仍要求人工填写核心逻辑、关键证据和证伪风险。
+- foundation 持仓会在 `security_cards.cards[].research_workflow` 和 `review_handoff.manual_items[].workflow_steps` 中给出 `pool research -> import research --dry-run -> import research --runtime -> coverage` 的补证据路径；`review_handoff.command_chain` 会把这些步骤展开成只读/人工混合命令链。它仍要求人工填写核心逻辑、关键证据和证伪风险。
 - 适合外部 agent 或用户在上一次复盘后快速接手，不必从完整 digest 里重新拼命令。
 
 也可以手工编辑：

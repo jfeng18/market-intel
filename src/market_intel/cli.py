@@ -4567,27 +4567,54 @@ def review_handoff_command_chain(
 ) -> List[Dict[str, object]]:
     rows = []
     seen = set()
+
+    def add_command(item: Dict[str, object], command: object, step_type: str, title: object, done_when: object) -> None:
+        command_text = digest_json_variant(command)
+        if not command_text or command_text in seen:
+            return
+        seen.add(command_text)
+        requires_raw = item.get("requires_manual")
+        requires_manual = bool(requires_raw) if requires_raw is not None else step_type == "manual"
+        rows.append(
+            {
+                "rank": len(rows) + 1,
+                "step_type": step_type,
+                "source": item.get("source"),
+                "title": title,
+                "json_command": command_text,
+                "runnable": step_type == "read" and not requires_manual and digest_command_is_read_only(command_text),
+                "requires_manual": requires_manual,
+                "done_when": done_when,
+            }
+        )
+
     for source_items, step_type in ((next_read, "read"), (manual_items, "manual")):
         for item in source_items:
             if not isinstance(item, dict):
                 continue
-            command = digest_json_variant(item.get("json_command"))
-            if not command or command in seen:
+            workflow = item.get("workflow_steps", []) if isinstance(item.get("workflow_steps"), list) else []
+            if workflow:
+                for step in workflow:
+                    if not isinstance(step, dict):
+                        continue
+                    workflow_type = str(step.get("step_type") or step_type)
+                    if workflow_type not in {"read", "manual"}:
+                        workflow_type = step_type
+                    workflow_item = dict(item)
+                    if "requires_manual" in step:
+                        workflow_item["requires_manual"] = step.get("requires_manual")
+                    elif workflow_type == "read":
+                        workflow_item["requires_manual"] = False
+                    add_command(
+                        workflow_item,
+                        step.get("json_command"),
+                        workflow_type,
+                        step.get("title") or item.get("title"),
+                        step.get("done_when") or item.get("done_when"),
+                    )
                 continue
-            seen.add(command)
-            rows.append(
-                {
-                    "rank": len(rows) + 1,
-                    "step_type": step_type,
-                    "source": item.get("source"),
-                    "title": item.get("title"),
-                    "json_command": command,
-                    "runnable": step_type == "read" and digest_command_is_read_only(command),
-                    "requires_manual": step_type == "manual",
-                    "done_when": item.get("done_when"),
-                }
-            )
-    return rows[:8]
+            add_command(item, item.get("json_command"), step_type, item.get("title"), item.get("done_when"))
+    return rows[:12]
 
 
 def review_handoff_manual_items(
@@ -4659,27 +4686,19 @@ def foundation_research_manual_items(digest: Dict[str, object]) -> List[Dict[str
     if not foundation:
         return []
     symbols = "、".join(str(item.get("symbol")) for item in foundation[:4])
-    export_command = "market-intel pool research --runtime --output data/runtime/research_notes.todo.csv --json"
-    import_command = "market-intel import research data/runtime/research_notes.todo.csv --runtime --json"
+    workflow = foundation_research_commands(symbols)
+    first_command = next((str(step.get("json_command")) for step in workflow if isinstance(step, dict) and step.get("json_command")), "")
     return [
         {
-            "rank": 0,
+            "rank": 1,
             "source": "foundation_research",
-            "title": "导出研究证据待办",
+            "title": "补齐 foundation 研究证据",
             "reason": "foundation 持仓需要补 reviewed research_notes：%s。" % symbols,
-            "json_command": export_command,
+            "json_command": first_command,
             "requires_manual": True,
-            "done_when": "已导出 research_notes.todo.csv，并由人工补齐核心逻辑、关键证据和证伪风险。",
-        },
-        {
-            "rank": 0,
-            "source": "foundation_research",
-            "title": "导入研究证据",
-            "reason": "人工补齐并设置 status=reviewed 后再导入 runtime research_notes。",
-            "json_command": import_command,
-            "requires_manual": True,
-            "done_when": "已导入 research_notes，重新运行 coverage 后 foundation_matched_count 降为 0。",
-        },
+            "done_when": "已补齐核心逻辑、关键证据和证伪风险；dry-run 通过；runtime 导入后 coverage 确认为 confirmed。",
+            "workflow_steps": workflow,
+        }
     ]
 
 
@@ -4938,12 +4957,18 @@ def security_card_item(
 def foundation_research_workflow(symbol: str, coverage_state: str) -> List[Dict[str, object]]:
     if coverage_state != "foundation":
         return []
+    return foundation_research_commands(symbol)
+
+
+def foundation_research_commands(symbol_text: str) -> List[Dict[str, object]]:
     return [
         {
             "rank": 1,
             "step_type": "manual",
             "title": "导出 research notes 待办",
             "json_command": "market-intel pool research --runtime --output data/runtime/research_notes.todo.csv --json",
+            "requires_manual": True,
+            "reason": "foundation 持仓需要补 reviewed research_notes：%s。" % symbol_text,
             "done_when": "已生成可编辑的 research_notes.todo.csv。",
         },
         {
@@ -4951,21 +4976,36 @@ def foundation_research_workflow(symbol: str, coverage_state: str) -> List[Dict[
             "step_type": "manual",
             "title": "补齐三项证据",
             "json_command": "",
-            "done_when": "已为 %s 补齐核心逻辑、关键证据、证伪风险，并设置 status=reviewed。" % symbol,
+            "requires_manual": True,
+            "reason": "人工补齐核心逻辑、关键证据、证伪风险，并设置 status=reviewed。",
+            "done_when": "已为 %s 补齐核心逻辑、关键证据、证伪风险，并设置 status=reviewed。" % symbol_text,
         },
         {
             "rank": 3,
-            "step_type": "manual",
+            "step_type": "read",
             "title": "校验研究证据",
             "json_command": "market-intel import research data/runtime/research_notes.todo.csv --dry-run --json",
+            "requires_manual": False,
+            "reason": "导入前先校验 research_notes.todo.csv，不写 runtime。",
             "done_when": "dry-run 返回 ok=true 且 errors=[]。",
         },
         {
             "rank": 4,
             "step_type": "manual",
-            "title": "导入并复跑覆盖",
+            "title": "导入研究证据",
             "json_command": "market-intel import research data/runtime/research_notes.todo.csv --runtime --json",
-            "done_when": "重新运行 pool coverage 后该标的 coverage_state=confirmed。",
+            "requires_manual": True,
+            "reason": "dry-run 通过后导入 runtime research_notes。",
+            "done_when": "已导入 reviewed research_notes。",
+        },
+        {
+            "rank": 5,
+            "step_type": "read",
+            "title": "复跑 coverage 验证",
+            "json_command": "market-intel pool coverage --runtime --json",
+            "requires_manual": False,
+            "reason": "确认 foundation 缺口已关闭。",
+            "done_when": "foundation_matched_count 降为 0，相关标的 coverage_state=confirmed。",
         },
     ]
 
@@ -5402,6 +5442,8 @@ def digest_command_is_read_only(command: str) -> bool:
     padded = " %s " % command
     if " journal save " in padded or " journal note " in padded:
         return False
+    if " import research " in padded and " --dry-run " in padded:
+        return True
     if " import quotes " in padded or " import holdings " in padded or " import research " in padded or " init runtime " in padded:
         return False
     if " pool research " in padded and " --output " in padded:
@@ -5569,6 +5611,8 @@ def agent_run_contract() -> Dict[str, object]:
             "data.review_digest.review_handoff.next_read",
             "data.review_digest.review_handoff.next_read[].json_command",
             "data.review_digest.review_handoff.manual_items",
+            "data.review_digest.review_handoff.manual_items[].workflow_steps",
+            "data.review_digest.review_handoff.manual_items[].workflow_steps[].json_command",
             "data.review_digest.review_handoff.record_templates",
             "data.review_digest.review_handoff.watch_items",
             "data.review_digest.next_steps",
@@ -5605,6 +5649,9 @@ def agent_next_contract() -> Dict[str, object]:
             "data.review_handoff.command_chain[].json_command",
             "data.review_handoff.command_chain[].runnable",
             "data.review_handoff.command_chain[].requires_manual",
+            "data.review_handoff.manual_items",
+            "data.review_handoff.manual_items[].workflow_steps",
+            "data.review_handoff.manual_items[].workflow_steps[].json_command",
             "data.review_completion",
             "data.review_completion.completion_state",
             "data.security_cards",

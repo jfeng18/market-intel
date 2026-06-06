@@ -119,7 +119,9 @@ import/runtime -> status/readiness -> pool coverage -> pool expansion review
 
 ## 5. 全 A 方向
 
-`all-a` 是默认目标 universe，但在完整基础池接入前必须继续标记为 seed 覆盖。全 A 化的优先级：
+`all-a` 是默认目标 universe，AI 相关池只是种子样例和回归测试底座。后续迭代不能只围绕 AI 产业链做解释，必须把金融、消费、医药、周期、TMT、制造、能源等板块放进同一套覆盖状态、风险暴露和 research workflow。
+
+在完整基础池接入前，`all-a` 必须继续标记为 seed 覆盖。全 A 化的优先级：
 
 1. A 股基础证券清单：代码、名称、交易所、行业、上市状态。
 2. 行业/概念/指数成分：形成基础链路，不局限于 AI。
@@ -128,7 +130,7 @@ import/runtime -> status/readiness -> pool coverage -> pool expansion review
 5. 覆盖状态分层：`confirmed/foundation/draft/missing/blocked`，避免把草稿或基础清单当成正式结论。
 6. 热点与风险模型泛化：支持金融、消费、医药、周期、TMT、制造、能源等板块。
 
-全 A 不是一次性导入大表，而是先建立覆盖状态和复核流程，逐步提高可解释覆盖率。
+全 A 不是一次性导入大表，也不是把所有基础清单标的都当作已研究；它先建立覆盖状态和复核流程，再逐步提高可解释覆盖率。最重要的工作流是：发现 `foundation` 缺口，导出 research notes 待办，人工补齐三项证据，dry-run 校验，runtime 导入，coverage 复跑确认。
 
 ## 6. 北极星指标
 
@@ -146,6 +148,7 @@ import/runtime -> status/readiness -> pool coverage -> pool expansion review
 
 - 引入 A 股基础清单和行业/概念/指数成分输入格式；当前可通过 `MARKET_INTEL_A_SHARE_UNIVERSE_PATHS` 叠加 `a_share_universe_v1` CSV。
 - 让 `pool coverage` 明确展示全 A 覆盖范围、缺口和草稿状态。
+- 把默认叙事从单一 AI 主题池切到全 A：AI 仍保留为种子池，但产品入口、README 和 agent 合同都应以 `all-a` 为默认范围。
 - 保持所有输出不泄露本机路径和用户身份信息。
 
 ### P1：复盘工作台
@@ -160,7 +163,7 @@ import/runtime -> status/readiness -> pool coverage -> pool expansion review
 - 把“缺证据”作为一等对象输出，而不是隐藏在自然语言里。
 - 让 `import research`、`pool coverage`、`portfolio review` 和 `agent next` 共用同一套 research status，使人和 agent 都能看到证据是否足以关闭基础覆盖缺口。
 - 用 `pool research` 把 foundation 缺口导出成可编辑队列，形成“发现缺口 -> 补证据 -> dry-run 校验 -> runtime 导入 -> coverage 复跑”的闭环。
-- 让 `agent next` 的单票卡片和交接命令链直接承接 research workflow，避免 agent 只报告缺口却不给可执行路径。
+- 让 `agent next` 的单票卡片、`manual_items[].workflow_steps` 和交接命令链直接承接 research workflow，避免 agent 只报告缺口却不给可执行路径。
 
 ### P3：轻量 GUI
 
