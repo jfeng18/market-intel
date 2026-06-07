@@ -24,6 +24,7 @@ CN_A_PREFIXES = {
 
 POOL_CSV_FIELDS = ["status", "priority", "section", "level", "company", "code", "desc", "notes"]
 RESEARCH_CSV_FIELDS = ["symbol", "name", "status", "thesis", "evidence", "invalidation", "updated_at", "source"]
+UNIVERSE_PATCH_CSV_FIELDS = ["symbol", "name", "industry", "concepts", "index_membership", "listing_status", "source"]
 
 
 def build_pool_coverage(
@@ -228,6 +229,32 @@ def export_research_queue_csv(
     }
 
 
+def export_universe_patch_csv(
+    enrichment_queue: List[Dict[str, object]],
+    output_path: Path,
+    dry_run: bool = False,
+) -> Dict[str, object]:
+    rows = universe_patch_rows(enrichment_queue)
+    written = False
+    if rows and not dry_run:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        with output_path.open("w", encoding="utf-8", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=UNIVERSE_PATCH_CSV_FIELDS)
+            writer.writeheader()
+            writer.writerows(rows)
+        written = True
+    return {
+        "output": command_path(output_path),
+        "record_count": len(rows),
+        "written": written,
+        "dry_run": dry_run,
+        "fields": list(UNIVERSE_PATCH_CSV_FIELDS),
+        "rows": rows,
+        "warnings": universe_patch_export_warnings(rows),
+        "next_commands": universe_patch_export_next_commands(output_path, written, rows),
+    }
+
+
 def review_expansion_csv(csv_path: Path) -> Dict[str, object]:
     if not csv_path.exists():
         return expansion_review_result(
@@ -419,6 +446,36 @@ def research_candidate_rows(research_queue: List[Dict[str, object]]) -> List[Dic
     return rows
 
 
+def universe_patch_rows(enrichment_queue: List[Dict[str, object]]) -> List[Dict[str, object]]:
+    by_symbol: Dict[str, Dict[str, object]] = {}
+    order = []
+    for item in enrichment_queue:
+        field = str(item.get("field") or "")
+        if field not in {"industry", "concepts", "index_membership"}:
+            continue
+        samples = item.get("samples", []) if isinstance(item.get("samples"), list) else []
+        for sample in samples:
+            if not isinstance(sample, dict):
+                continue
+            symbol = str(sample.get("symbol") or "").strip()
+            if not symbol:
+                continue
+            if symbol not in by_symbol:
+                by_symbol[symbol] = {
+                    "symbol": symbol,
+                    "name": str(sample.get("name") or ""),
+                    "industry": str(sample.get("industry") or ""),
+                    "concepts": str(sample.get("concepts") or ""),
+                    "index_membership": str(sample.get("index_membership") or ""),
+                    "listing_status": "listed",
+                    "source": "pool.universe.todo",
+                }
+                order.append(symbol)
+            if not str(by_symbol[symbol].get("name") or "").strip() and sample.get("name"):
+                by_symbol[symbol]["name"] = str(sample.get("name") or "")
+    return [by_symbol[symbol] for symbol in order]
+
+
 def expansion_export_warnings(rows: List[Dict[str, object]]) -> List[Dict[str, object]]:
     if not rows:
         return []
@@ -439,6 +496,18 @@ def research_export_warnings(rows: List[Dict[str, object]]) -> List[Dict[str, ob
             "code": "RESEARCH_NOTES_NEED_REVIEW",
             "message": "Research CSV is a draft. Fill thesis, evidence, invalidation, then set status=reviewed before import.",
             "detail": {"record_count": len(rows), "required_fields": ["thesis", "evidence", "invalidation"]},
+        }
+    ]
+
+
+def universe_patch_export_warnings(rows: List[Dict[str, object]]) -> List[Dict[str, object]]:
+    if not rows:
+        return []
+    return [
+        {
+            "code": "UNIVERSE_PATCH_NEEDS_ENRICHMENT",
+            "message": "Universe patch CSV is a draft. Fill missing industry, concepts, or index_membership before merge import.",
+            "detail": {"record_count": len(rows), "required_fields": ["industry", "concepts", "index_membership"]},
         }
     ]
 
@@ -476,6 +545,25 @@ def research_export_next_commands(
         ]
     return [
         "market-intel pool research --runtime --output data/runtime/research_notes.todo.csv --json",
+    ]
+
+
+def universe_patch_export_next_commands(
+    output_path: Path,
+    written: bool,
+    rows: List[Dict[str, object]],
+) -> List[str]:
+    if not rows:
+        return []
+    path_text = command_path(output_path)
+    if written:
+        return [
+            "market-intel import universe %s --runtime --merge --dry-run --json" % path_text,
+            "market-intel import universe %s --runtime --merge --json" % path_text,
+            "market-intel pool coverage --runtime --text",
+        ]
+    return [
+        "market-intel pool universe --runtime --output data/runtime/a_share_universe_patch.csv --json",
     ]
 
 
@@ -1332,7 +1420,15 @@ def coverage_next_actions(
             actions.append(
                 {
                     "rank": len(actions) + 1,
-                    "id": "complete_a_share_universe_fields",
+                    "id": "export_a_share_universe_patch",
+                    "command": "market-intel pool universe --runtime --output data/runtime/a_share_universe_patch.csv --json",
+                    "done_when": "已导出 A 股基础清单字段补数模板，并填写缺失的行业、概念或指数成分字段。",
+                }
+            )
+            actions.append(
+                {
+                    "rank": len(actions) + 1,
+                    "id": "merge_a_share_universe_patch",
                     "command": "market-intel import universe <a_share_universe_patch.csv> --runtime --merge --dry-run --json",
                     "done_when": "已用 --merge 补齐 A 股基础清单缺失的行业、概念或指数成分字段，并通过 dry-run 校验。",
                 }

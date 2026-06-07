@@ -113,7 +113,8 @@ def test_focus_surfaces_all_a_sector_profile(monkeypatch, tmp_path):
     assert data["coverage_context"]["universe"]["available"] is True
     assert profile["industry_coverage_ratio"] == 0.5
     assert profile["coverage_flags"] == ["industry_missing", "concepts_missing", "index_membership_missing"]
-    assert any(action["id"] == "complete_a_share_universe_fields" for action in data["coverage_context"]["next_actions"])
+    assert any(action["id"] == "export_a_share_universe_patch" for action in data["coverage_context"]["next_actions"])
+    assert any(action["id"] == "merge_a_share_universe_patch" for action in data["coverage_context"]["next_actions"])
     assert "字段覆盖: 行业 50.0% | 概念 50.0% | 指数 50.0%" in text
     assert "缺字段: 行业 1 | 概念 1 | 指数 1" in text
 

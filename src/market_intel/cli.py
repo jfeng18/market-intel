@@ -9,7 +9,14 @@ from .core.agent import build_agent_briefing, build_agent_plan, command_queue_it
 from .core.fixtures import load_holdings_file, load_mock_holdings, load_mock_quotes, load_quotes_file
 from .core.brief import build_daily_brief
 from .core.csv_importer import import_holdings_csv, import_quotes_csv, import_research_csv, import_schema, import_universe_csv
-from .core.coverage import build_data_quality_detail, build_pool_coverage, export_expansion_queue_csv, export_research_queue_csv, review_expansion_csv
+from .core.coverage import (
+    build_data_quality_detail,
+    build_pool_coverage,
+    export_expansion_queue_csv,
+    export_research_queue_csv,
+    export_universe_patch_csv,
+    review_expansion_csv,
+)
 from .core.daily import build_daily_report, validate_daily_files
 from .core.focus import build_focus_report
 from .core.holdings import calculate_holding_impacts
@@ -110,6 +117,15 @@ def build_parser() -> argparse.ArgumentParser:
     research_parser.add_argument("--dry-run", action="store_true")
     research_parser.add_argument("--json", action="store_true", dest="as_json")
     research_parser.add_argument("--text", action="store_true")
+
+    universe_parser = pool_subparsers.add_parser("universe")
+    universe_parser.add_argument("--pool", default=DEFAULT_POOL)
+    universe_parser.add_argument("--mock", action="store_true")
+    universe_parser.add_argument("--runtime", action="store_true")
+    universe_parser.add_argument("--holdings-file")
+    universe_parser.add_argument("--output")
+    universe_parser.add_argument("--dry-run", action="store_true")
+    universe_parser.add_argument("--json", action="store_true", dest="as_json")
 
     explain_parser = pool_subparsers.add_parser("explain")
     explain_parser.add_argument("symbol")
@@ -403,6 +419,15 @@ def main(argv: Optional[List[str]] = None) -> int:
             if args.text:
                 print(render_pool_research_text(result))
                 return 0 if result["ok"] else 1
+        elif args.resource == "pool" and args.action == "universe":
+            result = handle_pool_universe(
+                args.pool,
+                args.mock,
+                args.holdings_file,
+                args.runtime,
+                args.output,
+                args.dry_run,
+            )
         elif args.resource == "pool" and args.action == "explain":
             result = handle_pool_explain(args.pool, args.symbol, args.runtime)
             if args.text and result["ok"]:
@@ -854,6 +879,75 @@ def pool_research_contract() -> Dict[str, object]:
             "data.next_commands",
         ],
         "boundary": "pool research 只导出 foundation 持仓的研究证据草稿，不自动生成研究结论。",
+    }
+
+
+def handle_pool_universe(
+    pool: str,
+    use_mock: bool = False,
+    holdings_file: Optional[str] = None,
+    use_runtime: bool = False,
+    output: Optional[str] = None,
+    dry_run: bool = False,
+) -> Dict[str, Any]:
+    # Universe patch export only needs the pool/universe view. Runtime universe is
+    # loaded by the pool loader, so do not require runtime holdings here.
+    coverage_payload = handle_pool_coverage(pool, use_mock, holdings_file, False)
+    if not coverage_payload.get("ok"):
+        return coverage_payload
+    if not output and not dry_run:
+        return envelope(
+            command="pool.universe",
+            data={
+                "pool": pool,
+                "agent_contract": pool_universe_contract(),
+            },
+            errors=[
+                error(
+                    "POOL_UNIVERSE_OUTPUT_REQUIRED",
+                    "Pool universe export requires --output or --dry-run.",
+                    {"pool": pool},
+                )
+            ],
+            source="pool:%s" % pool,
+            ok=False,
+        )
+
+    data = coverage_payload.get("data", {}) if isinstance(coverage_payload.get("data"), dict) else {}
+    universe = data.get("universe", {}) if isinstance(data.get("universe"), dict) else {}
+    output_path = Path(output) if output else Path("data/runtime/a_share_universe_patch.csv")
+    export_data = export_universe_patch_csv(
+        universe.get("enrichment_queue", []) if isinstance(universe.get("enrichment_queue"), list) else [],
+        output_path,
+        dry_run=dry_run,
+    )
+    export_data["pool"] = pool
+    export_data["mode"] = "runtime" if use_runtime else "file"
+    export_data["coverage_summary"] = universe.get("sector_profile", {})
+    export_data["agent_contract"] = pool_universe_contract()
+    return envelope(
+        command="pool.universe",
+        data=export_data,
+        warnings=export_data.get("warnings", []),
+        source="pool:%s" % pool,
+    )
+
+
+def pool_universe_contract() -> Dict[str, object]:
+    return {
+        "success": "ok=true 且 errors=[]",
+        "stable_fields": [
+            "data.pool",
+            "data.mode",
+            "data.output",
+            "data.record_count",
+            "data.written",
+            "data.dry_run",
+            "data.fields",
+            "data.rows",
+            "data.next_commands",
+        ],
+        "boundary": "pool universe 只导出 A 股基础清单补数字段草稿，不自动写入 runtime；写入需 import universe --merge。",
     }
 
 

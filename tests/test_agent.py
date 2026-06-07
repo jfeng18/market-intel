@@ -389,7 +389,8 @@ def test_agent_briefing_surfaces_all_a_sector_profile(monkeypatch, tmp_path):
     assert profile["concept_coverage_ratio"] == 0
     assert profile["index_coverage_ratio"] == 1
     assert profile["coverage_flags"] == ["concepts_missing"]
-    assert any(action["id"] == "complete_a_share_universe_fields" for action in coverage["next_actions"])
+    assert any(action["id"] == "export_a_share_universe_patch" for action in coverage["next_actions"])
+    assert any(action["id"] == "merge_a_share_universe_patch" for action in coverage["next_actions"])
 
 
 def test_agent_run_ready_executes_read_only_and_skips_writes(monkeypatch, tmp_path):
