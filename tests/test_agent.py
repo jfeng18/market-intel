@@ -1449,6 +1449,7 @@ def test_dashboard_mock_returns_demo_workbench_without_runtime(monkeypatch, tmp_
     assert data["portfolio_pulse"]["top_holdings"]
     assert data["portfolio_pulse"]["top_holdings"][0]["rank"] == 1
     assert data["portfolio_pulse"]["top_holdings"][0]["primary_json_command"].endswith("--mock --json")
+    assert any(item["group_type"] == "theme" for item in data["portfolio_pulse"]["pressure_groups"])
     assert data["evidence_gaps"]["items"]
     assert data["review_plan"]["items"][0]["item_type"] == "runtime_setup"
     assert data["review_plan"]["items"][0]["json_command"] == "market-intel import schema --json"
@@ -1483,6 +1484,7 @@ def test_dashboard_mock_returns_demo_workbench_without_runtime(monkeypatch, tmp_
     assert "个人复盘操作系统" in text
     assert "候选:" in text
     assert "先看:" in text
+    assert "压力: 链路 运力/CPO / 硅光 | 持仓 2；主题 光通信 | 持仓 2" in text
     assert "下一步" in text
     assert "留档门槛" in text
     assert "覆盖底座" in text

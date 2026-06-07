@@ -2181,17 +2181,32 @@ def render_dashboard_compact_portfolio(value: Dict[str, object]) -> List[str]:
         if rendered:
             lines.append("  先看: %s" % "；".join(rendered))
     groups = value.get("pressure_groups", []) if isinstance(value.get("pressure_groups"), list) else []
-    if groups and isinstance(groups[0], dict):
-        group = groups[0]
-        group_type = {"chain": "链路", "theme": "主题"}.get(
-            str(group.get("group_type")),
-            label(group.get("group_type")),
-        )
-        lines.append(
-            "  压力: %s %s | 持仓 %s"
-            % (group_type, group.get("group"), group.get("holding_count"))
-        )
+    pressure_line = render_dashboard_pressure_groups(groups)
+    if pressure_line:
+        lines.append("  压力: %s" % pressure_line)
     return lines
+
+
+def render_dashboard_pressure_groups(groups: List[object]) -> str:
+    parts = []
+    for group_type, label_text in [("chain", "链路"), ("theme", "主题")]:
+        group = next(
+            (
+                item
+                for item in groups
+                if isinstance(item, dict) and str(item.get("group_type") or "") == group_type
+            ),
+            {},
+        )
+        if group:
+            parts.append("%s %s | 持仓 %s" % (label_text, group.get("group"), group.get("holding_count")))
+    if parts:
+        return "；".join(parts)
+    first = groups[0] if groups and isinstance(groups[0], dict) else {}
+    if not first:
+        return ""
+    group_type = {"chain": "链路", "theme": "主题"}.get(str(first.get("group_type")), label(first.get("group_type")))
+    return "%s %s | 持仓 %s" % (group_type, first.get("group"), first.get("holding_count"))
 
 
 def render_dashboard_compact_evidence(value: Dict[str, object]) -> List[str]:
