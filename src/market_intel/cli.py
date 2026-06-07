@@ -4025,6 +4025,7 @@ def dashboard_coverage_action_items(coverage: Dict[str, object]) -> List[Dict[st
     if not gaps and not actions:
         return []
     command = dashboard_coverage_plan_command(str(coverage.get("pool") or DEFAULT_POOL), "runtime", actions)
+    done_when = dashboard_coverage_plan_done_when(actions)
     return [
         {
             "rank": 1,
@@ -4036,7 +4037,7 @@ def dashboard_coverage_action_items(coverage: Dict[str, object]) -> List[Dict[st
             "requires_manual": False,
             "already_read": False,
             "related_symbols": [],
-            "done_when": "已确认 all-a 覆盖边界、A 股基础清单字段完整度、覆盖缺口和下一步补数动作。",
+            "done_when": done_when,
         }
     ]
 
@@ -4580,6 +4581,7 @@ def add_dashboard_plan_coverage(
     if not gaps and not actions:
         return
     command = dashboard_coverage_plan_command(pool, mode, actions)
+    done_when = dashboard_coverage_plan_done_when(actions)
     items.append(
         dashboard_plan_item(
             "coverage_review",
@@ -4587,10 +4589,17 @@ def add_dashboard_plan_coverage(
             coverage.get("summary") or "确认复盘池、A 股基础清单、字段完整度和覆盖缺口。",
             command,
             "read",
-            "已确认 all-a 覆盖边界、A 股基础清单字段完整度、覆盖缺口和下一步补数动作。",
+            done_when,
             evidence=dashboard_coverage_plan_evidence(coverage),
         )
     )
+
+
+def dashboard_coverage_plan_done_when(actions: List[object]) -> str:
+    for action in actions:
+        if isinstance(action, dict) and action.get("done_when"):
+            return str(action.get("done_when"))
+    return "已确认 all-a 覆盖边界、A 股基础清单字段完整度、覆盖缺口和下一步补数动作。"
 
 
 def dashboard_coverage_plan_command(pool: str, mode: str, actions: List[object]) -> str:
@@ -5234,7 +5243,13 @@ def run_agent_read_command(
         flag = first_positional(tokens[2:])
         if not flag:
             return envelope(command="pool.quality", errors=[error("COMMAND_FLAG_REQUIRED", "pool quality requires a data quality flag.")], ok=False)
-        return handle_pool_quality(pool, flag, limit=option_int(tokens, "--limit", 12))
+        return handle_pool_quality(
+            pool,
+            flag,
+            limit=option_int(tokens, "--limit", 12),
+            output=option_value(tokens, "--output"),
+            dry_run=flag_present(tokens, "--dry-run"),
+        )
     if resource == "pool" and sub == "explain":
         symbol = first_positional(tokens[2:])
         if not symbol:

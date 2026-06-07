@@ -1848,17 +1848,35 @@ def data_quality_cleanup_action(pool: str, data_quality_queue: List[Dict[str, ob
     if not data_quality_queue:
         return None
     first = data_quality_queue[0]
+    command = data_quality_cleanup_command(pool, first)
     return {
         "rank": 0,
         "id": "clean_data_quality_queue",
-        "command": "market-intel pool quality %s --json%s" % (first.get("flag"), pool_arg(pool)),
-        "done_when": "已按 data_quality_queue 的 rank 清理或解释高优先级标记，data_quality.flagged_item_count 下降。",
+        "command": command,
+        "done_when": data_quality_cleanup_done_when(first),
         "focus": {
             "flag": first.get("flag"),
             "severity": first.get("severity"),
             "affected_count": first.get("affected_count"),
+            "review_command": first.get("review_command"),
         },
     }
+
+
+def data_quality_cleanup_command(pool: str, queue_item: Dict[str, object]) -> str:
+    flag = str(queue_item.get("flag") or "")
+    if flag in {"column_shift_suspected", "missing_role"}:
+        return "market-intel pool quality %s --dry-run --json%s" % (flag, pool_arg(pool))
+    return "market-intel pool quality %s --json%s" % (flag, pool_arg(pool))
+
+
+def data_quality_cleanup_done_when(queue_item: Dict[str, object]) -> str:
+    flag = str(queue_item.get("flag") or "")
+    if flag == "column_shift_suspected":
+        return "已导出并复核 column_shift_suspected 修正草稿，review-file 通过后再用 overlay 复验 coverage。"
+    if flag == "missing_role":
+        return "已导出 missing_role 角色复核草稿，并把待确认角色改成真实定位后复验 coverage。"
+    return "已按 data_quality_queue 的 rank 清理或解释高优先级标记，data_quality.flagged_item_count 下降。"
 
 
 def data_quality_detail_contract() -> Dict[str, object]:
