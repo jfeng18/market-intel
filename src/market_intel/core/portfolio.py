@@ -3,6 +3,7 @@ from typing import Dict, List, Optional
 from .holdings import calculate_holding_impacts
 from .models import Holding, Hotspot, PoolItem, Quote
 from .scoring import calculate_hotspots
+from .symbols import normalize_symbol_text
 
 
 def build_portfolio_review(
@@ -511,7 +512,7 @@ def build_explain_questions(target: Dict[str, object], related: Dict[str, object
 
 
 def normalize_symbol(symbol: str) -> str:
-    return str(symbol or "").strip().upper()
+    return normalize_symbol_text(symbol)
 
 
 def priority_text(value: object) -> str:

@@ -2,6 +2,7 @@ import re
 from typing import Dict, List, Optional, Tuple
 
 from .models import Exposure, PoolItem
+from .symbols import normalize_symbol_input
 
 
 SYMBOL_RE = re.compile(r"^(?:\d{6}|\d{4}\.TW|\d{6}\.KS|\d{4,5}\.HK|[A-Z]{1,5}(?:\.[A-Z])?)$")
@@ -34,7 +35,7 @@ def normalize_row(row: Dict[str, str], raw_row: int) -> PoolItem:
     raw_company = raw["raw_company"]
     raw_desc = raw["raw_desc"]
 
-    symbol = raw_code if is_symbol(raw_code) else None
+    symbol = normalize_symbol(raw_code) if is_symbol(raw_code) else None
     recovered_symbol, recovered_logic = recover_symbol_from_desc(raw_desc)
     column_shift = False
 
@@ -166,9 +167,9 @@ def apply_primary_exposure(item: PoolItem) -> None:
 
 
 def find_pool_item(items: List[PoolItem], symbol: str) -> Optional[PoolItem]:
-    wanted = symbol.strip().upper()
+    wanted = normalize_symbol(symbol)
     for item in items:
-        if item.symbol and item.symbol.upper() == wanted:
+        if item.symbol and normalize_symbol(item.symbol) == wanted:
             return item
     return None
 
@@ -239,11 +240,12 @@ def clean(value: object) -> str:
 
 
 def is_symbol(value: str) -> bool:
-    return bool(value and SYMBOL_RE.match(value.strip().upper()))
+    symbol = normalize_symbol(value)
+    return bool(symbol and SYMBOL_RE.match(symbol))
 
 
 def normalize_symbol(value: Optional[str]) -> Optional[str]:
-    return value.strip().upper() if value else None
+    return normalize_symbol_input(value)
 
 
 def recover_symbol_from_desc(desc: str) -> Tuple[Optional[str], str]:

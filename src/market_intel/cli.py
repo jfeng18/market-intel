@@ -49,6 +49,7 @@ from .core.runtime import init_runtime, runtime_missing_files, runtime_paths
 from .core.scan import build_market_scan
 from .core.scoring import calculate_hotspots
 from .core.status import build_runtime_status
+from .core.symbols import normalize_symbol_input
 from .core.text_report import (
     render_brief_text,
     render_agent_briefing_text,
@@ -2124,22 +2125,7 @@ def handle_agent_next(
 
 
 def normalize_cli_symbol(symbol: Optional[str]) -> Optional[str]:
-    if symbol is None:
-        return None
-    text = str(symbol).strip().upper()
-    if not text:
-        return None
-    for prefix in ("SH", "SZ", "BJ"):
-        for separator in (":", ".", "-"):
-            marker = "%s%s" % (prefix, separator)
-            if text.startswith(marker) and len(text) == len(marker) + 6 and text[len(marker):].isdigit():
-                return text[len(marker):]
-        if text.startswith(prefix) and len(text) == len(prefix) + 6 and text[len(prefix):].isdigit():
-            return text[len(prefix):]
-    for suffix in (".SH", ".SZ", ".BJ"):
-        if text.endswith(suffix) and len(text) == 6 + len(suffix) and text[:6].isdigit():
-            return text[:6]
-    return text
+    return normalize_symbol_input(symbol)
 
 
 def ensure_agent_next_symbol_card(

@@ -1,6 +1,8 @@
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
+from .symbols import normalize_symbol_text
+
 
 @dataclass
 class Exposure:
@@ -76,7 +78,7 @@ class Quote:
     @classmethod
     def from_dict(cls, value: Dict[str, Any]) -> "Quote":
         return cls(
-            symbol=str(value["symbol"]).strip().upper(),
+            symbol=normalize_symbol_text(value["symbol"]),
             trade_date=str(value.get("trade_date") or ""),
             last_price=optional_float(value.get("last_price")),
             change_pct=float(value.get("change_pct") or 0),
@@ -145,7 +147,7 @@ class Holding:
     @classmethod
     def from_dict(cls, value: Dict[str, Any]) -> "Holding":
         return cls(
-            symbol=str(value["symbol"]).strip().upper(),
+            symbol=normalize_symbol_text(value["symbol"]),
             name=str(value.get("name") or ""),
             quantity=optional_float(value.get("quantity")),
             source=str(value.get("source") or "mock"),

@@ -145,6 +145,59 @@ def test_portfolio_review_detects_missing_quote(tmp_path):
     assert missing["review_points"]
 
 
+def test_portfolio_review_normalizes_runtime_json_symbol_formats(tmp_path):
+    quotes_path = tmp_path / "quotes.json"
+    holdings_path = tmp_path / "holdings.json"
+    quotes_path.write_text(
+        json.dumps(
+            {
+                "quotes": [
+                    {
+                        "symbol": "300308.SZ",
+                        "trade_date": "2026-06-06",
+                        "last_price": 1,
+                        "change_pct": 1,
+                        "amount": 1,
+                        "amount_ratio": 1,
+                        "turnover_rate": 1,
+                        "amplitude_pct": 1,
+                        "is_limit_up": False,
+                        "is_stage_high": False,
+                        "intraday_fade_pct": 0,
+                    }
+                ]
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    holdings_path.write_text(
+        json.dumps({"holdings": [{"symbol": "SZ:300308", "name": "中际旭创"}]}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    review_payload = handle_portfolio_review(
+        "ai-energy",
+        use_mock=False,
+        quotes_file=str(quotes_path),
+        holdings_file=str(holdings_path),
+    )
+    explain_payload = handle_portfolio_explain(
+        "ai-energy",
+        "300308",
+        use_mock=False,
+        quotes_file=str(quotes_path),
+        holdings_file=str(holdings_path),
+    )
+
+    assert review_payload["ok"] is True
+    assert review_payload["data"]["items"][0]["symbol"] == "300308"
+    assert review_payload["data"]["items"][0]["has_quote"] is True
+    assert explain_payload["ok"] is True
+    assert explain_payload["data"]["found"] is True
+    assert explain_payload["data"]["item"]["symbol"] == "300308"
+
+
 def test_portfolio_review_text_renderer():
     payload = handle_portfolio_review("ai-energy", use_mock=True, top=4)
     text = render_portfolio_review_text(payload)

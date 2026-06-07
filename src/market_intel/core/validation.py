@@ -6,6 +6,7 @@ from .fixtures import load_holdings_file, load_quotes_file
 from .models import Holding, PoolItem, Quote
 from .normalize import find_pool_item
 from .runtime import runtime_holdings_path, runtime_missing_files, runtime_quotes_path
+from .symbols import normalize_symbol_text
 
 
 QUOTE_REQUIRED_FIELDS = {
@@ -189,7 +190,7 @@ def duplicate_symbol_warnings(code: str, symbols: List[str]) -> List[Dict[str, o
 
 
 def normalize_symbol(value: object) -> str:
-    return str(value or "").strip().upper()
+    return normalize_symbol_text(value)
 
 
 def issue(code: str, message: str, detail: Dict[str, object]) -> Dict[str, object]:
