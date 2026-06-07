@@ -3260,6 +3260,7 @@ def mock_dashboard_handoff(pool: str, plan: Dict[str, object]) -> Dict[str, obje
         "manual_items": manual_items,
         "record_templates": [],
         "completion": completion,
+        "completion_checklist": dashboard_completion_checklist(completion, next_read, manual_items),
         "journal_gate": dashboard_journal_gate(completion, next_read, manual_items, []),
     }
 
@@ -3863,6 +3864,7 @@ def dashboard_handoff(digest: Dict[str, object]) -> Dict[str, object]:
         "manual_required_count": completion.get("manual_required_count", 0),
         "pending_count": completion.get("pending_count", 0),
     }
+    completion_checklist = dashboard_completion_checklist(completion, next_read, manual_items)
     return {
         "available": bool(handoff.get("available")),
         "summary": handoff.get("summary") or completion.get("summary") or "暂无交接信息。",
@@ -3872,8 +3874,109 @@ def dashboard_handoff(digest: Dict[str, object]) -> Dict[str, object]:
         "manual_items": manual_items,
         "record_templates": record_templates,
         "completion": completion_summary,
+        "completion_checklist": completion_checklist,
         "journal_gate": dashboard_journal_gate(completion_summary, next_read, manual_items, record_templates),
     }
+
+
+def dashboard_completion_checklist(
+    completion: Dict[str, object],
+    next_read: Optional[List[Dict[str, object]]] = None,
+    manual_items: Optional[List[Dict[str, object]]] = None,
+) -> List[Dict[str, object]]:
+    checks = completion.get("checks", []) if isinstance(completion.get("checks"), list) else []
+    ranked = [
+        item
+        for _, item in sorted(
+            [(index, item) for index, item in enumerate(checks) if isinstance(item, dict)],
+            key=lambda row: (
+                dashboard_completion_status_rank(str(row[1].get("status") or "")),
+                row[0],
+            ),
+        )
+    ]
+    rows = []
+    for index, item in enumerate(ranked[:3], start=1):
+        rows.append(
+            dashboard_completion_checklist_item(
+                index,
+                item.get("check_id"),
+                item.get("title"),
+                item.get("status"),
+                item.get("reason"),
+                item.get("json_command"),
+                item.get("done_when"),
+            )
+        )
+    if rows:
+        return rows
+    for item in next_read or []:
+        if not isinstance(item, dict):
+            continue
+        rows.append(
+            dashboard_completion_checklist_item(
+                len(rows) + 1,
+                item.get("source"),
+                item.get("title"),
+                "pending",
+                item.get("reason"),
+                item.get("json_command"),
+                item.get("done_when"),
+            )
+        )
+        if len(rows) >= 3:
+            return rows
+    for item in manual_items or []:
+        if not isinstance(item, dict):
+            continue
+        rows.append(
+            dashboard_completion_checklist_item(
+                len(rows) + 1,
+                item.get("source"),
+                item.get("title"),
+                "manual_required",
+                item.get("reason"),
+                item.get("json_command"),
+                item.get("done_when"),
+            )
+        )
+        if len(rows) >= 3:
+            return rows
+    return rows
+
+
+def dashboard_completion_checklist_item(
+    rank: int,
+    check_id: object,
+    title: object,
+    status: object,
+    reason: object,
+    command: object,
+    done_when: object,
+) -> Dict[str, object]:
+    command_text = str(command or "")
+    status_text = str(status or "")
+    return {
+        "rank": rank,
+        "check_id": check_id,
+        "title": title,
+        "status": status_text,
+        "reason": reason,
+        "json_command": command_text,
+        "done_when": done_when,
+        "runnable": bool(command_text)
+        and status_text in {"blocked", "pending"}
+        and digest_command_is_read_only(command_text),
+    }
+
+
+def dashboard_completion_status_rank(status: str) -> int:
+    return {
+        "blocked": 0,
+        "pending": 1,
+        "manual_required": 2,
+        "done": 3,
+    }.get(status, 4)
 
 
 def dashboard_journal_gate(
@@ -3998,6 +4101,7 @@ def dashboard_action_summary(today_focus: Dict[str, object], handoff: Dict[str, 
     gate = handoff.get("journal_gate", {}) if isinstance(handoff.get("journal_gate"), dict) else {}
     chain = today_focus.get("focus_chain", []) if isinstance(today_focus.get("focus_chain"), list) else []
     record_templates = handoff.get("record_templates", []) if isinstance(handoff.get("record_templates"), list) else []
+    checklist = handoff.get("completion_checklist", []) if isinstance(handoff.get("completion_checklist"), list) else []
     first_record = dashboard_action_record_template(today_focus, record_templates)
     title = str(today_focus.get("title") or "暂无焦点")
     command = str(today_focus.get("json_command") or gate.get("json_command") or "")
@@ -4012,6 +4116,20 @@ def dashboard_action_summary(today_focus: Dict[str, object], handoff: Dict[str, 
         "journal_state": journal_state,
         "journal_ready": bool(gate.get("ready_for_journal_note")),
         "journal_next_step": next_step,
+        "completion_checklist": [
+            {
+                "rank": item.get("rank"),
+                "check_id": item.get("check_id"),
+                "title": item.get("title"),
+                "status": item.get("status"),
+                "reason": item.get("reason"),
+                "json_command": item.get("json_command"),
+                "done_when": item.get("done_when"),
+                "runnable": bool(item.get("runnable")),
+            }
+            for item in checklist[:3]
+            if isinstance(item, dict)
+        ],
         "record_template": {
             "available": bool(first_record),
             "runnable": bool(first_record) and bool(gate.get("ready_for_journal_note")),
@@ -4523,6 +4641,10 @@ def dashboard_contract() -> Dict[str, object]:
             "data.action_summary.headline",
             "data.action_summary.next_command",
             "data.action_summary.journal_state",
+            "data.action_summary.completion_checklist",
+            "data.action_summary.completion_checklist[].status",
+            "data.action_summary.completion_checklist[].json_command",
+            "data.action_summary.completion_checklist[].done_when",
             "data.action_summary.record_template",
             "data.action_summary.record_template.runnable",
             "data.action_summary.record_template.prerequisite_command",
@@ -4573,6 +4695,10 @@ def dashboard_contract() -> Dict[str, object]:
             "data.handoff",
             "data.handoff.journal_gate",
             "data.handoff.journal_gate.state",
+            "data.handoff.completion_checklist",
+            "data.handoff.completion_checklist[].status",
+            "data.handoff.completion_checklist[].json_command",
+            "data.handoff.completion_checklist[].done_when",
             "data.handoff.journal_gate.json_command",
             "data.handoff.journal_gate.blockers",
             "data.handoff.next_read",

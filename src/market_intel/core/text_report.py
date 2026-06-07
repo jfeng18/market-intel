@@ -90,6 +90,10 @@ LABELS = {
     "reference": "参考",
     "medium": "中",
     "high": "高",
+    "blocked": "阻塞",
+    "pending": "待读",
+    "manual_required": "需人工",
+    "done": "已完成",
     "price_strength": "涨幅",
     "sector_strength": "板块",
     "universe_context": "全A",
@@ -1895,6 +1899,17 @@ def render_dashboard_action_summary(value: Dict[str, object]) -> List[str]:
         lines.append("  为什么: %s" % value.get("why"))
     if value.get("next_command"):
         lines.append("  命令: %s" % value.get("next_command"))
+    checklist = value.get("completion_checklist", []) if isinstance(value.get("completion_checklist"), list) else []
+    first_check = next((item for item in checklist if isinstance(item, dict)), {})
+    if first_check:
+        lines.append(
+            "  门槛: %s | %s | %s"
+            % (
+                first_check.get("title") or first_check.get("check_id") or "收尾检查",
+                label(first_check.get("status") or ""),
+                first_check.get("done_when") or first_check.get("reason") or "",
+            )
+        )
     if value.get("journal_state"):
         lines.append(
             "  留档: %s | %s"

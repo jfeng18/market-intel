@@ -1225,6 +1225,12 @@ def test_dashboard_returns_one_screen_workbench(monkeypatch, tmp_path):
     assert data["action_summary"]["next_command"] == data["today_focus"]["json_command"]
     assert data["action_summary"]["journal_state"] == data["handoff"]["journal_gate"]["state"]
     assert data["action_summary"]["next_chain"][0]["json_command"] == data["today_focus"]["focus_chain"][0]["json_command"]
+    checklist = data["action_summary"]["completion_checklist"]
+    assert checklist == data["handoff"]["completion_checklist"][:3]
+    assert checklist
+    assert checklist[0]["status"] in {"blocked", "pending", "manual_required", "done"}
+    assert checklist[0]["json_command"].endswith("--json")
+    assert checklist[0]["done_when"]
     assert data["action_summary"]["record_template"]["available"] is True
     assert data["action_summary"]["record_template"]["section"] == "market_structure"
     assert data["action_summary"]["record_template"]["runnable"] is False
@@ -1241,6 +1247,8 @@ def test_dashboard_returns_one_screen_workbench(monkeypatch, tmp_path):
     assert "data.today_focus" in data["agent_contract"]["stable_fields"]
     assert "data.action_summary" in data["agent_contract"]["stable_fields"]
     assert "data.action_summary.next_command" in data["agent_contract"]["stable_fields"]
+    assert "data.action_summary.completion_checklist[].json_command" in data["agent_contract"]["stable_fields"]
+    assert "data.action_summary.completion_checklist[].done_when" in data["agent_contract"]["stable_fields"]
     assert "data.action_summary.record_template.runnable" in data["agent_contract"]["stable_fields"]
     assert "data.action_summary.record_template.prerequisite_command" in data["agent_contract"]["stable_fields"]
     assert "data.action_summary.record_template.prerequisite_done_when" in data["agent_contract"]["stable_fields"]
@@ -1299,9 +1307,11 @@ def test_dashboard_returns_one_screen_workbench(monkeypatch, tmp_path):
     assert "data.review_plan.items[].json_command" in data["agent_contract"]["stable_fields"]
     assert "data.handoff.journal_gate" in data["agent_contract"]["stable_fields"]
     assert "data.handoff.journal_gate.state" in data["agent_contract"]["stable_fields"]
+    assert "data.handoff.completion_checklist[].status" in data["agent_contract"]["stable_fields"]
     assert "market-intel dashboard" in text
     assert len(text.splitlines()) <= 80
     assert "操作摘要" in text
+    assert "门槛:" in text
     assert "记录前置:" in text
     assert "前置命令:" in text
     assert "前置完成:" in text
@@ -1362,6 +1372,9 @@ def test_dashboard_mock_returns_demo_workbench_without_runtime(monkeypatch, tmp_
     assert data["today_focus"]["json_command"] == data["action_lane"]["items"][0]["json_command"]
     assert data["action_summary"]["next_command"] == "market-intel import schema --json"
     assert data["action_summary"]["journal_state"] == data["handoff"]["journal_gate"]["state"]
+    assert data["action_summary"]["completion_checklist"] == data["handoff"]["completion_checklist"][:3]
+    assert data["action_summary"]["completion_checklist"][0]["check_id"] == "runtime_setup"
+    assert data["action_summary"]["completion_checklist"][0]["status"] == "pending"
     assert data["action_summary"]["record_template"]["available"] is False
     assert [item["source"] for item in data["today_focus"]["focus_chain"][:3]] == [
         "runtime_setup",
@@ -1398,6 +1411,7 @@ def test_dashboard_mock_returns_demo_workbench_without_runtime(monkeypatch, tmp_
     assert "mock 示例" in text
     assert len(text.splitlines()) <= 80
     assert "操作摘要" in text
+    assert "门槛:" in text
     assert "记录: market-intel journal note --section" not in text
     assert "今日焦点" in text
     assert "接力:" in text
@@ -1474,6 +1488,9 @@ def test_dashboard_blocked_handoff_does_not_duplicate_next_read(monkeypatch, tmp
 
     assert payload["ok"] is True
     assert data["state"] == "blocked"
+    assert data["handoff"]["completion_checklist"][0]["status"] == "blocked"
+    assert data["handoff"]["completion_checklist"][0]["check_id"] == "data_quality"
+    assert data["action_summary"]["completion_checklist"][0]["json_command"] == data["handoff"]["completion_checklist"][0]["json_command"]
     assert data["action_summary"]["record_template"]["available"] is True
     assert data["action_summary"]["record_template"]["runnable"] is False
     assert data["action_summary"]["record_template"]["blocked_reason"]
