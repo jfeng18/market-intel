@@ -23,6 +23,8 @@ def test_status_runtime_missing_files(monkeypatch, tmp_path):
     assert data["next_actions"][0]["runnable"] is True
     assert data["next_actions"][0]["done_when"]
     assert data["next_actions"][1]["done_when"]
+    assert "data.next_actions[].done_when" in data["agent_contract"]["stable_fields"]
+    assert "data.readiness.can_run_daily" in data["agent_contract"]["stable_fields"]
 
 
 def test_status_runtime_all_a_degraded_without_universe(monkeypatch, tmp_path):

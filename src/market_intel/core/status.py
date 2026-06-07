@@ -34,6 +34,22 @@ def build_runtime_status(
             "success": "ok=true 表示可以继续执行 next_actions 中 priority 最低的 runnable 命令",
             "readiness": "ready 可直接生成日报；degraded 可生成但需复核；blocked 需要先处理 errors",
             "next_actions": "按 priority 升序执行；runnable=false 表示需要用户提供文件或修正数据",
+            "stable_fields": [
+                "data.readiness",
+                "data.readiness.state",
+                "data.readiness.can_run_daily",
+                "data.validation.summary",
+                "data.freshness",
+                "data.universe",
+                "data.files",
+                "data.next_actions",
+                "data.next_actions[].priority",
+                "data.next_actions[].id",
+                "data.next_actions[].command",
+                "data.next_actions[].reason",
+                "data.next_actions[].done_when",
+                "data.next_actions[].runnable",
+            ],
         },
     }
 
