@@ -3415,7 +3415,7 @@ def compact_dashboard_coverage_context(coverage: Dict[str, object]) -> Dict[str,
                 "coverage_flags": list(profile.get("coverage_flags", [])) if isinstance(profile.get("coverage_flags"), list) else [],
             },
         },
-        "holdings_coverage": coverage.get("holdings_coverage", {}) if isinstance(coverage.get("holdings_coverage"), dict) else {},
+        "holdings_coverage": compact_dashboard_holdings_coverage(coverage.get("holdings_coverage", {})),
         "gap_count": len(gaps) if isinstance(gaps, list) else 0,
         "top_gaps": [
             {
@@ -3469,6 +3469,61 @@ def compact_universe_enrichment_queue(value: object) -> List[Dict[str, object]]:
             }
         )
     return compact
+
+
+def compact_dashboard_holdings_coverage(value: object) -> Dict[str, object]:
+    coverage = value if isinstance(value, dict) else {}
+    if not coverage.get("available"):
+        return {
+            "available": False,
+            "reason": coverage.get("reason"),
+            "summary": coverage.get("summary") or coverage.get("reason") or "未提供持仓。",
+            "holding_count": 0,
+            "matched_count": 0,
+            "unmatched_count": 0,
+            "matched_ratio": 0,
+            "needs_review_count": 0,
+            "coverage_flags": [],
+            "top_review_queue": [],
+            "top_unmatched": [],
+        }
+    review_queue = coverage.get("review_queue", []) if isinstance(coverage.get("review_queue"), list) else []
+    unmatched = coverage.get("unmatched", []) if isinstance(coverage.get("unmatched"), list) else []
+    return {
+        "available": True,
+        "summary": coverage.get("summary"),
+        "holding_count": coverage.get("holding_count", 0),
+        "matched_count": coverage.get("matched_count", 0),
+        "unmatched_count": coverage.get("unmatched_count", 0),
+        "confirmed_count": coverage.get("confirmed_count", 0),
+        "draft_matched_count": coverage.get("draft_matched_count", 0),
+        "foundation_matched_count": coverage.get("foundation_matched_count", 0),
+        "needs_review_count": coverage.get("needs_review_count", 0),
+        "matched_ratio": coverage.get("matched_ratio", 0),
+        "coverage_flags": list(coverage.get("coverage_flags", []))[:5] if isinstance(coverage.get("coverage_flags"), list) else [],
+        "top_review_queue": [
+            {
+                "symbol": item.get("symbol"),
+                "name": item.get("name"),
+                "coverage_state": item.get("coverage_state"),
+                "reasons": list(item.get("reasons", []))[:3] if isinstance(item.get("reasons"), list) else [],
+                "json_command": digest_json_variant(item.get("command")),
+                "done_when": item.get("done_when"),
+            }
+            for item in review_queue[:3]
+            if isinstance(item, dict)
+        ],
+        "top_unmatched": [
+            {
+                "symbol": item.get("symbol"),
+                "name": item.get("name"),
+                "reason": item.get("reason"),
+                "suggested_action": item.get("suggested_action"),
+            }
+            for item in unmatched[:3]
+            if isinstance(item, dict)
+        ],
+    }
 
 
 def compact_data_quality_queue(rows: List[object]) -> List[Dict[str, object]]:
@@ -4747,6 +4802,10 @@ def dashboard_contract() -> Dict[str, object]:
             "data.coverage_context.universe",
             "data.coverage_context.universe.sector_profile",
             "data.coverage_context.universe.enrichment_queue",
+            "data.coverage_context.holdings_coverage",
+            "data.coverage_context.holdings_coverage.summary",
+            "data.coverage_context.holdings_coverage.top_review_queue",
+            "data.coverage_context.holdings_coverage.top_unmatched",
             "data.coverage_context.top_gaps",
             "data.coverage_context.top_data_quality_queue",
             "data.coverage_context.next_actions",

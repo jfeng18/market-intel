@@ -1222,6 +1222,15 @@ def test_dashboard_returns_one_screen_workbench(monkeypatch, tmp_path):
     assert data["coverage_context"]["universe"]["available"] is True
     assert data["coverage_context"]["universe"]["record_count"] == 16
     assert data["coverage_context"]["universe"]["sector_profile"]["industry_coverage_ratio"] == 1
+    holdings_coverage = data["coverage_context"]["holdings_coverage"]
+    assert "available" in holdings_coverage
+    assert "holding_count" in holdings_coverage
+    assert "matched_count" in holdings_coverage
+    assert "matched" not in holdings_coverage
+    assert "unmatched" not in holdings_coverage
+    assert "review_queue" not in holdings_coverage
+    assert "top_review_queue" in holdings_coverage
+    assert "top_unmatched" in holdings_coverage
     assert data["coverage_context"]["gap_count"] >= 1
     assert data["coverage_context"]["top_gaps"]
     assert data["coverage_context"]["top_data_quality_queue"]
@@ -1312,6 +1321,8 @@ def test_dashboard_returns_one_screen_workbench(monkeypatch, tmp_path):
     assert data["guardrails"]
     assert "data.coverage_context" in data["agent_contract"]["stable_fields"]
     assert "data.coverage_context.universe.sector_profile" in data["agent_contract"]["stable_fields"]
+    assert "data.coverage_context.holdings_coverage.summary" in data["agent_contract"]["stable_fields"]
+    assert "data.coverage_context.holdings_coverage.top_review_queue" in data["agent_contract"]["stable_fields"]
     assert "data.coverage_context.top_gaps" in data["agent_contract"]["stable_fields"]
     assert "data.coverage_context.top_data_quality_queue" in data["agent_contract"]["stable_fields"]
     assert "data.market_pulse.market_breadth" in data["agent_contract"]["stable_fields"]
@@ -1385,6 +1396,8 @@ def test_dashboard_mock_returns_demo_workbench_without_runtime(monkeypatch, tmp_
     assert data["positioning"]["differentiators"][1]["agent_path"] == "data.portfolio_pulse"
     assert data["coverage_context"]["available"] is True
     assert data["coverage_context"]["universe"]["available"] is False
+    assert "matched" not in data["coverage_context"]["holdings_coverage"]
+    assert "top_review_queue" in data["coverage_context"]["holdings_coverage"]
     assert data["today_focus"]["available"] is True
     assert data["today_focus"]["source"] == "runtime_setup"
     assert data["today_focus"]["json_command"] == "market-intel import schema --json"
