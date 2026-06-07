@@ -36,6 +36,19 @@
 - `research_notes_v1`：`symbol/name/status/thesis/evidence/invalidation/updated_at/source`。
 - `journal`：日报、假设、补充笔记和对比结果。
 
+## Dashboard
+
+Agent 优先读：
+
+- `data.action_summary.decision_card`：今日动作卡。
+- `decision_card.json_command`：下一条可执行命令。
+- `decision_card.why`：为什么先做这项。
+- `decision_card.done_when`：完成标准。
+- `decision_card.next_json_command`：接力命令。
+- `decision_card.check_status/check_done_when`：留档前门槛。
+- `data.coverage_context`、`data.market_pulse`、`data.portfolio_pulse`、`data.evidence_gaps`：上下文。
+- `data.review_plan.items[]`：完整接力队列。
+
 ## CSV 口径
 
 - Universe：`symbol,name,industry,concepts,index_membership,listing_status,source`
