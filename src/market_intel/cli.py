@@ -2057,6 +2057,7 @@ def handle_agent_next(
     max_steps: int = 8,
     symbol: Optional[str] = None,
 ) -> Dict[str, Any]:
+    symbol = normalize_agent_symbol(symbol)
     run_payload = handle_agent_run(pool, top=top, map_top=map_top, max_quote_age_days=max_quote_age_days, max_steps=max_steps)
     run_data = run_payload.get("data", {}) if isinstance(run_payload.get("data"), dict) else {}
     digest = run_data.get("review_digest", {}) if isinstance(run_data.get("review_digest"), dict) else {}
@@ -2118,6 +2119,18 @@ def handle_agent_next(
         source=run_payload.get("meta", {}).get("source") if isinstance(run_payload.get("meta"), dict) else None,
         ok=bool(run_payload.get("ok")),
     )
+
+
+def normalize_agent_symbol(symbol: Optional[str]) -> Optional[str]:
+    if symbol is None:
+        return None
+    text = str(symbol).strip().upper()
+    if not text:
+        return None
+    for prefix in ("SH", "SZ", "BJ"):
+        if text.startswith(prefix) and len(text) == len(prefix) + 6 and text[len(prefix):].isdigit():
+            return text[len(prefix):]
+    return text
 
 
 def ensure_agent_next_symbol_card(

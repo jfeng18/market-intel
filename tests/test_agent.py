@@ -1363,6 +1363,20 @@ def test_agent_next_can_focus_symbol(monkeypatch, tmp_path):
     assert "sell" not in text.lower()
 
 
+def test_agent_next_normalizes_symbol_input(monkeypatch, tmp_path):
+    import_runtime_examples(monkeypatch, tmp_path)
+
+    padded = handle_agent_next("ai-energy", max_quote_age_days=9999, max_steps=5, symbol=" 300308 ")
+    prefixed = handle_agent_next("ai-energy", max_quote_age_days=9999, max_steps=5, symbol="sz300308")
+
+    assert padded["ok"] is True
+    assert padded["data"]["symbol"] == "300308"
+    assert padded["data"]["security_cards"]["cards"][0]["symbol"] == "300308"
+    assert prefixed["ok"] is True
+    assert prefixed["data"]["symbol"] == "300308"
+    assert prefixed["data"]["focus_chain"][0]["json_command"].startswith("market-intel portfolio explain 300308")
+
+
 def test_agent_next_surfaces_foundation_holding_review(monkeypatch, tmp_path):
     import_foundation_runtime(monkeypatch, tmp_path)
 
