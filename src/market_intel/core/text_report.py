@@ -1909,6 +1909,13 @@ def render_dashboard_action_summary(value: Dict[str, object]) -> List[str]:
         lines.append("  为什么: %s" % dashboard_short_text(value.get("why"), 72))
     if value.get("next_command"):
         lines.append("  命令: %s" % value.get("next_command"))
+    queue = value.get("command_queue", []) if isinstance(value.get("command_queue"), list) else []
+    next_queue_item = next((item for item in queue[1:] if isinstance(item, dict) and item.get("json_command")), {})
+    if next_queue_item:
+        lines.append(
+            "  接力命令: #%s %s | %s"
+            % (next_queue_item.get("rank"), next_queue_item.get("title"), next_queue_item.get("json_command"))
+        )
     checklist = value.get("completion_checklist", []) if isinstance(value.get("completion_checklist"), list) else []
     first_check = next((item for item in checklist if isinstance(item, dict)), {})
     if first_check:

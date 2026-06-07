@@ -4107,6 +4107,7 @@ def dashboard_action_summary(today_focus: Dict[str, object], handoff: Dict[str, 
     command = str(today_focus.get("json_command") or gate.get("json_command") or "")
     journal_state = str(gate.get("state") or "unknown")
     next_step = str(gate.get("next_step") or "")
+    command_queue = dashboard_action_command_queue(today_focus, checklist, chain)
     return {
         "available": bool(today_focus.get("available") or command),
         "headline": "先看：%s" % title if title else "暂无今日焦点。",
@@ -4116,6 +4117,7 @@ def dashboard_action_summary(today_focus: Dict[str, object], handoff: Dict[str, 
         "journal_state": journal_state,
         "journal_ready": bool(gate.get("ready_for_journal_note")),
         "journal_next_step": next_step,
+        "command_queue": command_queue,
         "completion_checklist": [
             {
                 "rank": item.get("rank"),
@@ -4154,6 +4156,76 @@ def dashboard_action_summary(today_focus: Dict[str, object], handoff: Dict[str, 
         ],
         "source": str(today_focus.get("source") or ""),
     }
+
+
+def dashboard_action_command_queue(
+    today_focus: Dict[str, object],
+    checklist: List[object],
+    chain: List[object],
+) -> List[Dict[str, object]]:
+    rows: List[Dict[str, object]] = []
+    seen = set()
+
+    def add_item(
+        source: object,
+        title: object,
+        status: object,
+        command: object,
+        done_when: object,
+        runnable: object,
+    ) -> None:
+        command_text = str(command or "")
+        if not command_text or command_text in seen:
+            return
+        seen.add(command_text)
+        rows.append(
+            {
+                "rank": len(rows) + 1,
+                "source": str(source or ""),
+                "title": str(title or source or "继续复盘"),
+                "status": str(status or ""),
+                "step_type": "read" if runnable else "manual",
+                "json_command": command_text,
+                "runnable": bool(runnable),
+                "done_when": str(done_when or ""),
+            }
+        )
+
+    add_item(
+        today_focus.get("source"),
+        today_focus.get("title"),
+        "focus",
+        today_focus.get("json_command"),
+        today_focus.get("done_when"),
+        today_focus.get("runnable"),
+    )
+    for item in checklist:
+        if not isinstance(item, dict):
+            continue
+        add_item(
+            item.get("check_id"),
+            item.get("title"),
+            item.get("status"),
+            item.get("json_command"),
+            item.get("done_when"),
+            item.get("runnable"),
+        )
+        if len(rows) >= 5:
+            return rows
+    for item in chain:
+        if not isinstance(item, dict):
+            continue
+        add_item(
+            item.get("source"),
+            item.get("title"),
+            "next",
+            item.get("json_command"),
+            item.get("done_when"),
+            item.get("runnable"),
+        )
+        if len(rows) >= 5:
+            return rows
+    return rows
 
 
 def dashboard_action_record_template(today_focus: Dict[str, object], record_templates: List[object]) -> Dict[str, object]:
@@ -4641,6 +4713,10 @@ def dashboard_contract() -> Dict[str, object]:
             "data.action_summary.headline",
             "data.action_summary.next_command",
             "data.action_summary.journal_state",
+            "data.action_summary.command_queue",
+            "data.action_summary.command_queue[].json_command",
+            "data.action_summary.command_queue[].done_when",
+            "data.action_summary.command_queue[].runnable",
             "data.action_summary.completion_checklist",
             "data.action_summary.completion_checklist[].status",
             "data.action_summary.completion_checklist[].json_command",
