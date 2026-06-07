@@ -1908,6 +1908,8 @@ def render_dashboard_action_summary(value: Dict[str, object]) -> List[str]:
                 lines.append("  记录前置: %s" % record.get("run_after"))
         else:
             lines.append("  记录前置: %s" % (record.get("blocked_reason") or "先完成待读和人工确认项。"))
+            if record.get("prerequisite_command"):
+                lines.append("  前置命令: %s" % record.get("prerequisite_command"))
     return lines
 
 
