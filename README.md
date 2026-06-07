@@ -49,6 +49,7 @@
 make install
 make test
 make smoke
+make privacy-scan
 make ci
 ```
 
@@ -57,7 +58,8 @@ make ci
 - `make install`：安装 editable package 和测试工具。
 - `make test`：运行全量 pytest。
 - `make smoke`：用模块入口跑 CLI smoke，不要求 console script 已安装。
-- `make ci`：模拟 GitHub Actions 的安装、测试和 smoke 流程。
+- `make privacy-scan`：扫描公开 README/docs/examples/.github，避免把本机路径、token 或 secret 形态内容写进公开资料。
+- `make ci`：模拟 GitHub Actions 的安装、测试、smoke 和隐私扫描流程。
 
 如果本机默认 `python3` 低于 3.10，可以指定解释器：
 

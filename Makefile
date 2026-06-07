@@ -5,7 +5,7 @@ CLI ?= market-intel
 
 export PYTHONPATH := src
 
-.PHONY: check-python install test smoke console-smoke ci
+.PHONY: check-python install test smoke console-smoke privacy-scan ci
 
 check-python:
 	@$(PYTHON) -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 'Python 3.10+ is required for install/ci. Set PYTHON=python3.10 or use a 3.10+ virtualenv.')"
@@ -29,4 +29,7 @@ smoke:
 console-smoke:
 	$(CLI) --help >/dev/null
 
-ci: install test smoke console-smoke
+privacy-scan:
+	$(PYTHON) scripts/privacy_scan.py
+
+ci: install test smoke console-smoke privacy-scan

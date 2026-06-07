@@ -27,3 +27,6 @@ jobs:
 
       - name: Run CLI smoke test
         run: make smoke console-smoke PYTHON=python
+
+      - name: Run privacy scan
+        run: make privacy-scan PYTHON=python
