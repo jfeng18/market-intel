@@ -449,9 +449,11 @@ def render_pool_universe_text(payload: Dict[str, object]) -> str:
             data.get("mode") or "-",
             data.get("limit") if data.get("limit") is not None else "none",
         ),
-        "",
-        "待补字段",
     ]
+    quote_only = data.get("quote_only", {}) if isinstance(data.get("quote_only"), dict) else {}
+    if quote_only:
+        lines.append("- quote-only %s | %s" % (quote_only.get("record_count", 0), quote_only.get("summary") or ""))
+    lines.extend(["", "待补字段"])
     lines.extend(render_universe_patch_field_counts(data.get("rows", [])))
     lines.extend(["", "补数样本"])
     lines.extend(render_universe_patch_rows(data.get("rows", [])))

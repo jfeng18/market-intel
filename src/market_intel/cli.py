@@ -134,6 +134,7 @@ def build_parser() -> argparse.ArgumentParser:
     universe_parser.add_argument("--mock", action="store_true")
     universe_parser.add_argument("--runtime", action="store_true")
     universe_parser.add_argument("--holdings-file")
+    universe_parser.add_argument("--quotes-file")
     universe_parser.add_argument("--output")
     universe_parser.add_argument("--dry-run", action="store_true")
     universe_parser.add_argument("--limit", type=int)
@@ -443,6 +444,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                 args.output,
                 args.dry_run,
                 args.limit,
+                args.quotes_file,
             )
             if args.text:
                 print(render_pool_universe_text(result))
@@ -920,6 +922,7 @@ def handle_pool_universe(
     output: Optional[str] = None,
     dry_run: bool = False,
     limit: Optional[int] = None,
+    quotes_file: Optional[str] = None,
 ) -> Dict[str, Any]:
     # Universe patch export only needs the pool/universe view. Runtime universe is
     # loaded by the pool loader, so do not require runtime holdings here.
@@ -953,15 +956,18 @@ def handle_pool_universe(
         if str(item.raw.get("pool_source") or "").startswith("universe:") or item.raw.get("universe_schema")
     ]
     output_path = Path(output) if output else Path("data/runtime/a_share_universe_patch.csv")
+    quote_patch = quote_only_universe_patch_rows(pool, items, use_mock, use_runtime, quotes_file)
     export_data = export_universe_patch_csv(
         universe_items,
         output_path,
         dry_run=dry_run,
         limit=limit,
+        extra_rows=quote_patch["rows"],
     )
     export_data["pool"] = pool
     export_data["mode"] = "runtime" if use_runtime else "file"
     export_data["coverage_summary"] = universe.get("sector_profile", {})
+    export_data["quote_only"] = quote_patch
     export_data["agent_contract"] = pool_universe_contract()
     return envelope(
         command="pool.universe",
@@ -985,8 +991,62 @@ def pool_universe_contract() -> Dict[str, object]:
             "data.fields",
             "data.rows",
             "data.next_commands",
+            "data.quote_only",
+            "data.quote_only.record_count",
+            "data.quote_only.rows",
         ],
         "boundary": "pool universe 只导出 A 股基础清单补数字段草稿，不自动写入 runtime；写入需 import universe --merge。",
+    }
+
+
+def quote_only_universe_patch_rows(
+    pool: str,
+    items: List[PoolItem],
+    use_mock: bool,
+    use_runtime: bool,
+    quotes_file: Optional[str],
+) -> Dict[str, object]:
+    if use_runtime and not quotes_file:
+        paths = runtime_paths()
+        runtime_quotes = Path(paths["quotes"])
+        if runtime_quotes.exists():
+            quotes_file = str(runtime_quotes)
+    if not (use_mock or quotes_file):
+        return {
+            "available": False,
+            "record_count": 0,
+            "source": None,
+            "rows": [],
+            "summary": "未提供行情源，未生成 quote-only 补丁行。",
+        }
+    quotes, quote_mode, quote_source = resolve_quotes(use_mock, quotes_file)
+    scan = build_market_scan(items, quotes, holdings=[], top=8, candidate_top=max(len(quotes), 12), pool=pool)
+    candidates = scan.get("candidate_securities", []) if isinstance(scan.get("candidate_securities"), list) else []
+    rows = [
+        quote_only_universe_patch_row(candidate)
+        for candidate in candidates
+        if isinstance(candidate, dict) and candidate.get("coverage_state") == "quote_only"
+    ]
+    return {
+        "available": bool(rows),
+        "record_count": len(rows),
+        "source": privacy_safe_source(quote_source, "quotes", "runtime" if use_runtime else quote_mode),
+        "rows": rows,
+        "summary": "行情中有 %s 个 A 股标的未进入 all-a 覆盖底座。" % len(rows) if rows else "行情中暂无 quote-only 标的。",
+    }
+
+
+def quote_only_universe_patch_row(candidate: Dict[str, object]) -> Dict[str, object]:
+    return {
+        "symbol": str(candidate.get("symbol") or ""),
+        "name": str(candidate.get("name") or candidate.get("symbol") or ""),
+        "industry": "",
+        "concepts": "",
+        "index_membership": "",
+        "listing_status": "listed",
+        "source": "scan.quote_only",
+        "missing_fields": "industry;concepts;index_membership",
+        "fill_hint": "补行业；补概念，多个用分号分隔；补指数成分，多个用分号分隔",
     }
 
 

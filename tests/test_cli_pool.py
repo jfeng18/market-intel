@@ -369,6 +369,67 @@ def test_pool_universe_exports_patch_template(monkeypatch, tmp_path):
     assert str(universe_file) not in json.dumps(write_payload, ensure_ascii=False)
 
 
+def test_pool_universe_exports_quote_only_candidates_from_quotes(tmp_path):
+    quotes_file = tmp_path / "quotes.json"
+    quotes_file.write_text(
+        json.dumps(
+            {
+                "quotes": [
+                    {
+                        "symbol": "600000",
+                        "name": "浦发银行",
+                        "trade_date": "2026-06-06",
+                        "last_price": 9.8,
+                        "change_pct": 6.8,
+                        "amount": 2100000000,
+                        "amount_ratio": 2.1,
+                        "turnover_rate": 1.8,
+                        "amplitude_pct": 5.3,
+                        "is_limit_up": False,
+                        "is_stage_high": True,
+                        "intraday_fade_pct": 0.5,
+                        "source": "test",
+                    },
+                    {
+                        "symbol": "300308",
+                        "name": "中际旭创",
+                        "trade_date": "2026-06-06",
+                        "last_price": 168.5,
+                        "change_pct": 1.2,
+                        "amount": 1200000000,
+                        "amount_ratio": 1.1,
+                        "turnover_rate": 1.4,
+                        "amplitude_pct": 3.2,
+                        "is_limit_up": False,
+                        "is_stage_high": False,
+                        "intraday_fade_pct": 0.3,
+                        "source": "test",
+                    },
+                ]
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    payload = handle_pool_universe("all-a", quotes_file=str(quotes_file), dry_run=True)
+    text = render_pool_universe_text(payload)
+    row = payload["data"]["rows"][0]
+
+    assert payload["ok"] is True
+    assert payload["data"]["record_count"] == 1
+    assert payload["data"]["quote_only"]["record_count"] == 1
+    assert payload["data"]["quote_only"]["source"] == "quotes_file"
+    assert row["symbol"] == "600000"
+    assert row["name"] == "浦发银行"
+    assert row["source"] == "scan.quote_only"
+    assert row["missing_fields"] == "industry;concepts;index_membership"
+    assert "quote-only 1" in text
+    assert "600000 浦发银行" in text
+    assert str(quotes_file) not in json.dumps(payload, ensure_ascii=False)
+    assert str(quotes_file) not in text
+
+
 def test_pool_universe_runtime_does_not_require_runtime_holdings(monkeypatch, tmp_path):
     runtime = tmp_path / "runtime"
     monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(runtime))
@@ -979,10 +1040,45 @@ def test_pool_universe_cli_smoke(monkeypatch, tmp_path, cli_cmd):
         text=True,
         capture_output=True,
     )
+    quotes_file = tmp_path / "quotes.json"
+    quotes_file.write_text(
+        json.dumps(
+            {
+                "quotes": [
+                    {
+                        "symbol": "600000",
+                        "name": "浦发银行",
+                        "trade_date": "2026-06-06",
+                        "last_price": 9.8,
+                        "change_pct": 6.8,
+                        "amount": 2100000000,
+                        "amount_ratio": 2.1,
+                        "turnover_rate": 1.8,
+                        "amplitude_pct": 5.3,
+                        "is_limit_up": False,
+                        "is_stage_high": True,
+                        "intraday_fade_pct": 0.5,
+                        "source": "test",
+                    }
+                ]
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    quote_result = subprocess.run(
+        cli_cmd("pool", "universe", "--quotes-file", str(quotes_file), "--dry-run", "--json"),
+        check=True,
+        text=True,
+        capture_output=True,
+    )
 
     payload = json.loads(json_result.stdout)
+    quote_payload = json.loads(quote_result.stdout)
     assert payload["command"] == "pool.universe"
     assert payload["data"]["rows"][0]["symbol"] == "000001"
+    assert quote_payload["data"]["quote_only"]["record_count"] == 1
+    assert any(row["symbol"] == "600000" for row in quote_payload["data"]["rows"])
     assert payload["data"]["fields"] == [
         "symbol",
         "name",

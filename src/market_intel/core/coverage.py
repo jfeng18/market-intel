@@ -245,8 +245,9 @@ def export_universe_patch_csv(
     output_path: Path,
     dry_run: bool = False,
     limit: Optional[int] = None,
+    extra_rows: Optional[List[Dict[str, object]]] = None,
 ) -> Dict[str, object]:
-    rows = universe_patch_rows(universe_items, limit=limit)
+    rows = merge_universe_patch_rows(universe_patch_rows(universe_items), extra_rows or [], limit=limit)
     written = False
     if rows and not dry_run:
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -266,6 +267,26 @@ def export_universe_patch_csv(
         "warnings": universe_patch_export_warnings(rows),
         "next_commands": universe_patch_export_next_commands(output_path, written, rows),
     }
+
+
+def merge_universe_patch_rows(
+    base_rows: List[Dict[str, object]],
+    extra_rows: List[Dict[str, object]],
+    limit: Optional[int] = None,
+) -> List[Dict[str, object]]:
+    merged = []
+    seen = set()
+    for row in base_rows + extra_rows:
+        symbol = normalize_symbol_text(row.get("symbol"))
+        if not symbol or symbol in seen:
+            continue
+        seen.add(symbol)
+        normalized = {field: str(row.get(field) or "") for field in UNIVERSE_PATCH_CSV_FIELDS}
+        normalized["symbol"] = symbol
+        merged.append(normalized)
+        if limit is not None and len(merged) >= max(0, limit):
+            break
+    return merged
 
 
 def review_expansion_csv(csv_path: Path) -> Dict[str, object]:
