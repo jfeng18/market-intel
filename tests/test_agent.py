@@ -1112,6 +1112,53 @@ def test_agent_next_returns_compact_handoff(monkeypatch, tmp_path):
     assert "sell" not in text.lower()
 
 
+def test_agent_next_mock_returns_demo_handoff_without_runtime(monkeypatch, tmp_path):
+    monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(tmp_path / "runtime"))
+
+    payload = handle_agent_next(use_mock=True, max_steps=5)
+    data = payload["data"]
+    text = render_agent_next_text(payload)
+
+    assert payload["ok"] is True
+    assert payload["command"] == "agent.next"
+    assert data["pool"] == "all-a"
+    assert data["state"] == "demo"
+    assert data["source_agent_run_state"] == "demo_ready"
+    assert data["run_limits"]["mode"] == "mock"
+    assert data["coverage_context"]["pool"] == "all-a"
+    assert data["market_scan"]["top_candidates"]
+    assert data["review_handoff"]["handoff_state"] == "demo"
+    assert data["review_handoff"]["command_chain"]
+    assert data["review_handoff"]["command_chain"][0]["json_command"] == "market-intel import schema --json"
+    assert data["review_completion"]["checks"]
+    assert data["review_completion"]["ready_for_journal_note"] is False
+    assert data["security_cards"]["cards"]
+    assert data["security_cards"]["cards"][0]["next_json_command"].endswith("--mock --json")
+    assert "market-intel agent next" in text
+    assert "mock 示例" in text
+    assert "单票卡片" in text
+    assert "复盘收尾" in text
+    assert "复盘收尾: 暂无" not in text
+    assert "分 None" not in text
+    assert "buy" not in text.lower()
+    assert "sell" not in text.lower()
+
+
+def test_agent_next_mock_can_focus_symbol(monkeypatch, tmp_path):
+    monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(tmp_path / "runtime"))
+
+    payload = handle_agent_next(use_mock=True, symbol="sz300308")
+    data = payload["data"]
+    focus_commands = [item["json_command"] for item in data["focus_chain"]]
+
+    assert payload["ok"] is True
+    assert data["symbol"] == "300308"
+    assert len(data["security_cards"]["cards"]) == 1
+    assert data["security_cards"]["cards"][0]["symbol"] == "300308"
+    assert focus_commands[0].startswith("market-intel portfolio explain 300308 --mock --json")
+    assert all("300308" in command for command in focus_commands)
+
+
 def test_dashboard_journal_gate_requires_manual_items_before_ready():
     gate = dashboard_journal_gate(
         {
@@ -1733,6 +1780,16 @@ def test_agent_next_cli_smoke(monkeypatch, tmp_path, cli_cmd):
     symbol_data = json.loads(symbol_result.stdout)
     assert symbol_data["data"]["symbol"] == "300308"
     assert symbol_data["data"]["security_cards"]["cards"][0]["symbol"] == "300308"
+
+    mock_result = subprocess.run(
+        cli_cmd("agent", "next", "--mock", "--json"),
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    mock_data = json.loads(mock_result.stdout)
+    assert mock_data["data"]["run_limits"]["mode"] == "mock"
+    assert mock_data["data"]["review_handoff"]["command_chain"]
 
 
 def test_dashboard_cli_smoke(monkeypatch, tmp_path, cli_cmd):

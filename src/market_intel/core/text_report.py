@@ -2706,7 +2706,10 @@ def render_agent_run_security_cards(value: Dict[str, object]) -> List[str]:
             lines.append("      研究流程: %s" % "；".join(render_workflow_step(step) for step in workflow[:3] if isinstance(step, dict)))
         hotspot = item.get("hotspot", {}) if isinstance(item.get("hotspot"), dict) else {}
         if hotspot:
-            lines.append("      热点: %s | 分 %s" % (hotspot.get("chain"), hotspot.get("score")))
+            hotspot_text = "      热点: %s" % (hotspot.get("chain") or "未命名链路")
+            if hotspot.get("score") is not None:
+                hotspot_text += " | 分 %s" % hotspot.get("score")
+            lines.append(hotspot_text)
         risks = item.get("risk_flags", []) if isinstance(item.get("risk_flags"), list) else []
         if risks:
             lines.append("      风险: %s" % "、".join(str(row) for row in risks[:4]))

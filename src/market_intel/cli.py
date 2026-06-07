@@ -343,6 +343,7 @@ def build_parser() -> argparse.ArgumentParser:
     agent_next_parser.add_argument("--max-quote-age-days", type=int, default=3)
     agent_next_parser.add_argument("--max-steps", type=int, default=8)
     agent_next_parser.add_argument("--symbol")
+    agent_next_parser.add_argument("--mock", action="store_true")
     agent_next_parser.add_argument("--json", action="store_true", dest="as_json")
     agent_next_parser.add_argument("--text", action="store_true")
 
@@ -619,7 +620,15 @@ def main(argv: Optional[List[str]] = None) -> int:
                 print(render_agent_run_text(result))
                 return 0
         elif args.resource == "agent" and args.action == "next":
-            result = handle_agent_next(args.pool, args.top, args.map_top, args.max_quote_age_days, args.max_steps, args.symbol)
+            result = handle_agent_next(
+                args.pool,
+                args.top,
+                args.map_top,
+                args.max_quote_age_days,
+                args.max_steps,
+                args.symbol,
+                use_mock=args.mock,
+            )
             if args.text and result["ok"]:
                 print(render_agent_next_text(result))
                 return 0
@@ -2059,8 +2068,11 @@ def handle_agent_next(
     max_quote_age_days: int = 3,
     max_steps: int = 8,
     symbol: Optional[str] = None,
+    use_mock: bool = False,
 ) -> Dict[str, Any]:
     symbol = normalize_cli_symbol(symbol)
+    if use_mock:
+        return handle_mock_agent_next(pool=pool, top=top, map_top=map_top, max_steps=max_steps, symbol=symbol)
     run_payload = handle_agent_run(pool, top=top, map_top=map_top, max_quote_age_days=max_quote_age_days, max_steps=max_steps)
     run_data = run_payload.get("data", {}) if isinstance(run_payload.get("data"), dict) else {}
     digest = run_data.get("review_digest", {}) if isinstance(run_data.get("review_digest"), dict) else {}
@@ -2122,6 +2134,241 @@ def handle_agent_next(
         source=run_payload.get("meta", {}).get("source") if isinstance(run_payload.get("meta"), dict) else None,
         ok=bool(run_payload.get("ok")),
     )
+
+
+def handle_mock_agent_next(
+    pool: str = DEFAULT_POOL,
+    top: int = 5,
+    map_top: int = 2,
+    max_steps: int = 8,
+    symbol: Optional[str] = None,
+) -> Dict[str, Any]:
+    dashboard_payload = handle_mock_dashboard(pool=pool, top=top, map_top=map_top, max_steps=max_steps)
+    dashboard = dashboard_payload.get("data", {}) if isinstance(dashboard_payload.get("data"), dict) else {}
+    handoff = dashboard.get("handoff", {}) if isinstance(dashboard.get("handoff"), dict) else {}
+    handoff = mock_agent_next_handoff(handoff)
+    completion = mock_agent_next_completion(handoff)
+    cards = mock_agent_next_security_cards(dashboard)
+    focus_chain = mock_agent_next_focus_chain(dashboard)
+    if symbol:
+        cards = filter_agent_next_cards_for_symbol(cards, symbol)
+        focus_chain = mock_agent_next_symbol_focus_chain(symbol, cards, focus_chain)
+        if not cards.get("cards"):
+            return envelope(
+                command="agent.next",
+                data={
+                    "pool": pool,
+                    "state": "symbol_not_found",
+                    "summary": "mock 示例里未找到 %s 的单票复核卡片。" % symbol,
+                    "symbol": symbol,
+                    "source_agent_run_state": dashboard.get("state"),
+                    "run_limits": dashboard.get("run_limits", {}),
+                    "coverage_context": dashboard.get("coverage_context", {}),
+                    "market_scan": mock_agent_next_market_scan(dashboard.get("market_pulse", {})),
+                    "focus_chain": [],
+                    "review_handoff": handoff,
+                    "review_completion": completion,
+                    "security_cards": cards,
+                    "agent_contract": agent_next_contract(),
+                },
+                errors=[error("AGENT_NEXT_SYMBOL_NOT_FOUND", "No mock security card found for symbol.", {"symbol": symbol})],
+                source="mock",
+                ok=False,
+            )
+    data = {
+        "pool": pool,
+        "symbol": symbol,
+        "state": handoff.get("handoff_state") or dashboard.get("state"),
+        "summary": handoff.get("summary") or dashboard.get("summary"),
+        "source_agent_run_state": dashboard.get("state"),
+        "run_limits": dashboard.get("run_limits", {}),
+        "coverage_context": dashboard.get("coverage_context", {}),
+        "market_scan": mock_agent_next_market_scan(dashboard.get("market_pulse", {})),
+        "focus_chain": focus_chain,
+        "review_handoff": handoff,
+        "review_completion": completion,
+        "security_cards": cards,
+        "agent_contract": agent_next_contract(),
+    }
+    return envelope(
+        command="agent.next",
+        data=data,
+        warnings=dashboard_payload.get("warnings", []) if isinstance(dashboard_payload.get("warnings"), list) else [],
+        errors=[],
+        source="mock",
+        ok=bool(dashboard_payload.get("ok")),
+    )
+
+
+def mock_agent_next_market_scan(value: object) -> Dict[str, object]:
+    market = value if isinstance(value, dict) else {}
+    rows = dict(market)
+    candidates = market.get("candidates", []) if isinstance(market.get("candidates"), list) else []
+    rows["top_candidates"] = candidates
+    return rows
+
+
+def mock_agent_next_handoff(value: object) -> Dict[str, object]:
+    handoff = dict(value) if isinstance(value, dict) else {}
+    next_read = handoff.get("next_read", []) if isinstance(handoff.get("next_read"), list) else []
+    manual_items = handoff.get("manual_items", []) if isinstance(handoff.get("manual_items"), list) else []
+    if "command_chain" not in handoff:
+        handoff["command_chain"] = review_handoff_command_chain(next_read, manual_items)
+    return handoff
+
+
+def mock_agent_next_completion(handoff: Dict[str, object]) -> Dict[str, object]:
+    base = handoff.get("completion", {}) if isinstance(handoff.get("completion"), dict) else {}
+    next_read = handoff.get("next_read", []) if isinstance(handoff.get("next_read"), list) else []
+    read_count = safe_int(base.get("pending_count"), len(next_read)) or len(next_read)
+    checks = [
+        review_completion_check(
+            "mock_runtime_setup",
+            "准备正式 runtime",
+            "pending" if read_count else "done",
+            "mock 只能验证交接包结构；正式复盘前需要确认导入字段和数据文件。",
+            "market-intel import schema --json",
+            "已确认 quotes、holdings、a_share_universe 和 research_notes 的导入字段。",
+        ),
+        review_completion_check(
+            "mock_to_runtime",
+            "切换正式复盘",
+            "manual_required",
+            "mock 不读取个人 runtime，也不写 journal。",
+            "market-intel init runtime --json",
+            "已初始化 runtime，导入真实数据后重新运行 market-intel dashboard --text。",
+        ),
+        review_completion_check(
+            "mock_handoff",
+            "交接链",
+            "done" if handoff.get("command_chain") else "pending",
+            "已生成 mock 待读命令链，可用于检查 agent next 合同。",
+            first_digest_read_command(
+                [item.get("json_command") for item in next_read if isinstance(item, dict)],
+                "market-intel agent next --mock --json",
+            ),
+            "已确认 command_chain、security_cards 和 market_scan 字段可读。",
+        ),
+    ]
+    blocking = sum(1 for item in checks if item.get("status") == "blocked")
+    manual = sum(1 for item in checks if item.get("status") == "manual_required")
+    pending = sum(1 for item in checks if item.get("status") == "pending")
+    state = str(base.get("completion_state") or "demo")
+    return {
+        "available": True,
+        "completion_state": state,
+        "summary": review_completion_summary(checks, state),
+        "ready_for_journal_note": False,
+        "blocking_count": blocking,
+        "manual_required_count": manual,
+        "pending_count": pending,
+        "checks": checks,
+        "write_policy": "mock 只演示复盘收尾门槛，不自动写入 journal。",
+    }
+
+
+def mock_agent_next_focus_chain(dashboard: Dict[str, object]) -> List[Dict[str, object]]:
+    focus = dashboard.get("today_focus", {}) if isinstance(dashboard.get("today_focus"), dict) else {}
+    chain = focus.get("focus_chain", []) if isinstance(focus.get("focus_chain"), list) else []
+    return [dict(item) for item in chain if isinstance(item, dict)]
+
+
+def mock_agent_next_symbol_focus_chain(
+    symbol: str,
+    cards: Dict[str, object],
+    fallback: List[Dict[str, object]],
+) -> List[Dict[str, object]]:
+    rows: List[Dict[str, object]] = []
+    seen = set()
+    for card in cards.get("cards", []) if isinstance(cards.get("cards"), list) else []:
+        if not isinstance(card, dict):
+            continue
+        for command in [card.get("next_json_command")] + list(card.get("commands", []) if isinstance(card.get("commands"), list) else []):
+            command_text = str(command or "")
+            if not command_text or command_text in seen:
+                continue
+            seen.add(command_text)
+            rows.append(
+                {
+                    "rank": len(rows) + 1,
+                    "source": "security_card",
+                    "title": "%s %s" % (card.get("symbol"), card.get("name") or ""),
+                    "json_command": command_text,
+                    "done_when": "已确认 mock 单票卡片结构；正式复盘需切换 runtime。",
+                    "runnable": digest_command_is_read_only(command_text),
+                    "related_symbols": [symbol],
+                }
+            )
+            if len(rows) >= 3:
+                return rows
+    for item in fallback:
+        if not isinstance(item, dict):
+            continue
+        symbols = item.get("related_symbols", []) if isinstance(item.get("related_symbols"), list) else []
+        command = str(item.get("json_command") or "")
+        if symbols and symbol not in symbols:
+            continue
+        if symbol not in command:
+            continue
+        if command in seen:
+            continue
+        rows.append(dict(item))
+        if len(rows) >= 3:
+            return rows
+    return rows
+
+
+def mock_agent_next_security_cards(dashboard: Dict[str, object]) -> Dict[str, object]:
+    holdings = dashboard.get("portfolio_pulse", {}).get("top_holdings", []) if isinstance(dashboard.get("portfolio_pulse"), dict) else []
+    cards = []
+    for item in holdings:
+        if isinstance(item, dict) and item.get("symbol"):
+            cards.append(mock_agent_next_security_card(item, len(cards) + 1))
+    return {
+        "available": bool(cards),
+        "summary": "mock 单票复核卡片 %s 张，用于演示 agent next 合同。" % len(cards),
+        "cards": cards[:6],
+        "write_policy": "mock 只演示单票复核结构，不读取个人 runtime，不生成交易指令。",
+    }
+
+
+def mock_agent_next_security_card(item: Dict[str, object], rank: int) -> Dict[str, object]:
+    symbol = str(item.get("symbol") or "")
+    command = str(item.get("primary_json_command") or "")
+    hotspot = item.get("hotspot", {}) if isinstance(item.get("hotspot"), dict) else {}
+    hotspot = dict(hotspot) if hotspot else {}
+    if hotspot and hotspot.get("score") is None and item.get("review_score") is not None:
+        hotspot["score"] = item.get("review_score")
+    return {
+        "rank": rank,
+        "symbol": symbol,
+        "name": item.get("name"),
+        "priority": item.get("priority"),
+        "review_score": item.get("review_score"),
+        "coverage_state": item.get("coverage_state"),
+        "coverage_state_reasons": [],
+        "research_status": {"available": False, "confirmed": False, "status": "mock"},
+        "research_workflow": [],
+        "change_priority": item.get("change_priority"),
+        "has_quote": bool(item.get("has_quote")),
+        "in_hotspot": bool(item.get("hotspot")),
+        "hotspot": hotspot,
+        "quote": None,
+        "risk_flags": list(item.get("risk_flags", []))[:6] if isinstance(item.get("risk_flags"), list) else [],
+        "exposure_groups": [],
+        "overlap_groups": list(item.get("overlap_groups", []))[:4] if isinstance(item.get("overlap_groups"), list) else [],
+        "change": {},
+        "supporting_evidence": dedupe_queue_texts([item.get("primary_question"), "mock 示例，正式复盘需导入 runtime。"])[:4],
+        "open_gaps": ["mock 示例不能替代真实持仓和行情。"],
+        "questions": [item.get("primary_question") or "读取该持仓的行情、热点、风险和组合暴露。"],
+        "next_json_command": command,
+        "commands": [command] if command else [],
+        "watch_items": [],
+        "journal_note": {
+            "available": False,
+            "write_policy": "mock 不生成 journal note；正式复盘请先导入 runtime。",
+        },
+    }
 
 
 def normalize_cli_symbol(symbol: Optional[str]) -> Optional[str]:
