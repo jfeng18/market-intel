@@ -191,6 +191,7 @@ def compact_market_scan(payload: Optional[Dict[str, object]]) -> Dict[str, objec
         "questions": list(data.get("questions", []))[:5] if isinstance(data.get("questions"), list) else [],
         "next_actions": [
             {
+                "rank": item.get("rank"),
                 "id": item.get("id"),
                 "command": item.get("command"),
                 "done_when": item.get("done_when"),
@@ -467,6 +468,7 @@ def compact_coverage_context(value: object) -> Dict[str, object]:
         "data_quality_queue": compact_coverage_data_quality_queue(data_quality_queue),
         "next_actions": [
             {
+                "rank": item.get("rank"),
                 "id": item.get("id"),
                 "command": item.get("command"),
                 "done_when": item.get("done_when"),
@@ -1519,6 +1521,7 @@ def agent_briefing_contract(max_quote_age_days: int) -> Dict[str, object]:
             "data.daily.coverage_context.universe.enrichment_queue",
             "data.daily.coverage_context.data_quality_queue",
             "data.daily.coverage_context.next_actions",
+            "data.daily.coverage_context.next_actions[].rank",
             "data.daily.risk_register",
             "data.daily.risk_register[].severity",
             "data.daily.risk_register[].affected_symbols",

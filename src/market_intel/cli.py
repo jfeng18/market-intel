@@ -3494,6 +3494,7 @@ def compact_dashboard_coverage_context(coverage: Dict[str, object]) -> Dict[str,
         "top_data_quality_queue": compact_data_quality_queue(data_quality_queue),
         "next_actions": [
             {
+                "rank": item.get("rank"),
                 "id": item.get("id"),
                 "command": item.get("command"),
                 "done_when": item.get("done_when"),
@@ -4894,6 +4895,7 @@ def dashboard_contract() -> Dict[str, object]:
             "data.coverage_context.top_gaps",
             "data.coverage_context.top_data_quality_queue",
             "data.coverage_context.next_actions",
+            "data.coverage_context.next_actions[].rank",
             "data.market_pulse",
             "data.market_pulse.market_breadth",
             "data.market_pulse.top_groups",
@@ -5340,6 +5342,7 @@ def agent_run_digest_coverage_context(daily: Dict[str, object]) -> Dict[str, obj
         "top_data_quality_queue": compact_data_quality_queue(data_quality_queue),
         "next_actions": [
             {
+                "rank": item.get("rank"),
                 "id": item.get("id"),
                 "command": item.get("command"),
                 "done_when": item.get("done_when"),
@@ -8921,6 +8924,7 @@ def agent_run_contract() -> Dict[str, object]:
             "data.review_digest.coverage_context.universe.enrichment_queue",
             "data.review_digest.coverage_context.top_data_quality_queue",
             "data.review_digest.coverage_context.next_actions",
+            "data.review_digest.coverage_context.next_actions[].rank",
             "data.review_digest.market_scan",
             "data.review_digest.market_scan.market_breadth",
             "data.review_digest.market_scan.top_groups",

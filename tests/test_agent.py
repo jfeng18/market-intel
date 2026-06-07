@@ -553,6 +553,7 @@ def test_agent_run_ready_executes_read_only_and_skips_writes(monkeypatch, tmp_pa
     assert digest["coverage_context"]["pool"] == "ai-energy"
     assert digest["coverage_context"]["universe"]["available"] is False
     assert isinstance(digest["coverage_context"]["top_data_quality_queue"], list)
+    assert digest["coverage_context"]["next_actions"][0]["rank"] == 1
     assert digest["market_scan"]["available"] is True
     assert digest["market_scan"]["read"] is True
     assert digest["market_scan"]["top_groups"]
@@ -563,6 +564,7 @@ def test_agent_run_ready_executes_read_only_and_skips_writes(monkeypatch, tmp_pa
     assert "data.review_digest.coverage_context.universe.sector_profile" in data["agent_contract"]["stable_fields"]
     assert "data.review_digest.coverage_context.universe.enrichment_queue" in data["agent_contract"]["stable_fields"]
     assert "data.review_digest.coverage_context.top_data_quality_queue" in data["agent_contract"]["stable_fields"]
+    assert "data.review_digest.coverage_context.next_actions[].rank" in data["agent_contract"]["stable_fields"]
     assert "data.review_digest.market_scan" in data["agent_contract"]["stable_fields"]
     assert "data.review_digest.market_scan.top_groups" in data["agent_contract"]["stable_fields"]
     assert "data.review_digest.market_scan.top_candidates" in data["agent_contract"]["stable_fields"]
@@ -1256,6 +1258,7 @@ def test_dashboard_returns_one_screen_workbench(monkeypatch, tmp_path):
     assert data["coverage_context"]["top_gaps"]
     assert data["coverage_context"]["top_data_quality_queue"]
     assert data["coverage_context"]["top_data_quality_queue"][0]["samples"]
+    assert data["coverage_context"]["next_actions"][0]["rank"] == 1
     assert data["today_focus"]["available"] is True
     assert data["today_focus"]["source"] == "market_scan"
     assert data["today_focus"]["json_command"] == "market-intel scan --runtime --json"
@@ -1346,6 +1349,7 @@ def test_dashboard_returns_one_screen_workbench(monkeypatch, tmp_path):
     assert "data.coverage_context.holdings_coverage.top_review_queue" in data["agent_contract"]["stable_fields"]
     assert "data.coverage_context.top_gaps" in data["agent_contract"]["stable_fields"]
     assert "data.coverage_context.top_data_quality_queue" in data["agent_contract"]["stable_fields"]
+    assert "data.coverage_context.next_actions[].rank" in data["agent_contract"]["stable_fields"]
     assert "data.market_pulse.market_breadth" in data["agent_contract"]["stable_fields"]
     assert "data.market_pulse.candidate_queue" in data["agent_contract"]["stable_fields"]
     assert "data.market_pulse.candidates" in data["agent_contract"]["stable_fields"]
@@ -1426,6 +1430,7 @@ def test_dashboard_mock_returns_demo_workbench_without_runtime(monkeypatch, tmp_
     assert data["positioning"]["differentiators"][1]["agent_path"] == "data.portfolio_pulse"
     assert data["coverage_context"]["available"] is True
     assert data["coverage_context"]["universe"]["available"] is False
+    assert data["coverage_context"]["next_actions"][0]["rank"] == 1
     assert "matched" not in data["coverage_context"]["holdings_coverage"]
     assert "top_review_queue" in data["coverage_context"]["holdings_coverage"]
     assert data["today_focus"]["available"] is True
