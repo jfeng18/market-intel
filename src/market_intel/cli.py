@@ -2057,9 +2057,15 @@ def handle_agent_next(
     cards = digest.get("security_cards", {}) if isinstance(digest.get("security_cards"), dict) else {}
     coverage_context = digest.get("coverage_context", {}) if isinstance(digest.get("coverage_context"), dict) else {}
     market_scan = digest.get("market_scan", {}) if isinstance(digest.get("market_scan"), dict) else {}
+    focus_chain = agent_next_focus_chain(pool, digest, handoff)
     if symbol:
         handoff = filter_agent_next_handoff_for_symbol(handoff, symbol)
         cards = filter_agent_next_cards_for_symbol(cards, symbol)
+        focus_chain = [
+            item
+            for item in focus_chain
+            if not item.get("related_symbols") or symbol in item.get("related_symbols", [])
+        ]
         if not cards.get("cards"):
             return envelope(
                 command="agent.next",
@@ -2072,6 +2078,7 @@ def handle_agent_next(
                     "run_limits": run_data.get("run_limits", {}),
                     "coverage_context": coverage_context,
                     "market_scan": market_scan,
+                    "focus_chain": focus_chain,
                     "review_handoff": handoff,
                     "review_completion": completion,
                     "security_cards": cards,
@@ -2090,6 +2097,7 @@ def handle_agent_next(
         "run_limits": run_data.get("run_limits", {}),
         "coverage_context": coverage_context,
         "market_scan": market_scan,
+        "focus_chain": focus_chain,
         "review_handoff": handoff,
         "review_completion": completion,
         "security_cards": cards,
@@ -2103,6 +2111,16 @@ def handle_agent_next(
         source=run_payload.get("meta", {}).get("source") if isinstance(run_payload.get("meta"), dict) else None,
         ok=bool(run_payload.get("ok")),
     )
+
+
+def agent_next_focus_chain(pool: str, digest: Dict[str, object], handoff: Dict[str, object]) -> List[Dict[str, object]]:
+    coverage = dashboard_coverage_context(digest)
+    actions = dashboard_action_lane(digest, coverage)
+    plan = dashboard_review_plan(pool, digest)
+    compact_handoff = dashboard_handoff({"review_handoff": handoff, "review_completion": digest.get("review_completion", {})})
+    today_focus = dashboard_today_focus(actions, plan, compact_handoff)
+    chain = today_focus.get("focus_chain", []) if isinstance(today_focus.get("focus_chain"), list) else []
+    return [dict(item) for item in chain if isinstance(item, dict)]
 
 
 def handle_dashboard(
@@ -7847,6 +7865,10 @@ def agent_next_contract() -> Dict[str, object]:
             "data.market_scan.candidate_queue",
             "data.market_scan.top_candidates[].ranking_breakdown",
             "data.market_scan.top_candidates[].universe_context",
+            "data.focus_chain",
+            "data.focus_chain[].source",
+            "data.focus_chain[].json_command",
+            "data.focus_chain[].done_when",
             "data.review_handoff",
             "data.review_handoff.handoff_state",
             "data.review_handoff.resume_prompt",

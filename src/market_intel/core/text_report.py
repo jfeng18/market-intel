@@ -2370,6 +2370,12 @@ def render_agent_next_text(payload: Dict[str, object]) -> str:
     ]
     if data.get("symbol"):
         lines.append("- 聚焦标的: %s" % data.get("symbol"))
+    focus_chain = data.get("focus_chain", []) if isinstance(data.get("focus_chain"), list) else []
+    if focus_chain:
+        lines.extend(["", "接力链"])
+        for item in focus_chain[:3]:
+            if isinstance(item, dict):
+                lines.append("- #%s %s | %s" % (item.get("rank"), item.get("title"), item.get("json_command")))
     coverage = data.get("coverage_context", {}) if isinstance(data.get("coverage_context"), dict) else {}
     if coverage:
         lines.extend(["", "覆盖底座"])

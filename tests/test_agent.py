@@ -980,6 +980,12 @@ def test_agent_next_returns_compact_handoff(monkeypatch, tmp_path):
     assert data["market_scan"]["top_candidates"][0]["review_focus"]["next_command"]
     assert data["market_scan"]["top_candidates"][0]["review_focus"]["next_command"] == data["market_scan"]["top_candidates"][0]["commands"][0]
     assert "universe_context" in data["market_scan"]["top_candidates"][0]
+    assert [item["source"] for item in data["focus_chain"][:3]] == [
+        "coverage_review",
+        "market_scan",
+        "candidate_queue",
+    ]
+    assert " --json" in data["focus_chain"][0]["json_command"]
     assert data["review_handoff"]["command_chain"]
     assert data["review_handoff"]["command_chain"][0]["json_command"].endswith("--json")
     assert any(item["source"] == "candidate_queue" for item in data["review_handoff"]["command_chain"])
@@ -995,8 +1001,10 @@ def test_agent_next_returns_compact_handoff(monkeypatch, tmp_path):
     assert "data.market_scan.candidate_queue" in data["agent_contract"]["stable_fields"]
     assert "data.market_scan.top_candidates[].ranking_breakdown" in data["agent_contract"]["stable_fields"]
     assert "data.market_scan.top_candidates[].universe_context" in data["agent_contract"]["stable_fields"]
+    assert "data.focus_chain[].json_command" in data["agent_contract"]["stable_fields"]
     assert "data.review_handoff.command_chain[].json_command" in data["agent_contract"]["stable_fields"]
     assert "market-intel agent next" in text
+    assert "接力链" in text
     assert "覆盖底座" in text
     assert "全市场扫描" in text
     assert "焦点:" in text
