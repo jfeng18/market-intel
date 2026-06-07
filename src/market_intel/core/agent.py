@@ -181,6 +181,7 @@ def compact_market_scan(payload: Optional[Dict[str, object]]) -> Dict[str, objec
         "available": True,
         "summary": data.get("summary"),
         "scan_mode": data.get("scan_mode"),
+        "market_breadth": compact_market_breadth(data.get("market_breadth", {})),
         "quote_count": data.get("quote_count", 0),
         "matched_quote_count": data.get("matched_quote_count", 0),
         "unmatched_quote_count": data.get("unmatched_quote_count", 0),
@@ -197,6 +198,27 @@ def compact_market_scan(payload: Optional[Dict[str, object]]) -> Dict[str, objec
             if isinstance(item, dict)
         ],
         "errors": [],
+    }
+
+
+def compact_market_breadth(value: object) -> Dict[str, object]:
+    breadth = value if isinstance(value, dict) else {}
+    if not breadth:
+        return {}
+    return {
+        "state": breadth.get("state"),
+        "summary": breadth.get("summary"),
+        "matched_quote_count": breadth.get("matched_quote_count", 0),
+        "up_count": breadth.get("up_count", 0),
+        "down_count": breadth.get("down_count", 0),
+        "up_ratio": breadth.get("up_ratio", 0),
+        "active_count": breadth.get("active_count", 0),
+        "active_ratio": breadth.get("active_ratio", 0),
+        "strong_count": breadth.get("strong_count", 0),
+        "stage_high_count": breadth.get("stage_high_count", 0),
+        "active_group_count": breadth.get("active_group_count", 0),
+        "strong_group_count": breadth.get("strong_group_count", 0),
+        "interpretation": breadth.get("interpretation"),
     }
 
 
@@ -1357,6 +1379,7 @@ def agent_briefing_contract(max_quote_age_days: int) -> Dict[str, object]:
             "data.runtime.readiness",
             "data.runtime.validation",
             "data.market_scan",
+            "data.market_scan.market_breadth",
             "data.market_scan.sector_groups",
             "data.market_scan.candidate_securities",
             "data.market_scan.candidate_securities[].universe_context",

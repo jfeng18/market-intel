@@ -28,11 +28,13 @@ def build_market_scan(
     groups = build_scan_groups(quoted_items)
     symbol_context = build_symbol_context(quoted_items, groups)
     candidates = build_scan_candidates(quoted_items, holding_symbols, symbol_context, limit=candidate_top, pool=pool)
+    market_breadth = build_market_breadth(quotes, quoted_items, groups)
     scan_mode = "all_a_universe" if any(has_universe_context(item) for item, _ in quoted_items) else "pool_chain_seed"
 
     return {
-        "summary": scan_summary(quotes, quoted_items, groups, candidates, scan_mode),
+        "summary": scan_summary(quotes, quoted_items, groups, candidates, scan_mode, market_breadth),
         "scan_mode": scan_mode,
+        "market_breadth": market_breadth,
         "quote_count": len(quotes),
         "matched_quote_count": len(quoted_items),
         "unmatched_quote_count": max(len(quotes) - len(quoted_items), 0),
@@ -140,6 +142,126 @@ def build_scan_group(key: GroupKey, members: List[Tuple[PoolItem, Quote]]) -> Di
         "explain": "%s%s 扫描分 %.2f，活跃 %s/%s，领涨 %s。"
         % (group_type_label(group_type), name, score, active_count, member_count, leader_names(leaders)),
     }
+
+
+def build_market_breadth(
+    quotes: List[Quote],
+    quoted_items: List[Tuple[PoolItem, Quote]],
+    groups: List[Dict[str, object]],
+) -> Dict[str, object]:
+    matched_quotes = [quote for _, quote in quoted_items]
+    quote_count = len(quotes)
+    matched_count = len(matched_quotes)
+    up_count = sum(1 for quote in matched_quotes if quote.change_pct > 0)
+    down_count = sum(1 for quote in matched_quotes if quote.change_pct < 0)
+    flat_count = max(matched_count - up_count - down_count, 0)
+    active_count = sum(1 for quote in matched_quotes if quote.change_pct >= 3 or quote.amount_ratio >= 1.5)
+    strong_count = sum(1 for quote in matched_quotes if quote.change_pct >= 5 or quote.is_limit_up)
+    stage_high_count = sum(1 for quote in matched_quotes if quote.is_stage_high)
+    avg_change = average(quote.change_pct for quote in matched_quotes)
+    avg_amount_ratio = average(quote.amount_ratio for quote in matched_quotes)
+    active_group_count = sum(1 for group in groups if int(group.get("active_member_count") or 0) >= 2)
+    strong_group_count = sum(1 for group in groups if float(group.get("score") or 0) >= 70)
+    state = market_breadth_state(matched_count, up_count, active_count, active_group_count)
+    summary = market_breadth_summary(
+        state,
+        matched_count,
+        up_count,
+        down_count,
+        active_count,
+        strong_count,
+        active_group_count,
+        strong_group_count,
+    )
+    return {
+        "state": state,
+        "summary": summary,
+        "quote_count": quote_count,
+        "matched_quote_count": matched_count,
+        "matched_ratio": round(matched_count / quote_count, 4) if quote_count else 0,
+        "up_count": up_count,
+        "down_count": down_count,
+        "flat_count": flat_count,
+        "up_ratio": round(up_count / matched_count, 4) if matched_count else 0,
+        "active_count": active_count,
+        "active_ratio": round(active_count / matched_count, 4) if matched_count else 0,
+        "strong_count": strong_count,
+        "strong_ratio": round(strong_count / matched_count, 4) if matched_count else 0,
+        "stage_high_count": stage_high_count,
+        "avg_change_pct": round(avg_change, 2),
+        "avg_amount_ratio": round(avg_amount_ratio, 2),
+        "active_group_count": active_group_count,
+        "strong_group_count": strong_group_count,
+        "top_group_count": len(groups),
+        "interpretation": market_breadth_interpretation(state),
+    }
+
+
+def market_breadth_state(
+    matched_count: int,
+    up_count: int,
+    active_count: int,
+    active_group_count: int,
+) -> str:
+    if matched_count == 0:
+        return "no_matched_quotes"
+    up_ratio = up_count / matched_count
+    active_ratio = active_count / matched_count
+    if up_ratio >= 0.6 and active_ratio >= 0.35 and active_group_count >= 3:
+        return "broad_strength"
+    if active_ratio >= 0.25 and active_group_count >= 2:
+        return "structured_strength"
+    if active_count > 0:
+        return "thin_strength"
+    if up_ratio >= 0.5:
+        return "mild_rebound"
+    return "weak_market"
+
+
+def market_breadth_summary(
+    state: str,
+    matched_count: int,
+    up_count: int,
+    down_count: int,
+    active_count: int,
+    strong_count: int,
+    active_group_count: int,
+    strong_group_count: int,
+) -> str:
+    return "%s：上涨 %s/%s，下跌 %s，活跃 %s，强势 %s；活跃板块 %s，强板块 %s。" % (
+        market_breadth_state_label(state),
+        up_count,
+        matched_count,
+        down_count,
+        active_count,
+        strong_count,
+        active_group_count,
+        strong_group_count,
+    )
+
+
+def market_breadth_state_label(value: object) -> str:
+    labels = {
+        "broad_strength": "普遍走强",
+        "structured_strength": "结构性走强",
+        "thin_strength": "局部活跃",
+        "mild_rebound": "温和修复",
+        "weak_market": "弱势整理",
+        "no_matched_quotes": "无匹配行情",
+    }
+    return labels.get(str(value), str(value or "未知"))
+
+
+def market_breadth_interpretation(state: str) -> str:
+    mapping = {
+        "broad_strength": "先看板块扩散和持仓是否跟随，避免只追单日涨幅。",
+        "structured_strength": "优先复核强板块是否多标的共振，再看候选证据缺口。",
+        "thin_strength": "强势集中在少数标的，需确认是否单票驱动。",
+        "mild_rebound": "上涨面尚可但活跃度有限，重点看持续性证据。",
+        "weak_market": "整体偏弱，候选应降权解读并优先看风险。",
+        "no_matched_quotes": "先补行情源和复盘池匹配，再解读市场强弱。",
+    }
+    return mapping.get(state, "先确认行情覆盖和板块共振质量。")
 
 
 def leader_row(item: PoolItem, quote: Quote) -> Dict[str, object]:
@@ -631,6 +753,7 @@ def scan_summary(
     groups: List[Dict[str, object]],
     candidates: List[Dict[str, object]],
     scan_mode: str,
+    market_breadth: Dict[str, object],
 ) -> str:
     mode_text = "全 A 基础清单" if scan_mode == "all_a_universe" else "复盘池链路种子"
     top_group = groups[0] if groups else {}
@@ -645,11 +768,13 @@ def scan_summary(
     candidate_text = "暂无候选"
     if top_candidate:
         candidate_text = "%s %s" % (top_candidate.get("symbol"), top_candidate.get("name"))
-    return "%s 扫描：行情 %s 条，匹配复盘池 %s 条，板块 %s 个；最强 %s；首个候选 %s。" % (
+    breadth_text = market_breadth.get("summary") or "暂无宽度摘要。"
+    return "%s 扫描：行情 %s 条，匹配复盘池 %s 条，板块 %s 个；%s；最强 %s；首个候选 %s。" % (
         mode_text,
         len(quotes),
         len(quoted_items),
         len(groups),
+        breadth_text.rstrip("。"),
         group_text,
         candidate_text,
     )
@@ -704,6 +829,7 @@ def scan_contract() -> Dict[str, object]:
         "stable_fields": [
             "data.summary",
             "data.scan_mode",
+            "data.market_breadth",
             "data.coverage_context",
             "data.coverage_context.universe.sector_profile",
             "data.coverage_context.top_data_quality_queue",

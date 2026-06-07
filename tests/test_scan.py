@@ -15,6 +15,9 @@ def test_scan_mock_defaults_to_all_a_seed():
     assert payload["warnings"] == []
     assert data["pool"] == "all-a"
     assert data["scan_mode"] == "pool_chain_seed"
+    assert data["market_breadth"]["state"] == "broad_strength"
+    assert data["market_breadth"]["up_count"] == 9
+    assert data["market_breadth"]["active_group_count"] == 3
     assert data["sector_groups"]
     assert data["candidate_securities"]
     assert data["candidate_securities"][0]["why_now"]
@@ -28,10 +31,13 @@ def test_scan_mock_defaults_to_all_a_seed():
     assert data["coverage_context"]["pool"] == "all-a"
     assert data["coverage_context"]["top_data_quality_queue"]
     assert "data.sector_groups" in data["agent_contract"]["stable_fields"]
+    assert "data.market_breadth" in data["agent_contract"]["stable_fields"]
     assert "data.candidate_securities[].review_focus" in data["agent_contract"]["stable_fields"]
     assert "data.candidate_securities[].review_focus.classification" in data["agent_contract"]["stable_fields"]
     assert "data.candidate_securities[].why_now" in data["agent_contract"]["stable_fields"]
     assert "market-intel scan" in text
+    assert "市场宽度" in text
+    assert "普遍走强" in text
     assert "板块扫描" in text
     assert "候选复盘" in text
     assert "复核焦点" in text
@@ -95,6 +101,9 @@ def test_scan_uses_a_share_universe_groups(monkeypatch, tmp_path):
     assert payload["ok"] is True
     assert data["scan_mode"] == "all_a_universe"
     assert data["matched_quote_count"] == 2
+    assert data["market_breadth"]["state"] == "thin_strength"
+    assert data["market_breadth"]["up_count"] == 2
+    assert data["market_breadth"]["active_count"] == 1
     assert any(group["group_type"] == "industry" and group["name"] == "银行" for group in data["sector_groups"])
     assert any(group["group_type"] == "index" and group["name"] == "沪深300" for group in data["sector_groups"])
     first = data["candidate_securities"][0]
@@ -166,6 +175,67 @@ def test_scan_keeps_universe_context_for_non_leader_members(monkeypatch, tmp_pat
     assert sixth["universe_context"]["context_count"] == 4
     assert sixth["sector_contexts"][0]["member_count"] == 6
     assert "全 A 归属" in sixth["why_now"]
+
+
+def test_scan_breadth_classifies_weak_market(monkeypatch, tmp_path):
+    universe_file = tmp_path / "a_share_universe.csv"
+    universe_file.write_text(
+        "证券代码,证券名称,行业,概念,指数成分,上市状态\n"
+        "000001,平安银行,银行,股份行,沪深300,listed\n"
+        "600519,贵州茅台,食品饮料,白酒,沪深300,listed\n",
+        encoding="utf-8",
+    )
+    quotes_file = tmp_path / "quotes.json"
+    quotes_file.write_text(
+        json.dumps(
+            {
+                "quotes": [
+                    {
+                        "symbol": "000001",
+                        "trade_date": "2026-06-06",
+                        "last_price": 12.3,
+                        "change_pct": -2.2,
+                        "amount": 100000000,
+                        "amount_ratio": 0.8,
+                        "turnover_rate": 1.0,
+                        "amplitude_pct": 2.0,
+                        "is_limit_up": False,
+                        "is_stage_high": False,
+                        "intraday_fade_pct": 1.8,
+                        "source": "test",
+                    },
+                    {
+                        "symbol": "600519",
+                        "trade_date": "2026-06-06",
+                        "last_price": 1600,
+                        "change_pct": -1.1,
+                        "amount": 200000000,
+                        "amount_ratio": 0.9,
+                        "turnover_rate": 0.7,
+                        "amplitude_pct": 1.8,
+                        "is_limit_up": False,
+                        "is_stage_high": False,
+                        "intraday_fade_pct": 1.0,
+                        "source": "test",
+                    },
+                ]
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("MARKET_INTEL_A_SHARE_UNIVERSE_PATHS", str(universe_file))
+
+    payload = handle_scan("all-a", use_mock=False, quotes_file=str(quotes_file), top=5, candidate_top=3)
+    breadth = payload["data"]["market_breadth"]
+    text = render_scan_text(payload)
+
+    assert payload["ok"] is True
+    assert breadth["state"] == "weak_market"
+    assert breadth["up_count"] == 0
+    assert breadth["active_count"] == 0
+    assert "弱势整理" in breadth["summary"]
+    assert "弱势整理" in text
 
 
 def test_scan_requires_quote_source_has_text_guidance():

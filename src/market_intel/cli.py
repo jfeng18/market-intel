@@ -2226,6 +2226,7 @@ def mock_dashboard_market_pulse(pool: str, scan: Dict[str, object]) -> Dict[str,
         "available": bool(scan),
         "summary": scan.get("summary") or "mock 全市场扫描示例。",
         "scan_mode": scan.get("scan_mode") or scan.get("mode") or "mock",
+        "market_breadth": compact_dashboard_market_breadth(scan.get("market_breadth", {})),
         "quote_count": scan.get("quote_count", 0),
         "matched_quote_count": scan.get("matched_quote_count", 0),
         "top_groups": [mock_dashboard_group(item) for item in groups[:4] if isinstance(item, dict)],
@@ -2872,6 +2873,7 @@ def dashboard_market_pulse(digest: Dict[str, object]) -> Dict[str, object]:
         "available": bool(scan.get("available") or structure),
         "summary": scan.get("summary") or structure.get("summary") or "暂无全市场扫描。",
         "scan_mode": scan.get("scan_mode"),
+        "market_breadth": compact_dashboard_market_breadth(scan.get("market_breadth", {})),
         "quote_count": scan.get("quote_count", 0),
         "matched_quote_count": scan.get("matched_quote_count", 0),
         "top_groups": list(scan.get("top_groups", []))[:4] if isinstance(scan.get("top_groups"), list) else [],
@@ -2904,6 +2906,25 @@ def dashboard_scan_candidates(scan: Dict[str, object]) -> List[Dict[str, object]
             }
         )
     return rows[:5]
+
+
+def compact_dashboard_market_breadth(value: object) -> Dict[str, object]:
+    breadth = value if isinstance(value, dict) else {}
+    if not breadth:
+        return {}
+    return {
+        "state": breadth.get("state"),
+        "summary": breadth.get("summary"),
+        "matched_quote_count": breadth.get("matched_quote_count", 0),
+        "up_count": breadth.get("up_count", 0),
+        "down_count": breadth.get("down_count", 0),
+        "active_count": breadth.get("active_count", 0),
+        "strong_count": breadth.get("strong_count", 0),
+        "stage_high_count": breadth.get("stage_high_count", 0),
+        "active_group_count": breadth.get("active_group_count", 0),
+        "strong_group_count": breadth.get("strong_group_count", 0),
+        "interpretation": breadth.get("interpretation"),
+    }
 
 
 def compact_dashboard_universe_context(value: object) -> Dict[str, object]:
@@ -3418,6 +3439,7 @@ def dashboard_contract() -> Dict[str, object]:
             "data.coverage_context.top_data_quality_queue",
             "data.coverage_context.next_actions",
             "data.market_pulse",
+            "data.market_pulse.market_breadth",
             "data.market_pulse.top_groups",
             "data.market_pulse.candidates",
             "data.market_pulse.candidates[].universe_context",
@@ -3858,6 +3880,7 @@ def agent_run_digest_market_scan(briefing_data: Dict[str, object], results: List
         "available": True,
         "summary": scan.get("summary"),
         "scan_mode": scan.get("scan_mode"),
+        "market_breadth": scan.get("market_breadth", {}),
         "quote_count": scan.get("quote_count", 0),
         "matched_quote_count": scan.get("matched_quote_count", 0),
         "top_groups": [
@@ -7372,6 +7395,7 @@ def agent_run_contract() -> Dict[str, object]:
             "data.review_digest.coverage_context.top_data_quality_queue",
             "data.review_digest.coverage_context.next_actions",
             "data.review_digest.market_scan",
+            "data.review_digest.market_scan.market_breadth",
             "data.review_digest.market_scan.top_groups",
             "data.review_digest.market_scan.top_candidates",
             "data.review_digest.market_scan.top_candidates[].universe_context",
@@ -7511,6 +7535,7 @@ def agent_next_contract() -> Dict[str, object]:
             "data.coverage_context.top_data_quality_queue",
             "data.coverage_context.next_actions",
             "data.market_scan",
+            "data.market_scan.market_breadth",
             "data.market_scan.top_groups",
             "data.market_scan.top_candidates",
             "data.market_scan.top_candidates[].universe_context",

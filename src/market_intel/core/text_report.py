@@ -73,6 +73,12 @@ LABELS = {
     "evidence_gap": "证据缺口",
     "attention_item": "关注项",
     "handoff": "交接",
+    "broad_strength": "普遍走强",
+    "structured_strength": "结构性走强",
+    "thin_strength": "局部活跃",
+    "mild_rebound": "温和修复",
+    "weak_market": "弱势整理",
+    "no_matched_quotes": "无匹配行情",
 }
 
 QUESTION_LABELS = {
@@ -144,6 +150,10 @@ def render_scan_text(payload: Dict[str, object]) -> str:
     if coverage:
         lines.extend(["", "覆盖底座"])
         lines.extend(render_focus_coverage_context(coverage))
+    breadth = data.get("market_breadth", {}) if isinstance(data.get("market_breadth"), dict) else {}
+    if breadth:
+        lines.extend(["", "市场宽度"])
+        lines.extend(render_market_breadth(breadth))
     lines.extend(["", "板块扫描"])
     lines.extend(render_scan_groups(data.get("sector_groups", [])))
     lines.extend(["", "候选复盘"])
@@ -792,6 +802,13 @@ def render_scan_groups(value: object) -> List[str]:
         signals = row.get("signals", []) if isinstance(row.get("signals"), list) else []
         if signals:
             lines.append("   信号: %s" % render_labels(signals))
+    return lines
+
+
+def render_market_breadth(value: Dict[str, object]) -> List[str]:
+    lines = ["- %s" % (value.get("summary") or "暂无市场宽度摘要。")]
+    if value.get("interpretation"):
+        lines.append("   解读: %s" % value.get("interpretation"))
     return lines
 
 
@@ -1855,6 +1872,9 @@ def render_dashboard_compact_coverage(value: Dict[str, object]) -> List[str]:
 
 def render_dashboard_compact_market(value: Dict[str, object]) -> List[str]:
     lines = ["- %s" % (value.get("summary") or "暂无全市场扫描。")]
+    breadth = value.get("market_breadth", {}) if isinstance(value.get("market_breadth"), dict) else {}
+    if breadth:
+        lines.append("  宽度: %s" % render_compact_market_breadth(breadth))
     groups = value.get("top_groups", []) if isinstance(value.get("top_groups"), list) else []
     if groups:
         rendered = []
@@ -1891,6 +1911,16 @@ def render_dashboard_compact_market(value: Dict[str, object]) -> List[str]:
         if rendered_candidates:
             lines.append("  候选: %s" % "；".join(rendered_candidates))
     return lines
+
+
+def render_compact_market_breadth(value: Dict[str, object]) -> str:
+    return "%s | 涨 %s/%s | 活跃 %s | 强板块 %s" % (
+        label(value.get("state")),
+        value.get("up_count", 0),
+        value.get("matched_quote_count", 0),
+        value.get("active_count", 0),
+        value.get("strong_group_count", 0),
+    )
 
 
 def render_dashboard_compact_portfolio(value: Dict[str, object]) -> List[str]:

@@ -966,6 +966,7 @@ def test_agent_next_returns_compact_handoff(monkeypatch, tmp_path):
     assert data["coverage_context"]["available"] is True
     assert data["coverage_context"]["pool"] == "ai-energy"
     assert data["market_scan"]["available"] is True
+    assert data["market_scan"]["market_breadth"]["state"]
     assert data["market_scan"]["top_groups"]
     assert data["market_scan"]["top_candidates"]
     assert data["market_scan"]["top_candidates"][0]["review_focus"]["headline"]
@@ -980,6 +981,7 @@ def test_agent_next_returns_compact_handoff(monkeypatch, tmp_path):
     assert "data.coverage_context.universe.sector_profile" in data["agent_contract"]["stable_fields"]
     assert "data.coverage_context.top_data_quality_queue" in data["agent_contract"]["stable_fields"]
     assert "data.market_scan" in data["agent_contract"]["stable_fields"]
+    assert "data.market_scan.market_breadth" in data["agent_contract"]["stable_fields"]
     assert "data.market_scan.top_groups" in data["agent_contract"]["stable_fields"]
     assert "data.market_scan.top_candidates" in data["agent_contract"]["stable_fields"]
     assert "data.market_scan.top_candidates[].universe_context" in data["agent_contract"]["stable_fields"]
@@ -1022,6 +1024,7 @@ def test_dashboard_returns_one_screen_workbench(monkeypatch, tmp_path):
     assert "data.positioning.differentiators[].agent_path" in data["agent_contract"]["stable_fields"]
     assert "data.positioning.selection_rule" in data["agent_contract"]["stable_fields"]
     assert data["market_pulse"]["available"] is True
+    assert data["market_pulse"]["market_breadth"]["state"]
     assert data["market_pulse"]["top_groups"]
     assert data["market_pulse"]["candidates"]
     assert "universe_context" in data["market_pulse"]["candidates"][0]
@@ -1047,6 +1050,7 @@ def test_dashboard_returns_one_screen_workbench(monkeypatch, tmp_path):
     assert "data.coverage_context.universe.sector_profile" in data["agent_contract"]["stable_fields"]
     assert "data.coverage_context.top_gaps" in data["agent_contract"]["stable_fields"]
     assert "data.coverage_context.top_data_quality_queue" in data["agent_contract"]["stable_fields"]
+    assert "data.market_pulse.market_breadth" in data["agent_contract"]["stable_fields"]
     assert "data.market_pulse.candidates" in data["agent_contract"]["stable_fields"]
     assert "data.market_pulse.candidates[].universe_context" in data["agent_contract"]["stable_fields"]
     assert "data.portfolio_pulse.top_holdings" in data["agent_contract"]["stable_fields"]
@@ -1060,6 +1064,7 @@ def test_dashboard_returns_one_screen_workbench(monkeypatch, tmp_path):
     assert "全 A: 已接入 | 记录 16" in text
     assert "质量:" in text
     assert "全市场" in text
+    assert "宽度:" in text
     assert "候选:" in text
     assert "持仓" in text
     assert "先看:" in text
