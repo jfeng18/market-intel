@@ -144,16 +144,48 @@ def build_data_quality_detail(pool: str, items: List[PoolItem], flag: str, limit
 
 
 def data_quality_detail_samples(flag: str, items: List[PoolItem], limit: int) -> List[Dict[str, object]]:
-    return [data_quality_detail_sample(flag, item) for item in items[:limit]]
+    samples = []
+    for item in items:
+        for source in data_quality_flag_sources(item, flag):
+            samples.append(data_quality_detail_sample(flag, item, source))
+            if len(samples) >= limit:
+                return samples
+    return samples
 
 
-def data_quality_detail_sample(flag: str, item: PoolItem) -> Dict[str, object]:
-    raw = item.raw
+def data_quality_detail_sample(flag: str, item: PoolItem, source: Dict[str, object]) -> Dict[str, object]:
     return {
         "symbol": item.symbol,
         "name": item.name,
         "instrument_type": item.instrument_type,
         "tradable": item.tradable,
+        "raw_row": source.get("raw_row"),
+        "source_file": source.get("source_file"),
+        "source": source.get("source"),
+        "raw_company": source.get("raw_company"),
+        "raw_code": source.get("raw_code"),
+        "raw_desc": source.get("raw_desc"),
+        "raw_section": source.get("raw_section"),
+        "raw_level": source.get("raw_level"),
+        "flags": data_quality_source_flags(source, item),
+        "fix_hint": data_quality_fix_hint(flag, item),
+    }
+
+
+def data_quality_flag_sources(item: PoolItem, flag: str) -> List[Dict[str, object]]:
+    sources = item.raw.get("_quality_flag_sources")
+    if isinstance(sources, dict):
+        rows = sources.get(flag)
+        if isinstance(rows, list):
+            result = [row for row in rows if isinstance(row, dict)]
+            if result:
+                return result
+    return [data_quality_item_source(item)]
+
+
+def data_quality_item_source(item: PoolItem) -> Dict[str, object]:
+    raw = item.raw
+    return {
         "raw_row": raw.get("raw_row"),
         "source_file": raw.get("pool_source_file"),
         "source": raw.get("pool_source"),
@@ -163,8 +195,14 @@ def data_quality_detail_sample(flag: str, item: PoolItem) -> Dict[str, object]:
         "raw_section": raw.get("raw_section"),
         "raw_level": raw.get("raw_level"),
         "flags": sorted(set(item.data_quality_flags)),
-        "fix_hint": data_quality_fix_hint(flag, item),
     }
+
+
+def data_quality_source_flags(source: Dict[str, object], item: PoolItem) -> List[str]:
+    flags = source.get("flags")
+    if isinstance(flags, list):
+        return sorted(str(flag) for flag in flags if flag)
+    return sorted(set(item.data_quality_flags))
 
 
 def data_quality_fix_hint(flag: str, item: PoolItem) -> str:
@@ -990,7 +1028,7 @@ def build_data_quality_queue(
                 "suggested_action": meta["suggested_action"],
                 "done_when": meta["done_when"],
                 "review_command": "market-intel pool quality %s --json%s" % (flag, pool_arg(pool)),
-                "samples": data_quality_queue_samples(flagged_items),
+                "samples": data_quality_queue_samples(flag, flagged_items),
             }
         )
     rows.sort(
@@ -1018,21 +1056,24 @@ def data_quality_flag_meta(flag: str) -> Dict[str, str]:
     )
 
 
-def data_quality_queue_samples(items: List[PoolItem]) -> List[Dict[str, object]]:
+def data_quality_queue_samples(flag: str, items: List[PoolItem]) -> List[Dict[str, object]]:
     samples = []
-    for item in items[:8]:
-        samples.append(
-            {
-                "symbol": item.symbol,
-                "name": item.name,
-                "raw_row": item.raw.get("raw_row"),
-                "source_file": item.raw.get("pool_source_file"),
-                "raw_code": item.raw.get("raw_code"),
-                "raw_section": item.raw.get("raw_section"),
-                "raw_level": item.raw.get("raw_level"),
-                "flags": sorted(set(item.data_quality_flags)),
-            }
-        )
+    for item in items:
+        for source in data_quality_flag_sources(item, flag):
+            samples.append(
+                {
+                    "symbol": item.symbol,
+                    "name": item.name,
+                    "raw_row": source.get("raw_row"),
+                    "source_file": source.get("source_file"),
+                    "raw_code": source.get("raw_code"),
+                    "raw_section": source.get("raw_section"),
+                    "raw_level": source.get("raw_level"),
+                    "flags": data_quality_source_flags(source, item),
+                }
+            )
+            if len(samples) >= 8:
+                return samples
     return samples
 
 

@@ -107,12 +107,14 @@ def merge_pool_items(items: List[PoolItem]) -> List[PoolItem]:
             continue
 
         existing = merged[key]
+        existing_flags = list(existing.data_quality_flags)
         existing.exposures.extend(item.exposures)
         existing.data_quality_flags.extend(item.data_quality_flags)
         existing.data_quality_flags.append("duplicate_symbol_exposure")
         existing.priority = best_priority(existing.priority, item.priority)
         existing.raw.setdefault("merged_raw_rows", [existing.raw.get("raw_row")])
         existing.raw["merged_raw_rows"].append(item.raw.get("raw_row"))
+        merge_flag_sources(existing.raw, existing_flags, item.raw, item.data_quality_flags)
         merge_raw_metadata(existing.raw, item.raw)
 
     for item in merged.values():
@@ -121,6 +123,58 @@ def merge_pool_items(items: List[PoolItem]) -> List[PoolItem]:
         apply_primary_exposure(item)
         item.data_quality_flags = sorted(set(item.data_quality_flags))
     return [merged[key] for key in order]
+
+
+def merge_flag_sources(
+    existing_raw: Dict[str, object],
+    existing_flags: List[str],
+    incoming_raw: Dict[str, object],
+    incoming_flags: List[str],
+) -> None:
+    sources = existing_raw.setdefault("_quality_flag_sources", {})
+    if not isinstance(sources, dict):
+        return
+    existing_snapshot = quality_source_snapshot(existing_raw, existing_flags)
+    incoming_snapshot = quality_source_snapshot(incoming_raw, incoming_flags)
+    for flag in existing_flags:
+        if not has_quality_source(sources, flag):
+            append_quality_source(sources, flag, existing_snapshot)
+    for flag in incoming_flags:
+        append_quality_source(sources, flag, incoming_snapshot)
+    append_quality_source(sources, "duplicate_symbol_exposure", existing_snapshot)
+    append_quality_source(sources, "duplicate_symbol_exposure", incoming_snapshot)
+
+
+def has_quality_source(sources: Dict[object, object], flag: object) -> bool:
+    rows = sources.get(str(flag or "").strip())
+    return isinstance(rows, list) and bool(rows)
+
+
+def append_quality_source(sources: Dict[object, object], flag: object, snapshot: Dict[str, object]) -> None:
+    flag_text = str(flag or "").strip()
+    if not flag_text:
+        return
+    rows = sources.setdefault(flag_text, [])
+    if not isinstance(rows, list):
+        return
+    raw_row = snapshot.get("raw_row")
+    if raw_row is not None and any(isinstance(row, dict) and row.get("raw_row") == raw_row for row in rows):
+        return
+    rows.append(dict(snapshot))
+
+
+def quality_source_snapshot(raw: Dict[str, object], flags: List[str]) -> Dict[str, object]:
+    return {
+        "raw_row": raw.get("raw_row"),
+        "source_file": raw.get("pool_source_file"),
+        "source": raw.get("pool_source"),
+        "raw_company": raw.get("raw_company"),
+        "raw_code": raw.get("raw_code"),
+        "raw_desc": raw.get("raw_desc"),
+        "raw_section": raw.get("raw_section"),
+        "raw_level": raw.get("raw_level"),
+        "flags": sorted(set(flags)),
+    }
 
 
 def merge_raw_metadata(existing: Dict[str, object], incoming: Dict[str, object]) -> None:

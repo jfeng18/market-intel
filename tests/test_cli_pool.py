@@ -826,6 +826,8 @@ def test_pool_quality_focuses_data_quality_flag():
     assert data["samples"][0]["raw_company"]
     assert data["samples"][0]["raw_desc"]
     assert data["samples"][0]["fix_hint"]
+    assert all("invalid_symbol" in sample["flags"] for sample in data["samples"])
+    assert all("missing_role" not in sample["flags"] for sample in data["samples"][:3])
     assert data["suggested_action"]
     assert data["done_when"]
     assert data["next_commands"][0] == "market-intel pool quality invalid_symbol --json"
@@ -840,6 +842,19 @@ def test_pool_quality_focuses_data_quality_flag():
     assert "交易动作" not in text
     assert "buy" not in text.lower()
     assert "sell" not in text.lower()
+
+
+def test_pool_quality_uses_flag_source_rows_for_merged_items():
+    payload = handle_pool_quality("all-a", "invalid_symbol", limit=12)
+    samples = payload["data"]["samples"]
+    tongfu_rows = [sample for sample in samples if sample["symbol"] == "002156"]
+
+    assert tongfu_rows
+    assert tongfu_rows[0]["raw_row"] == 238
+    assert tongfu_rows[0]["raw_code"] == "通富微电"
+    assert "invalid_symbol" in tongfu_rows[0]["flags"]
+    assert "missing_role" not in tongfu_rows[0]["flags"]
+    assert not any(sample["symbol"] == "002156" and sample["raw_row"] == 33 for sample in samples)
 
 
 def test_pool_quality_unknown_flag_returns_structured_error():
