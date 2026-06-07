@@ -880,6 +880,48 @@ def test_pool_quality_column_shift_suggests_corrected_pool_row():
     assert "建议: company=通富微电 | code=002156" in text
 
 
+def test_pool_quality_dry_run_exports_suggested_rows():
+    payload = handle_pool_quality("all-a", "column_shift_suspected", limit=2, dry_run=True)
+    data = payload["data"]
+
+    assert payload["ok"] is True
+    assert data["flag"] == "column_shift_suspected"
+    assert data["dry_run"] is True
+    assert data["written"] is False
+    assert data["record_count"] == 2
+    assert data["fields"] == ["status", "priority", "section", "level", "company", "code", "desc", "notes"]
+    assert data["rows"][0]["company"] == "通富微电"
+    assert data["rows"][0]["code"] == "002156"
+    assert data["rows"][0]["notes"] == "fixes_column_shift; source_row=238"
+    assert "data.rows" in data["agent_contract"]["stable_fields"]
+    assert data["next_commands"][0] == "market-intel pool quality column_shift_suspected --output data/runtime/pool_quality_column_shift_suspected.csv --json"
+
+
+def test_pool_quality_writes_suggested_rows(tmp_path):
+    output_file = tmp_path / "pool_quality_column_shift_suspected.csv"
+
+    payload = handle_pool_quality("all-a", "column_shift_suspected", limit=1, output=str(output_file))
+    data = payload["data"]
+
+    assert payload["ok"] is True
+    assert data["written"] is True
+    assert data["record_count"] == 1
+    with output_file.open(encoding="utf-8", newline="") as handle:
+        rows = list(csv.DictReader(handle))
+    assert rows[0]["company"] == "通富微电"
+    assert rows[0]["code"] == "002156"
+    assert "pool expansion --review-file pool_quality_column_shift_suspected.csv --json" in data["next_commands"][0]
+    assert str(output_file) not in json.dumps(payload, ensure_ascii=False)
+
+
+def test_pool_quality_export_warns_without_suggested_rows():
+    payload = handle_pool_quality("all-a", "missing_role", limit=2, dry_run=True)
+
+    assert payload["ok"] is True
+    assert payload["data"]["record_count"] == 0
+    assert payload["warnings"][0]["code"] == "DATA_QUALITY_FIX_ROWS_UNAVAILABLE"
+
+
 def test_pool_quality_unknown_flag_returns_structured_error():
     payload = handle_pool_quality("all-a", "not_a_flag")
     data = payload["data"]
@@ -1009,6 +1051,27 @@ def test_pool_quality_cli_smoke(cli_cmd):
     assert data["data"]["sample_count"] == 2
     assert "market-intel pool quality" in text_result.stdout
     assert "invalid_symbol" in text_result.stdout
+
+
+def test_pool_quality_export_cli_smoke(cli_cmd):
+    text_result = subprocess.run(
+        cli_cmd("pool", "quality", "column_shift_suspected", "--limit", "1", "--dry-run", "--text"),
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    json_result = subprocess.run(
+        cli_cmd("pool", "quality", "column_shift_suspected", "--limit", "1", "--dry-run", "--json"),
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    payload = json.loads(json_result.stdout)
+
+    assert payload["data"]["dry_run"] is True
+    assert payload["data"]["rows"][0]["code"] == "002156"
+    assert "修正草稿" in text_result.stdout
+    assert "002156 通富微电" in text_result.stdout
 
 
 def test_pool_expansion_cli_smoke(tmp_path, cli_cmd):

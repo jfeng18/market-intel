@@ -302,6 +302,8 @@ def render_pool_quality_text(payload: Dict[str, object]) -> str:
     data = payload.get("data", {})
     if not isinstance(data, dict):
         return "market-intel pool quality\n\n无数据。"
+    if "rows" in data:
+        return render_pool_quality_export_text(data)
     lines = [
         "market-intel pool quality",
         "",
@@ -362,6 +364,39 @@ def render_pool_quality_text(payload: Dict[str, object]) -> str:
     lines.extend(["", "下一步"])
     lines.extend(render_list(data.get("next_commands", []), empty="暂无下一步。"))
     lines.extend(["", "边界", "- %s" % (data.get("write_policy") or "只读复核，不自动修改数据。")])
+    return "\n".join(lines)
+
+
+def render_pool_quality_export_text(data: Dict[str, object]) -> str:
+    lines = [
+        "market-intel pool quality",
+        "",
+        "导出",
+        "- %s | %s | 行 %s | written %s | dry_run %s | output %s"
+        % (
+            data.get("pool") or "-",
+            data.get("flag") or "-",
+            data.get("record_count", 0),
+            data.get("written"),
+            data.get("dry_run"),
+            data.get("output") or "-",
+        ),
+        "",
+        "修正草稿",
+    ]
+    rows = data.get("rows", []) if isinstance(data.get("rows"), list) else []
+    if not rows:
+        lines.append("- 暂无可导出的 suggested_row。")
+    for row in rows[:12]:
+        if not isinstance(row, dict):
+            continue
+        lines.append(
+            "- %s %s | %s | %s"
+            % (row.get("code") or "-", row.get("company") or "-", row.get("level") or "-", row.get("desc") or "-")
+        )
+    lines.extend(["", "下一步"])
+    lines.extend(render_list(data.get("next_commands", []), empty="暂无下一步。"))
+    lines.extend(["", "边界", "- 只导出数据质量修正草稿，不自动修改主复盘池。"])
     return "\n".join(lines)
 
 

@@ -18,6 +18,7 @@ from .core.csv_importer import import_holdings_csv, import_quotes_csv, import_re
 from .core.coverage import (
     build_data_quality_detail,
     build_pool_coverage,
+    export_data_quality_fix_csv,
     export_expansion_queue_csv,
     export_research_queue_csv,
     export_universe_patch_csv,
@@ -106,6 +107,8 @@ def build_parser() -> argparse.ArgumentParser:
     quality_parser.add_argument("flag")
     quality_parser.add_argument("--pool", default=DEFAULT_POOL)
     quality_parser.add_argument("--limit", type=int, default=12)
+    quality_parser.add_argument("--output")
+    quality_parser.add_argument("--dry-run", action="store_true")
     quality_parser.add_argument("--json", action="store_true", dest="as_json")
     quality_parser.add_argument("--text", action="store_true")
 
@@ -410,7 +413,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                 print(render_pool_coverage_text(result))
                 return 0
         elif args.resource == "pool" and args.action == "quality":
-            result = handle_pool_quality(args.pool, args.flag, args.limit)
+            result = handle_pool_quality(args.pool, args.flag, args.limit, args.output, args.dry_run)
             if args.text:
                 print(render_pool_quality_text(result))
                 return 0 if result["ok"] else 1
@@ -773,9 +776,26 @@ def handle_pool_coverage(
     )
 
 
-def handle_pool_quality(pool: str, flag: str, limit: int = 12) -> Dict[str, Any]:
+def handle_pool_quality(
+    pool: str,
+    flag: str,
+    limit: int = 12,
+    output: Optional[str] = None,
+    dry_run: bool = False,
+) -> Dict[str, Any]:
     items = load_pool(pool)
     data = build_data_quality_detail(pool, items, flag, limit=limit)
+    if data.get("found") and (output or dry_run):
+        output_path = Path(output) if output else Path("data/runtime/pool_quality_%s.csv" % flag)
+        export_data = export_data_quality_fix_csv(data, output_path, dry_run=dry_run)
+        export_data["agent_contract"] = pool_quality_export_contract()
+        return envelope(
+            command="pool.quality",
+            data=export_data,
+            warnings=export_data.get("warnings", []),
+            source="pool:%s" % pool,
+            ok=True,
+        )
     return envelope(
         command="pool.quality",
         data=data,
@@ -784,6 +804,24 @@ def handle_pool_quality(pool: str, flag: str, limit: int = 12) -> Dict[str, Any]
         ok=bool(data.get("found")),
         errors=[] if data.get("found") else [error("POOL_QUALITY_FLAG_NOT_FOUND", "No pool items match this data quality flag.", {"flag": flag})],
     )
+
+
+def pool_quality_export_contract() -> Dict[str, object]:
+    return {
+        "success": "ok=true 且 errors=[]",
+        "stable_fields": [
+            "data.pool",
+            "data.flag",
+            "data.output",
+            "data.record_count",
+            "data.written",
+            "data.dry_run",
+            "data.fields",
+            "data.rows",
+            "data.next_commands",
+        ],
+        "boundary": "pool quality 导出只生成数据质量修正草稿，不自动修改主复盘池。",
+    }
 
 
 def handle_pool_expansion(

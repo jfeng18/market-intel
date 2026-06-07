@@ -267,6 +267,80 @@ def column_shift_suggested_desc(item: PoolItem, source: Dict[str, object]) -> st
     return raw_desc or str(item.logic or "")
 
 
+def export_data_quality_fix_csv(
+    detail: Dict[str, object],
+    output_path: Path,
+    dry_run: bool = False,
+) -> Dict[str, object]:
+    rows = data_quality_fix_rows(detail)
+    written = False
+    if rows and not dry_run:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        with output_path.open("w", encoding="utf-8", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=POOL_CSV_FIELDS)
+            writer.writeheader()
+            writer.writerows(rows)
+        written = True
+    return {
+        "pool": detail.get("pool"),
+        "flag": detail.get("flag"),
+        "output": command_path(output_path),
+        "record_count": len(rows),
+        "written": written,
+        "dry_run": dry_run,
+        "fields": list(POOL_CSV_FIELDS),
+        "rows": rows,
+        "next_commands": data_quality_fix_next_commands(str(detail.get("flag") or ""), output_path, written, rows),
+        "warnings": data_quality_fix_warnings(detail, rows),
+    }
+
+
+def data_quality_fix_rows(detail: Dict[str, object]) -> List[Dict[str, object]]:
+    rows = []
+    samples = detail.get("samples", []) if isinstance(detail.get("samples"), list) else []
+    seen = set()
+    for sample in samples:
+        if not isinstance(sample, dict):
+            continue
+        suggested = sample.get("suggested_row")
+        if not isinstance(suggested, dict):
+            continue
+        row = {field: str(suggested.get(field) or "") for field in POOL_CSV_FIELDS}
+        key = tuple(row[field] for field in POOL_CSV_FIELDS)
+        if key in seen:
+            continue
+        seen.add(key)
+        rows.append(row)
+    return rows
+
+
+def data_quality_fix_next_commands(flag: str, output_path: Path, written: bool, rows: List[Dict[str, object]]) -> List[str]:
+    if not rows:
+        return ["market-intel pool quality %s --json" % flag] if flag else ["market-intel pool coverage --json"]
+    path_text = command_path(output_path)
+    if not written:
+        return [
+            "market-intel pool quality %s --output %s --json" % (flag, path_text),
+            "market-intel pool expansion --review-file %s --json" % path_text,
+        ]
+    return [
+        "market-intel pool expansion --review-file %s --json" % path_text,
+        "MARKET_INTEL_POOL_EXTRA_PATHS=%s market-intel pool coverage --text" % path_text,
+    ]
+
+
+def data_quality_fix_warnings(detail: Dict[str, object], rows: List[Dict[str, object]]) -> List[Dict[str, object]]:
+    if rows:
+        return []
+    return [
+        {
+            "code": "DATA_QUALITY_FIX_ROWS_UNAVAILABLE",
+            "message": "该数据质量标记暂无可导出的 suggested_row。",
+            "detail": {"flag": detail.get("flag")},
+        }
+    ]
+
+
 def export_expansion_queue_csv(
     expansion_queue: List[Dict[str, object]],
     output_path: Path,
