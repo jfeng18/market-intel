@@ -24,6 +24,12 @@ def test_import_schema_is_agent_friendly():
     assert payload["data"]["holdings"]["canonical_schema"]
     assert payload["data"]["universe"]["accepted_columns"]["symbol"]
     assert payload["data"]["universe"]["canonical_schema"]
+    quote_commands = payload["data"]["quotes"]["example_commands"]
+    assert quote_commands[0] == "market-intel import quotes examples/quotes.csv.example --runtime --dry-run --json"
+    assert quote_commands[1] == "market-intel import quotes examples/quotes.csv.example --runtime --json"
+    holding_commands = payload["data"]["holdings"]["example_commands"]
+    assert holding_commands[0] == "market-intel import holdings examples/holdings.csv.example --runtime --dry-run --json"
+    assert holding_commands[1] == "market-intel import holdings examples/holdings.csv.example --runtime --json"
     universe_commands = payload["data"]["universe"]["example_commands"]
     assert universe_commands[0] == "market-intel import universe examples/a_share_universe.csv.example --runtime --dry-run --json"
     assert universe_commands[1] == "market-intel import universe examples/a_share_universe.csv.example --runtime --json"

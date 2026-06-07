@@ -257,6 +257,7 @@ def import_schema() -> Dict[str, object]:
                 "source": "csv:<filename>",
             },
             "example_commands": [
+                "market-intel import quotes examples/quotes.csv.example --runtime --dry-run --json",
                 "market-intel import quotes examples/quotes.csv.example --runtime --json",
                 "market-intel import quotes quotes.csv --output data/runtime/quotes.json --json",
                 "market-intel import quotes quotes.csv --dry-run --json",
@@ -272,6 +273,7 @@ def import_schema() -> Dict[str, object]:
                 "source": "csv:<filename>",
             },
             "example_commands": [
+                "market-intel import holdings examples/holdings.csv.example --runtime --dry-run --json",
                 "market-intel import holdings examples/holdings.csv.example --runtime --json",
                 "market-intel import holdings holdings.csv --output data/runtime/holdings.json --json",
                 "market-intel import holdings holdings.csv --dry-run --json",
