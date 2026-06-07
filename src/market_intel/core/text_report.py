@@ -1887,6 +1887,12 @@ def render_dashboard_today_focus(value: Dict[str, object]) -> List[str]:
         lines.append("  命令: %s" % value.get("json_command"))
     if value.get("done_when"):
         lines.append("  完成: %s" % value.get("done_when"))
+    chain = value.get("focus_chain", []) if isinstance(value.get("focus_chain"), list) else []
+    if chain:
+        lines.append("  接力:")
+        for item in chain[:3]:
+            if isinstance(item, dict):
+                lines.append("    #%s %s | %s" % (item.get("rank"), item.get("title"), item.get("json_command")))
     return lines
 
 

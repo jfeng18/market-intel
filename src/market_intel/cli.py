@@ -3211,9 +3211,10 @@ def dashboard_today_focus(
     plan: Dict[str, object],
     handoff: Dict[str, object],
 ) -> Dict[str, object]:
-    item = first_dashboard_focus_item(action_lane.get("items", []), prefer_read=True)
+    focus_chain = dashboard_focus_chain(action_lane, plan, handoff)
+    item = first_dashboard_focus_item(plan.get("items", []), prefer_read=True)
     if not item:
-        item = first_dashboard_focus_item(plan.get("items", []), prefer_read=True)
+        item = first_dashboard_focus_item(action_lane.get("items", []), prefer_read=True)
     if not item:
         item = first_dashboard_focus_item(handoff.get("next_read", []), prefer_read=False)
     if not item:
@@ -3230,6 +3231,7 @@ def dashboard_today_focus(
             "runnable": False,
             "requires_manual": False,
             "related_symbols": [],
+            "focus_chain": focus_chain,
         }
 
     command = str(item.get("json_command") or "")
@@ -3249,6 +3251,51 @@ def dashboard_today_focus(
         "done_when": done_when,
         "runnable": runnable,
         "requires_manual": requires_manual,
+        "related_symbols": dedupe_queue_texts(
+            item.get("related_symbols", []) if isinstance(item.get("related_symbols"), list) else []
+        )[:5],
+        "focus_chain": focus_chain,
+    }
+
+
+def dashboard_focus_chain(
+    action_lane: Dict[str, object],
+    plan: Dict[str, object],
+    handoff: Dict[str, object],
+) -> List[Dict[str, object]]:
+    rows: List[Dict[str, object]] = []
+    seen = set()
+    for collection in [plan.get("items", []), action_lane.get("items", []), handoff.get("next_read", [])]:
+        for item in collection if isinstance(collection, list) else []:
+            if not isinstance(item, dict):
+                continue
+            row = dashboard_focus_chain_item(item)
+            if not row:
+                continue
+            key = row.get("json_command") or "%s:%s" % (row.get("source"), row.get("title"))
+            if key in seen:
+                continue
+            seen.add(key)
+            row["rank"] = len(rows) + 1
+            rows.append(row)
+            if len(rows) >= 3:
+                return rows
+    return rows
+
+
+def dashboard_focus_chain_item(item: Dict[str, object]) -> Dict[str, object]:
+    command = str(item.get("json_command") or "")
+    requires_manual = bool(item.get("requires_manual")) or str(item.get("step_type") or "") == "manual"
+    if not command or requires_manual or not digest_command_is_read_only(command):
+        return {}
+    source = str(item.get("item_type") or item.get("source") or "review_plan")
+    return {
+        "rank": 0,
+        "source": source,
+        "title": str(item.get("title") or source),
+        "json_command": command,
+        "done_when": str(item.get("done_when") or ""),
+        "runnable": True,
         "related_symbols": dedupe_queue_texts(
             item.get("related_symbols", []) if isinstance(item.get("related_symbols"), list) else []
         )[:5],
@@ -3644,6 +3691,10 @@ def dashboard_contract() -> Dict[str, object]:
             "data.today_focus.json_command",
             "data.today_focus.done_when",
             "data.today_focus.runnable",
+            "data.today_focus.focus_chain",
+            "data.today_focus.focus_chain[].source",
+            "data.today_focus.focus_chain[].json_command",
+            "data.today_focus.focus_chain[].done_when",
             "data.positioning",
             "data.positioning.differentiators",
             "data.positioning.differentiators[].agent_path",

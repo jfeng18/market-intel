@@ -1032,10 +1032,15 @@ def test_dashboard_returns_one_screen_workbench(monkeypatch, tmp_path):
     assert data["today_focus"]["source"] == "coverage_review"
     assert data["today_focus"]["json_command"] == data["action_lane"]["items"][0]["json_command"]
     assert data["today_focus"]["done_when"]
+    assert [item["json_command"] for item in data["today_focus"]["focus_chain"][:3]] == [
+        item["json_command"] for item in data["review_plan"]["items"][:3]
+    ]
+    assert data["today_focus"]["focus_chain"][2]["source"] == "candidate_queue"
     assert data["positioning"]["headline"].startswith("面向全 A")
     assert data["positioning"]["differentiators"][0]["agent_path"] == "data.coverage_context"
     assert "data.today_focus" in data["agent_contract"]["stable_fields"]
     assert "data.today_focus.json_command" in data["agent_contract"]["stable_fields"]
+    assert "data.today_focus.focus_chain[].json_command" in data["agent_contract"]["stable_fields"]
     assert "data.positioning" in data["agent_contract"]["stable_fields"]
     assert "data.positioning.differentiators[].agent_path" in data["agent_contract"]["stable_fields"]
     assert "data.positioning.selection_rule" in data["agent_contract"]["stable_fields"]
@@ -1082,6 +1087,7 @@ def test_dashboard_returns_one_screen_workbench(monkeypatch, tmp_path):
     assert len(text.splitlines()) <= 80
     assert "今日焦点" in text
     assert "为什么:" in text
+    assert "接力:" in text
     assert "定位" in text
     assert "个人复盘操作系统" in text
     assert "覆盖底座" in text
@@ -1133,6 +1139,11 @@ def test_dashboard_mock_returns_demo_workbench_without_runtime(monkeypatch, tmp_
     assert data["today_focus"]["available"] is True
     assert data["today_focus"]["source"] == "coverage_review"
     assert data["today_focus"]["json_command"] == data["action_lane"]["items"][0]["json_command"]
+    assert [item["source"] for item in data["today_focus"]["focus_chain"][:3]] == [
+        "coverage_review",
+        "market_scan",
+        "candidate_queue",
+    ]
     assert data["market_pulse"]["available"] is True
     assert data["market_pulse"]["candidates"]
     assert data["market_pulse"]["candidates"][0]["review_focus"]["headline"]
@@ -1158,6 +1169,7 @@ def test_dashboard_mock_returns_demo_workbench_without_runtime(monkeypatch, tmp_
     assert "mock 示例" in text
     assert len(text.splitlines()) <= 80
     assert "今日焦点" in text
+    assert "接力:" in text
     assert "定位" in text
     assert "个人复盘操作系统" in text
     assert "候选:" in text
