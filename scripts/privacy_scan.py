@@ -5,6 +5,15 @@ from pathlib import Path
 
 
 SCAN_ROOTS = [Path("README.md"), Path("docs"), Path("examples"), Path(".github")]
+LINE_BUDGETS = {
+    Path("README.md"): 160,
+    Path("docs/data-model.md"): 180,
+    Path("docs/design.md"): 120,
+    Path("docs/design-review.md"): 80,
+    Path("docs/handoff.md"): 80,
+    Path("docs/product.md"): 100,
+    Path("docs/review.md"): 80,
+}
 
 PATTERNS = [
     ("LOCAL_USER_PATH", re.compile(r"/Users/[^\s:'\"`]+")),
@@ -38,10 +47,24 @@ def scan_file(path: Path) -> list[str]:
     return findings
 
 
+def scan_line_budget(path: Path) -> list[str]:
+    budget = LINE_BUDGETS.get(path)
+    if budget is None:
+        return []
+    try:
+        line_count = len(path.read_text(encoding="utf-8").splitlines())
+    except UnicodeDecodeError:
+        return []
+    if line_count <= budget:
+        return []
+    return [f"{path}: DOC_TOO_LONG {line_count}>{budget}"]
+
+
 def main() -> int:
     findings = []
     for path in public_files():
         findings.extend(scan_file(path))
+        findings.extend(scan_line_budget(path))
     if findings:
         print("privacy scan found possible public data leaks:", file=sys.stderr)
         for finding in findings:
