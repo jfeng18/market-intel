@@ -22,6 +22,13 @@ def test_all_a_pool_is_supported_as_seed_universe():
 
     assert "all-a" in pools
     assert pools["all-a"]["scope"] == "all_a_seed"
+    assert pools["all-a"]["is_default"] is True
+    assert pools["all-a"]["coverage_boundary"] == "seed_until_a_share_universe_imported"
+    assert pools["all-a"]["next_command"] == "market-intel pool coverage --text"
+    assert pools["all-a"]["done_when"]
+    assert pools["ai-energy"]["is_default"] is False
+    assert pools["ai-energy"]["coverage_boundary"] == "theme_seed"
+    assert pools["ai-energy"]["next_command"] == "market-intel pool coverage --text --pool ai-energy"
     assert by_symbol["002837"].name == "英维克"
     assert by_symbol["002837"].raw["pool"] == "all-a"
     assert by_symbol["002837"].raw["pool_scope"] == "all_a_seed"

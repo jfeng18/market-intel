@@ -243,13 +243,31 @@ def pool_definition(pool: str) -> Dict[str, str]:
         raise ValueError("Unsupported pool: %s. Supported pools: %s" % (pool, supported)) from exc
 
 
-def list_pools() -> List[Dict[str, str]]:
+def list_pools() -> List[Dict[str, object]]:
     return [
         {
             "id": pool,
             "filename": definition["filename"],
             "scope": definition["scope"],
             "description": definition["description"],
+            "is_default": pool == DEFAULT_POOL,
+            "coverage_boundary": pool_coverage_boundary(definition["scope"]),
+            "next_command": pool_next_command(pool),
+            "done_when": "已运行 coverage 并确认覆盖状态、基础清单接入情况和下一步补数命令。",
         }
         for pool, definition in sorted(POOL_REGISTRY.items())
     ]
+
+
+def pool_coverage_boundary(scope: str) -> str:
+    if scope == "all_a_seed":
+        return "seed_until_a_share_universe_imported"
+    if scope == "theme":
+        return "theme_seed"
+    return "custom"
+
+
+def pool_next_command(pool: str) -> str:
+    if pool == DEFAULT_POOL:
+        return "market-intel pool coverage --text"
+    return "market-intel pool coverage --text --pool %s" % pool

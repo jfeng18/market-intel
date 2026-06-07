@@ -25,12 +25,18 @@ from market_intel.core.text_report import (
 
 def test_pool_list_returns_json_envelope():
     payload = handle_pool_list("ai-energy")
+    pools = {pool["id"]: pool for pool in payload["data"]["available_pools"]}
 
     assert payload["ok"] is True
     assert payload["command"] == "pool.list"
     assert payload["version"] == "0.1.0"
     assert payload["data"]["count"] > 0
-    assert {pool["id"] for pool in payload["data"]["available_pools"]} >= {"all-a", "ai-energy"}
+    assert set(pools) >= {"all-a", "ai-energy"}
+    assert pools["all-a"]["is_default"] is True
+    assert pools["all-a"]["coverage_boundary"] == "seed_until_a_share_universe_imported"
+    assert pools["ai-energy"]["next_command"] == "market-intel pool coverage --text --pool ai-energy"
+    assert "data.available_pools[].coverage_boundary" in payload["data"]["agent_contract"]["stable_fields"]
+    assert "data.available_pools[].next_command" in payload["data"]["agent_contract"]["stable_fields"]
     assert payload["errors"] == []
     assert payload["meta"]["schema_version"] == "0.1"
 

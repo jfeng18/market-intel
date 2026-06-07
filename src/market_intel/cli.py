@@ -712,6 +712,7 @@ def handle_pool_list(pool: str) -> Dict[str, Any]:
         "available_pools": list_pools(),
         "count": len(items),
         "items": [item.to_dict() for item in items],
+        "agent_contract": pool_list_contract(),
     }
     warnings = pool_warnings(items)
     return envelope(
@@ -720,6 +721,23 @@ def handle_pool_list(pool: str) -> Dict[str, Any]:
         warnings=warnings,
         source=str(default_pool_path(pool)),
     )
+
+
+def pool_list_contract() -> Dict[str, object]:
+    return {
+        "success": "ok=true 且 errors=[]",
+        "stable_fields": [
+            "data.pool",
+            "data.available_pools",
+            "data.available_pools[].id",
+            "data.available_pools[].scope",
+            "data.available_pools[].is_default",
+            "data.available_pools[].coverage_boundary",
+            "data.available_pools[].next_command",
+            "data.available_pools[].done_when",
+        ],
+        "boundary": "pool list 只列出可用池和入口命令；覆盖边界以 pool coverage 为准。",
+    }
 
 
 def handle_pool_coverage(
