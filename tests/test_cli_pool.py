@@ -103,7 +103,7 @@ def test_pool_coverage_reports_a_share_universe(monkeypatch, tmp_path):
     )
     holdings_file = tmp_path / "holdings.json"
     holdings_file.write_text(
-        json.dumps({"holdings": [{"symbol": "000001", "name": "平安银行"}]}, ensure_ascii=False),
+        json.dumps({"holdings": [{"symbol": "SZ:000001", "name": "平安银行"}]}, ensure_ascii=False),
         encoding="utf-8",
     )
     monkeypatch.setenv("MARKET_INTEL_A_SHARE_UNIVERSE_PATHS", str(universe_file))
@@ -128,11 +128,13 @@ def test_pool_coverage_reports_a_share_universe(monkeypatch, tmp_path):
     assert profile["missing_field_counts"] == {"industry": 0, "concepts": 0, "index_membership": 0}
     assert profile["missing_field_samples"] == []
     assert coverage["matched_count"] == 1
+    assert coverage["matched"][0]["symbol"] == "000001"
     assert coverage["unmatched_count"] == 0
     assert coverage["foundation_matched_count"] == 1
     assert coverage["matched"][0]["coverage_state"] == "foundation"
     assert "a_share_universe_foundation" in coverage["matched"][0]["coverage_state_reasons"]
     assert data["research_queue"][0]["symbol"] == "000001"
+    assert data["research_queue"][0]["commands"][0] == "market-intel portfolio explain 000001 --runtime --text"
     assert data["research_queue"][0]["candidate_research_row"]["status"] == "draft"
     assert "foundation_pool_matches" in coverage["coverage_flags"]
     assert any(gap["id"] == "foundation_research_missing" for gap in data["gaps"])

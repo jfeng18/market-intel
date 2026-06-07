@@ -6,6 +6,7 @@ import csv
 from .models import Holding, PoolItem
 from .normalize import find_pool_item, normalize_row
 from .pool_loader import pool_definition
+from .symbols import normalize_symbol_text
 
 
 CN_A_PREFIXES = {
@@ -438,7 +439,7 @@ def research_candidate_rows(research_queue: List[Dict[str, object]]) -> List[Dic
     for item in research_queue:
         if not isinstance(item, dict):
             continue
-        symbol = str(item.get("symbol") or "").strip().upper()
+        symbol = normalize_symbol_text(item.get("symbol"))
         if not symbol or symbol in seen:
             continue
         seen.add(symbol)
@@ -1057,11 +1058,12 @@ def build_holdings_coverage(
     market_counter = Counter()
     review_queue = []
     for holding in holdings:
-        item = find_pool_item(items, holding.symbol)
+        symbol = normalize_symbol_text(holding.symbol)
+        item = find_pool_item(items, symbol)
         if item is None:
             unmatched.append(
                 {
-                    "symbol": holding.symbol,
+                    "symbol": symbol,
                     "name": holding.name,
                     "reason": "not_in_pool",
                     "suggested_action": "确认该持仓是否需要纳入当前复盘池，或保留为池外持仓单独复核。",
@@ -1075,18 +1077,18 @@ def build_holdings_coverage(
         if state["state"] != "confirmed":
             review_queue.append(
                 {
-                    "symbol": holding.symbol,
+                    "symbol": symbol,
                     "name": holding.name or item.name,
                     "coverage_state": state["state"],
                     "reasons": state["reasons"],
                     "research_status": research,
-                    "command": "market-intel pool explain %s --runtime --text" % holding.symbol,
+                    "command": "market-intel pool explain %s --runtime --text" % symbol,
                     "done_when": coverage_done_when(state["state"]),
                 }
             )
         matched.append(
             {
-                "symbol": holding.symbol,
+                "symbol": symbol,
                 "name": holding.name or item.name,
                 "pool_name": item.name,
                 "market": item.market,
@@ -1243,7 +1245,7 @@ def build_expansion_queue(
     for rank, row in enumerate(unmatched, start=1):
         if not isinstance(row, dict):
             continue
-        symbol = str(row.get("symbol") or "").strip().upper()
+        symbol = normalize_symbol_text(row.get("symbol"))
         if not symbol:
             continue
         name = str(row.get("name") or symbol).strip()
@@ -1287,7 +1289,7 @@ def build_research_queue(
     for row in review_queue:
         if not isinstance(row, dict) or row.get("coverage_state") != "foundation":
             continue
-        symbol = str(row.get("symbol") or "").strip().upper()
+        symbol = normalize_symbol_text(row.get("symbol"))
         if not symbol or symbol in seen:
             continue
         seen.add(symbol)
