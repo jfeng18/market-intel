@@ -2061,11 +2061,7 @@ def handle_agent_next(
     if symbol:
         handoff = filter_agent_next_handoff_for_symbol(handoff, symbol)
         cards = filter_agent_next_cards_for_symbol(cards, symbol)
-        focus_chain = [
-            item
-            for item in focus_chain
-            if not item.get("related_symbols") or symbol in item.get("related_symbols", [])
-        ]
+        focus_chain = agent_next_symbol_focus_chain(symbol, handoff, cards, focus_chain)
         if not cards.get("cards"):
             return envelope(
                 command="agent.next",
@@ -2121,6 +2117,82 @@ def agent_next_focus_chain(pool: str, digest: Dict[str, object], handoff: Dict[s
     today_focus = dashboard_today_focus(actions, plan, compact_handoff)
     chain = today_focus.get("focus_chain", []) if isinstance(today_focus.get("focus_chain"), list) else []
     return [dict(item) for item in chain if isinstance(item, dict)]
+
+
+def agent_next_symbol_focus_chain(
+    symbol: str,
+    handoff: Dict[str, object],
+    cards: Dict[str, object],
+    fallback: List[Dict[str, object]],
+) -> List[Dict[str, object]]:
+    rows: List[Dict[str, object]] = []
+    seen = set()
+    for source in [handoff.get("command_chain", []), handoff.get("next_read", [])]:
+        for item in source if isinstance(source, list) else []:
+            add_agent_next_symbol_focus_item(rows, seen, item, symbol, allow_global=False)
+            if len(rows) >= 3:
+                return rows
+    for card in cards.get("cards", []) if isinstance(cards.get("cards"), list) else []:
+        if not isinstance(card, dict):
+            continue
+        add_agent_next_symbol_focus_item(
+            rows,
+            seen,
+            {
+                "source": "security_card",
+                "title": "%s %s" % (card.get("symbol"), card.get("name") or ""),
+                "json_command": card.get("next_json_command"),
+                "done_when": "已确认该标的行情、板块、覆盖状态、证据缺口和下一步留档项。",
+                "related_symbols": [card.get("symbol")],
+            },
+            symbol,
+            allow_global=False,
+        )
+        if len(rows) >= 3:
+            return rows
+    for item in fallback:
+        symbols = item.get("related_symbols", []) if isinstance(item, dict) and isinstance(item.get("related_symbols"), list) else []
+        if symbols and symbol not in symbols:
+            continue
+        add_agent_next_symbol_focus_item(rows, seen, item, symbol, allow_global=False)
+        if len(rows) >= 3:
+            return rows
+    return rows
+
+
+def add_agent_next_symbol_focus_item(
+    rows: List[Dict[str, object]],
+    seen: set,
+    item: object,
+    symbol: str,
+    allow_global: bool = False,
+) -> None:
+    if not isinstance(item, dict):
+        return
+    command = str(item.get("json_command") or "")
+    if not command or not digest_command_is_read_only(command):
+        return
+    related = item.get("related_symbols", []) if isinstance(item.get("related_symbols"), list) else []
+    if related and symbol not in related:
+        return
+    if symbol not in command and not (related and symbol in related) and not allow_global:
+        return
+    key = command
+    if key in seen:
+        return
+    seen.add(key)
+    related_symbols = related or ([symbol] if symbol in command else [])
+    rows.append(
+        {
+            "rank": len(rows) + 1,
+            "source": str(item.get("source") or item.get("item_type") or "symbol_focus"),
+            "title": str(item.get("title") or symbol),
+            "json_command": command,
+            "done_when": str(item.get("done_when") or "已完成该标的复核。"),
+            "runnable": True,
+            "related_symbols": dedupe_queue_texts(related_symbols)[:5],
+        }
+    )
 
 
 def handle_dashboard(
