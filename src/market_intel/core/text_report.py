@@ -435,6 +435,32 @@ def render_universe_summary(value: object) -> List[str]:
                 if isinstance(item, dict):
                     fields = item.get("missing_fields", []) if isinstance(item.get("missing_fields"), list) else []
                     lines.append("- 待补 %s %s | %s" % (item.get("symbol") or "-", item.get("name") or "-", "/".join(str(field) for field in fields)))
+    enrichment_queue = data.get("enrichment_queue", []) if isinstance(data.get("enrichment_queue"), list) else []
+    if enrichment_queue:
+        lines.append("- 补数队列:")
+        for item in enrichment_queue[:3]:
+            if not isinstance(item, dict):
+                continue
+            lines.append(
+                "  #%s %s | 缺 %s | %s"
+                % (
+                    item.get("rank"),
+                    item.get("label"),
+                    item.get("missing_count", 0),
+                    item.get("reason") or "",
+                )
+            )
+            samples = item.get("samples", []) if isinstance(item.get("samples"), list) else []
+            if samples:
+                rendered = [
+                    "%s %s" % (sample.get("symbol") or "-", sample.get("name") or "-")
+                    for sample in samples[:3]
+                    if isinstance(sample, dict)
+                ]
+                if rendered:
+                    lines.append("     样例: %s" % "；".join(rendered))
+            if item.get("command"):
+                lines.append("     命令: %s" % item.get("command"))
     sample_items = data.get("sample_items", []) if isinstance(data.get("sample_items"), list) else []
     for item in sample_items[:5]:
         if not isinstance(item, dict):
@@ -1208,6 +1234,18 @@ def render_focus_coverage_context(value: object) -> List[str]:
                     missing_counts.get("index_membership", 0),
                 )
             )
+        enrichment_queue = universe.get("enrichment_queue", []) if isinstance(universe.get("enrichment_queue"), list) else []
+        for item in enrichment_queue[:3]:
+            if isinstance(item, dict):
+                lines.append(
+                    "   补数: #%s %s | 缺 %s | %s"
+                    % (
+                        item.get("rank"),
+                        item.get("label"),
+                        item.get("missing_count", 0),
+                        item.get("command"),
+                    )
+                )
     gaps = coverage.get("top_gaps", []) if isinstance(coverage.get("top_gaps"), list) else []
     for gap in gaps[:3]:
         if isinstance(gap, dict):

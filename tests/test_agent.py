@@ -429,6 +429,7 @@ def test_agent_run_ready_executes_read_only_and_skips_writes(monkeypatch, tmp_pa
     assert digest["market_scan"]["write_policy"] == "只读全市场扫描，不生成交易指令。"
     assert "data.review_digest.coverage_context" in data["agent_contract"]["stable_fields"]
     assert "data.review_digest.coverage_context.universe.sector_profile" in data["agent_contract"]["stable_fields"]
+    assert "data.review_digest.coverage_context.universe.enrichment_queue" in data["agent_contract"]["stable_fields"]
     assert "data.review_digest.coverage_context.top_data_quality_queue" in data["agent_contract"]["stable_fields"]
     assert "data.review_digest.market_scan" in data["agent_contract"]["stable_fields"]
     assert "data.review_digest.market_scan.top_groups" in data["agent_contract"]["stable_fields"]
@@ -1129,6 +1130,30 @@ def test_dashboard_mock_returns_demo_workbench_without_runtime(monkeypatch, tmp_
     assert coverage_payload["command"] == "pool.quality"
     assert coverage_payload["data"]["pool"] == "all-a"
     assert coverage_payload["data"]["flag"] == "invalid_symbol"
+
+
+def test_dashboard_surfaces_universe_enrichment_queue(monkeypatch, tmp_path):
+    import_runtime_examples(monkeypatch, tmp_path)
+    universe_file = tmp_path / "a_share_universe.csv"
+    universe_file.write_text(
+        "证券代码,证券名称,行业,概念,指数成分,上市状态\n"
+        "000001,平安银行,银行,,沪深300,listed\n"
+        "600519,贵州茅台,,白酒;消费,,listed\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("MARKET_INTEL_A_SHARE_UNIVERSE_PATHS", str(universe_file))
+
+    payload = handle_dashboard("all-a", max_quote_age_days=9999, max_steps=5)
+    data = payload["data"]
+    text = render_dashboard_text(payload)
+
+    queue = data["coverage_context"]["universe"]["enrichment_queue"]
+    assert queue
+    assert queue[0]["field"] == "industry"
+    assert queue[0]["samples"][0] == {"symbol": "600519", "name": "贵州茅台"}
+    assert queue[0]["command"] == "market-intel import universe <a_share_universe.csv> --runtime --dry-run --json"
+    assert "补数: #1 行业 | 缺 1" in text
+    assert str(universe_file) not in text
 
 
 def test_dashboard_mock_preserves_non_default_pool(monkeypatch, tmp_path):

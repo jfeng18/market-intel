@@ -528,6 +528,7 @@ def universe_summary(items: List[PoolItem]) -> Dict[str, object]:
             "concept_count": 0,
             "index_membership_count": 0,
             "sector_profile": empty_sector_profile(),
+            "enrichment_queue": [],
             "sample_items": [],
         }
 
@@ -539,6 +540,7 @@ def universe_summary(items: List[PoolItem]) -> Dict[str, object]:
         indexes.update(split_universe_values(item.raw.get("universe_index_membership")))
     industries.discard("")
     source_files = sorted({str(item.raw.get("pool_source_file") or "") for item in universe_items if item.raw.get("pool_source_file")})
+    sector_profile = universe_sector_profile(universe_items)
     return {
         "available": True,
         "schema": "a_share_universe_v1",
@@ -547,7 +549,8 @@ def universe_summary(items: List[PoolItem]) -> Dict[str, object]:
         "industry_count": len(industries),
         "concept_count": len(concepts),
         "index_membership_count": len(indexes),
-        "sector_profile": universe_sector_profile(universe_items),
+        "sector_profile": sector_profile,
+        "enrichment_queue": universe_enrichment_queue(universe_items, sector_profile),
         "sample_items": [
             {
                 "symbol": item.symbol,
@@ -581,6 +584,77 @@ def empty_sector_profile() -> Dict[str, object]:
         "missing_field_samples": [],
         "coverage_flags": [],
     }
+
+
+UNIVERSE_FIELD_META = {
+    "industry": {
+        "label": "行业",
+        "priority": 1,
+        "reason": "缺行业会削弱全 A 板块强弱和持仓行业暴露判断。",
+    },
+    "concepts": {
+        "label": "概念",
+        "priority": 2,
+        "reason": "缺概念会削弱主题轮动、热点归因和重复主题暴露判断。",
+    },
+    "index_membership": {
+        "label": "指数成分",
+        "priority": 3,
+        "reason": "缺指数成分会削弱宽基/风格指数归因和候选标的分组。",
+    },
+}
+
+
+def universe_enrichment_queue(universe_items: List[PoolItem], sector_profile: Dict[str, object]) -> List[Dict[str, object]]:
+    missing_counts = sector_profile.get("missing_field_counts", {}) if isinstance(sector_profile.get("missing_field_counts"), dict) else {}
+    rows = []
+    for field, meta in UNIVERSE_FIELD_META.items():
+        count = int(missing_counts.get(field) or 0)
+        if count <= 0:
+            continue
+        rows.append(
+            {
+                "rank": 0,
+                "field": field,
+                "label": meta["label"],
+                "severity": "high" if field == "industry" else "medium",
+                "missing_count": count,
+                "missing_ratio": coverage_ratio(count, len(universe_items)),
+                "reason": meta["reason"],
+                "samples": universe_missing_field_samples(universe_items, field),
+                "command": "market-intel import universe <a_share_universe.csv> --runtime --dry-run --json",
+                "done_when": (
+                    "已补齐 %s 字段并通过 dry-run；pool coverage 中 "
+                    "universe.sector_profile.missing_field_counts.%s=0。"
+                )
+                % (meta["label"], field),
+            }
+        )
+    rows.sort(key=lambda item: (UNIVERSE_FIELD_META[str(item["field"])]["priority"], -int(item["missing_count"])))
+    for index, row in enumerate(rows, start=1):
+        row["rank"] = index
+    return rows
+
+
+def universe_missing_field_samples(universe_items: List[PoolItem], field: str, limit: int = 5) -> List[Dict[str, object]]:
+    samples = []
+    for item in universe_items:
+        value = item.raw.get("universe_%s" % field)
+        missing = not split_universe_values(value) if field in {"concepts", "index_membership"} else not str(value or "").strip()
+        if not missing:
+            continue
+        samples.append(
+            {
+                "symbol": item.symbol,
+                "name": item.name,
+                "industry": item.raw.get("universe_industry"),
+                "concepts": item.raw.get("universe_concepts"),
+                "index_membership": item.raw.get("universe_index_membership"),
+            }
+        )
+        if len(samples) >= limit:
+            break
+    return samples
 
 
 def universe_sector_profile(universe_items: List[PoolItem]) -> Dict[str, object]:
@@ -1393,6 +1467,9 @@ def coverage_contract() -> Dict[str, object]:
             "data.universe.sector_profile",
             "data.universe.sector_profile.top_industries",
             "data.universe.sector_profile.missing_field_samples",
+            "data.universe.enrichment_queue",
+            "data.universe.enrichment_queue[].samples",
+            "data.universe.enrichment_queue[].done_when",
             "data.holdings_coverage",
             "data.expansion_queue",
             "data.research_queue",

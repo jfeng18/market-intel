@@ -189,7 +189,7 @@ market-intel journal timeline --text
 - 默认面向 `all-a`，复用 `agent run` 的只读复盘结果，把全市场扫描、持仓压力、证据缺口、行动队列和交接压缩到一屏。
 - `dashboard --mock --text` 是离线试跑入口，不读取 runtime、不暴露个人持仓，用示例行情和示例持仓展示完整工作台合同。
 - `data.positioning` 会把产品取舍写成稳定 contract：全 A 复盘闭环、持仓优先、证据留痕、agent 接力，以及明确不竞争的行情/交易/资讯流能力。
-- `data.coverage_context` 会在第一屏展示 `all-a` 的覆盖底座、A 股基础清单是否接入、行业/概念/指数字段覆盖率、覆盖缺口和下一步命令。
+- `data.coverage_context` 会在第一屏展示 `all-a` 的覆盖底座、A 股基础清单是否接入、行业/概念/指数字段覆盖率、`universe.enrichment_queue` 补数字段队列、覆盖缺口和下一步命令。
 - `data.review_plan` 和 `data.action_lane` 会把 `coverage_review` 排在热点/持仓复核前；如果存在 `top_data_quality_queue`，第一条只读命令会优先指向 `pool quality <flag> --json`，先清最影响覆盖可信度的问题。
 - `data.market_pulse` 汇总全市场板块、候选复盘标的、覆盖状态、why_now 和下一条只读 JSON 命令。
 - `data.portfolio_pulse` 汇总个人持仓重点、变化持仓、缺行情/缺热点上下文、重复暴露和持仓复核命令。
@@ -297,6 +297,8 @@ market-intel holdings impact --runtime --json
 `data.data_quality_queue` 会把 `invalid_symbol`、`column_shift_suspected`、`missing_role`、`unknown_layer`、`duplicate_symbol_exposure` 等标记压成有优先级的清理队列。每项包含 `flag`、`severity`、`affected_count`、`samples`、`suggested_action`、`done_when` 和复验命令，方便人或 agent 先清最影响覆盖可信度的问题。
 
 `pool quality <flag>` 是单个质量标记的聚焦复核命令：展开该 flag 的样本行、来源文件、原始字段、修复提示、原因、建议动作、完成标准和下一步命令，适合按 `data_quality_queue[].rank` 逐项清理。它不会在 envelope 里重复完整 pool 的全局 warnings；agent 应优先读取 `data.samples`。
+
+`data.universe.enrichment_queue` 会把 A 股基础清单缺失的行业、概念、指数成分字段转成补数队列。每项包含 `field`、`missing_count`、样本标的、dry-run 导入命令和 `done_when`，适合按 rank 逐项补齐全 A 覆盖底座。
 
 可以先用 A 股基础清单扩展 `all-a` 的底座覆盖。CSV 支持 `symbol/name/industry/concepts/index_membership/listing_status`，也支持常见中文列名如 `证券代码/证券名称/行业/概念/指数成分/上市状态`。基础清单只代表“代码、名称、行业、概念、指数成分”的覆盖，不等于研究证据完成；匹配到基础清单的持仓会进入待复核覆盖队列。
 

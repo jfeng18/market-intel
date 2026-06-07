@@ -72,6 +72,7 @@ def daily_contract() -> Dict[str, object]:
             "data.portfolio_review.questions",
             "data.coverage_context",
             "data.coverage_context.universe.sector_profile",
+            "data.coverage_context.universe.enrichment_queue",
             "data.coverage_context.next_actions",
             "data.risk_flags",
             "data.risk_register",

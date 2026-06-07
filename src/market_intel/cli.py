@@ -2593,6 +2593,7 @@ def compact_dashboard_coverage_context(coverage: Dict[str, object]) -> Dict[str,
             "industry_count": universe.get("industry_count", 0),
             "concept_count": universe.get("concept_count", 0),
             "index_membership_count": universe.get("index_membership_count", 0),
+            "enrichment_queue": compact_universe_enrichment_queue(universe.get("enrichment_queue", [])),
             "sector_profile": {
                 "industry_coverage_ratio": profile.get("industry_coverage_ratio", 0),
                 "concept_coverage_ratio": profile.get("concept_coverage_ratio", 0),
@@ -2626,6 +2627,37 @@ def compact_dashboard_coverage_context(coverage: Dict[str, object]) -> Dict[str,
         ],
         "write_policy": "只说明复盘池和全 A 基础清单覆盖边界，不生成交易指令。",
     }
+
+
+def compact_universe_enrichment_queue(value: object) -> List[Dict[str, object]]:
+    rows = value if isinstance(value, list) else []
+    compact = []
+    for item in rows[:3]:
+        if not isinstance(item, dict):
+            continue
+        samples = item.get("samples", []) if isinstance(item.get("samples"), list) else []
+        compact.append(
+            {
+                "rank": item.get("rank"),
+                "field": item.get("field"),
+                "label": item.get("label"),
+                "severity": item.get("severity"),
+                "missing_count": item.get("missing_count", 0),
+                "missing_ratio": item.get("missing_ratio", 0),
+                "reason": item.get("reason"),
+                "command": item.get("command"),
+                "done_when": item.get("done_when"),
+                "samples": [
+                    {
+                        "symbol": sample.get("symbol"),
+                        "name": sample.get("name"),
+                    }
+                    for sample in samples[:3]
+                    if isinstance(sample, dict)
+                ],
+            }
+        )
+    return compact
 
 
 def compact_data_quality_queue(rows: List[object]) -> List[Dict[str, object]]:
@@ -3231,6 +3263,7 @@ def dashboard_contract() -> Dict[str, object]:
             "data.coverage_context",
             "data.coverage_context.universe",
             "data.coverage_context.universe.sector_profile",
+            "data.coverage_context.universe.enrichment_queue",
             "data.coverage_context.top_gaps",
             "data.coverage_context.top_data_quality_queue",
             "data.coverage_context.next_actions",
@@ -3623,6 +3656,7 @@ def agent_run_digest_coverage_context(daily: Dict[str, object]) -> Dict[str, obj
             "industry_count": universe.get("industry_count", 0),
             "concept_count": universe.get("concept_count", 0),
             "index_membership_count": universe.get("index_membership_count", 0),
+            "enrichment_queue": compact_universe_enrichment_queue(universe.get("enrichment_queue", [])),
             "sector_profile": {
                 "industry_coverage_ratio": profile.get("industry_coverage_ratio", 0),
                 "concept_coverage_ratio": profile.get("concept_coverage_ratio", 0),
@@ -7182,6 +7216,7 @@ def agent_run_contract() -> Dict[str, object]:
             "data.review_digest",
             "data.review_digest.coverage_context",
             "data.review_digest.coverage_context.universe.sector_profile",
+            "data.review_digest.coverage_context.universe.enrichment_queue",
             "data.review_digest.coverage_context.top_data_quality_queue",
             "data.review_digest.coverage_context.next_actions",
             "data.review_digest.market_scan",
@@ -7319,6 +7354,7 @@ def agent_next_contract() -> Dict[str, object]:
             "data.source_agent_run_state",
             "data.coverage_context",
             "data.coverage_context.universe.sector_profile",
+            "data.coverage_context.universe.enrichment_queue",
             "data.coverage_context.top_data_quality_queue",
             "data.coverage_context.next_actions",
             "data.market_scan",

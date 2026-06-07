@@ -177,10 +177,22 @@ def test_pool_coverage_reports_universe_sector_profile_gaps(monkeypatch, tmp_pat
     assert profile["coverage_flags"] == ["industry_missing", "concepts_missing", "index_membership_missing"]
     assert profile["missing_field_samples"][0]["symbol"] == "000001"
     assert profile["missing_field_samples"][0]["missing_fields"] == ["concepts"]
+    queue = payload["data"]["universe"]["enrichment_queue"]
+    assert [item["field"] for item in queue] == ["industry", "concepts", "index_membership"]
+    assert queue[0]["label"] == "行业"
+    assert queue[0]["severity"] == "high"
+    assert queue[0]["missing_count"] == 1
+    assert queue[0]["samples"][0]["symbol"] == "600519"
+    assert queue[0]["command"] == "market-intel import universe <a_share_universe.csv> --runtime --dry-run --json"
+    assert queue[0]["done_when"]
     assert any(action["id"] == "complete_a_share_universe_fields" for action in payload["data"]["next_actions"])
+    assert "data.universe.enrichment_queue" in payload["data"]["agent_contract"]["stable_fields"]
+    assert "data.universe.enrichment_queue[].samples" in payload["data"]["agent_contract"]["stable_fields"]
     assert "字段覆盖 | 行业 50.0% | 概念 50.0% | 指数 50.0%" in text
     assert "缺字段 | 行业 1 | 概念 1 | 指数 1" in text
     assert "待补 000001 平安银行 | concepts" in text
+    assert "补数队列" in text
+    assert "#1 行业 | 缺 1" in text
 
 
 def test_pool_research_exports_foundation_research_draft(monkeypatch, tmp_path):
