@@ -235,6 +235,27 @@ def test_agent_next_focuses_holding_outside_default_cards(monkeypatch, tmp_path)
     ]
 
 
+def test_agent_next_focuses_pool_symbol_outside_holdings(monkeypatch, tmp_path):
+    import_runtime_examples(monkeypatch, tmp_path)
+
+    payload = handle_agent_next("ai-energy", max_quote_age_days=9999, max_steps=5, symbol="002261")
+    data = payload["data"]
+    card = data["security_cards"]["cards"][0]
+    focus_commands = [item["json_command"] for item in data["focus_chain"]]
+
+    assert payload["ok"] is True
+    assert data["state"] == "continue_reading"
+    assert data["symbol"] == "002261"
+    assert len(data["security_cards"]["cards"]) == 1
+    assert card["symbol"] == "002261"
+    assert card["coverage_state"] == "pool_only"
+    assert "not_in_runtime_holdings" in card["coverage_state_reasons"]
+    assert card["next_json_command"] == "market-intel pool explain 002261 --runtime --json"
+    assert data["review_handoff"]["next_read"][0]["json_command"] == "market-intel pool explain 002261 --runtime --json"
+    assert focus_commands == ["market-intel pool explain 002261 --runtime --json --pool ai-energy"]
+    assert any("不在当前 runtime 持仓" in gap for gap in card["open_gaps"])
+
+
 def test_agent_briefing_ready_without_journal(monkeypatch, tmp_path):
     import_runtime_examples(monkeypatch, tmp_path)
 

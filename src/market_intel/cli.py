@@ -2065,9 +2065,10 @@ def handle_agent_next(
     market_scan = digest.get("market_scan", {}) if isinstance(digest.get("market_scan"), dict) else {}
     focus_chain = agent_next_focus_chain(pool, digest, handoff)
     if symbol:
-        handoff = filter_agent_next_handoff_for_symbol(handoff, symbol)
         cards = filter_agent_next_cards_for_symbol(cards, symbol)
         cards = ensure_agent_next_symbol_card(pool, symbol, digest, cards)
+        cards = ensure_agent_next_pool_symbol_card(pool, symbol, cards)
+        handoff = filter_agent_next_handoff_for_symbol(handoff, symbol, agent_next_primary_card_command(cards))
         focus_chain = agent_next_symbol_focus_chain(pool, symbol, handoff, cards, focus_chain)
         if not cards.get("cards"):
             focus_chain = []
@@ -2159,6 +2160,104 @@ def ensure_agent_next_symbol_card(
     result["summary"] = "聚焦 %s 的单票复核卡。" % symbol
     result["cards"] = [card]
     return result
+
+
+def ensure_agent_next_pool_symbol_card(
+    pool: str,
+    symbol: str,
+    cards: Dict[str, object],
+) -> Dict[str, object]:
+    existing = cards.get("cards", []) if isinstance(cards.get("cards"), list) else []
+    if existing:
+        return cards
+    pool_item = agent_next_pool_symbol_item(pool, symbol)
+    if not pool_item:
+        return cards
+    result = dict(cards)
+    result["available"] = True
+    result["summary"] = "聚焦 %s 的池内标的复核卡。" % symbol
+    result["cards"] = [pool_symbol_security_card(pool_item)]
+    return result
+
+
+def agent_next_pool_symbol_item(pool: str, symbol: str) -> Dict[str, object]:
+    explain_payload = handle_pool_explain(pool, symbol, use_runtime=True)
+    if not explain_payload.get("ok"):
+        return {}
+    data = explain_payload.get("data", {}) if isinstance(explain_payload.get("data"), dict) else {}
+    item = data.get("item", {}) if isinstance(data.get("item"), dict) else {}
+    facts = data.get("facts", {}) if isinstance(data.get("facts"), dict) else {}
+    if not item or str(facts.get("symbol") or item.get("symbol") or "") != symbol:
+        return {}
+    return data
+
+
+def pool_symbol_security_card(data: Dict[str, object]) -> Dict[str, object]:
+    facts = data.get("facts", {}) if isinstance(data.get("facts"), dict) else {}
+    item = data.get("item", {}) if isinstance(data.get("item"), dict) else {}
+    symbol = str(facts.get("symbol") or item.get("symbol") or "")
+    exposures = data.get("exposures", []) if isinstance(data.get("exposures"), list) else []
+    runtime_context = data.get("runtime_context", {}) if isinstance(data.get("runtime_context"), dict) else {}
+    quote = runtime_context.get("quote") if isinstance(runtime_context.get("quote"), dict) else None
+    holding = runtime_context.get("holding") if isinstance(runtime_context.get("holding"), dict) else None
+    chain = "%s/%s" % (facts.get("primary_layer"), facts.get("primary_sub_sector"))
+    supporting = dedupe_queue_texts(
+        [
+            data.get("explain"),
+            "池内标的：%s，主链路 %s。" % (facts.get("name") or item.get("name") or symbol, chain),
+            "runtime 有行情。" if quote else None,
+            "runtime 有持仓。" if holding else "runtime 未持仓。",
+        ]
+    )[:6]
+    gaps = dedupe_queue_texts(
+        list(data.get("questions", []) if isinstance(data.get("questions"), list) else [])
+        + (["该标的不在当前 runtime 持仓中，先按池内标的核对，不进入持仓暴露结论。"] if not holding else [])
+        + (["runtime 缺少该标的行情。"] if not quote else [])
+    )[:6]
+    question = (
+        "先确认该池内标的的链路、角色、可交易状态和 runtime 行情/持仓上下文。"
+        if not holding
+        else "先确认该标的的链路、角色、行情和持仓上下文。"
+    )
+    command = "market-intel pool explain %s --runtime --json" % symbol
+    return {
+        "rank": 1,
+        "symbol": symbol,
+        "name": facts.get("name") or item.get("name"),
+        "priority": facts.get("priority"),
+        "review_score": None,
+        "coverage_state": "pool_only" if not holding else "pool_context",
+        "coverage_state_reasons": ["pool_item_match"] + ([] if holding else ["not_in_runtime_holdings"]),
+        "research_status": {},
+        "research_workflow": [],
+        "change_priority": 0,
+        "has_quote": bool(quote),
+        "in_hotspot": False,
+        "hotspot": None,
+        "quote": quote,
+        "risk_flags": list(data.get("risks", []))[:6] if isinstance(data.get("risks"), list) else [],
+        "exposure_groups": [
+            {
+                "group_type": "chain",
+                "group": "%s/%s" % (exposure.get("layer"), exposure.get("sub_sector")),
+                "role": exposure.get("role"),
+            }
+            for exposure in exposures[:4]
+            if isinstance(exposure, dict)
+        ],
+        "overlap_groups": [],
+        "change": {},
+        "supporting_evidence": supporting,
+        "open_gaps": gaps,
+        "questions": [question],
+        "next_json_command": command,
+        "commands": [command],
+        "watch_items": [],
+        "journal_note": {
+            "available": False,
+            "write_policy": "池内标的 fallback 只给读取入口；是否记录研究笔记需人工确认。",
+        },
+    }
 
 
 def agent_next_symbol_holding(pool: str, digest: Dict[str, object], symbol: str) -> Dict[str, object]:
@@ -3935,7 +4034,17 @@ def filter_agent_next_cards_for_symbol(cards: Dict[str, object], symbol: str) ->
     }
 
 
-def filter_agent_next_handoff_for_symbol(handoff: Dict[str, object], symbol: str) -> Dict[str, object]:
+def agent_next_primary_card_command(cards: Dict[str, object]) -> str:
+    rows = cards.get("cards", []) if isinstance(cards.get("cards"), list) else []
+    first = rows[0] if rows and isinstance(rows[0], dict) else {}
+    return str(first.get("next_json_command") or "")
+
+
+def filter_agent_next_handoff_for_symbol(
+    handoff: Dict[str, object],
+    symbol: str,
+    fallback_command: str = "",
+) -> Dict[str, object]:
     wanted = str(symbol)
     command_signature = "portfolio.explain:%s" % wanted
     next_read = filter_handoff_symbol_commands(handoff.get("next_read", []), command_signature)
@@ -3945,7 +4054,7 @@ def filter_agent_next_handoff_for_symbol(handoff: Dict[str, object], symbol: str
         include_sources={"foundation_research"},
     )
     if not next_read:
-        default_command = "market-intel portfolio explain %s --runtime --json" % wanted
+        default_command = fallback_command or "market-intel portfolio explain %s --runtime --json" % wanted
         next_read = [
             review_handoff_command_item(
                 1,
