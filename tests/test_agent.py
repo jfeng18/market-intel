@@ -1351,7 +1351,9 @@ def test_dashboard_returns_one_screen_workbench(monkeypatch, tmp_path):
     assert "定位" in text
     assert "个人复盘操作系统" in text
     assert "覆盖底座" in text
+    assert "all-a | %s |" % data["coverage_context"]["status"] in text
     assert "全 A: 已接入 | 记录 16" in text
+    assert "持仓覆盖:" in text
     assert "质量:" in text
     assert "全市场" in text
     assert "宽度:" in text
@@ -1458,7 +1460,9 @@ def test_dashboard_mock_returns_demo_workbench_without_runtime(monkeypatch, tmp_
     assert "下一步" in text
     assert "留档门槛" in text
     assert "覆盖底座" in text
+    assert "all-a | seed |" in text
     assert "全 A: 未接入" in text
+    assert "持仓覆盖: 5/5" in text
     assert "market-intel dashboard" in text
     assert "不生成买卖指令" in text
     assert "buy" not in text.lower()

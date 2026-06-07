@@ -1987,7 +1987,7 @@ def render_dashboard_compact_coverage(value: Dict[str, object]) -> List[str]:
     lines = []
     lines.append(
         "- %s | %s | 缺口 %s"
-        % (value.get("pool") or "-", value.get("coverage_status") or "-", value.get("gap_count", 0))
+        % (value.get("pool") or "-", value.get("status") or value.get("coverage_status") or "-", value.get("gap_count", 0))
     )
     universe = value.get("universe", {}) if isinstance(value.get("universe"), dict) else {}
     if universe:
@@ -2042,6 +2042,17 @@ def render_dashboard_compact_coverage(value: Dict[str, object]) -> List[str]:
     if gaps and isinstance(gaps[0], dict):
         first_gap = gaps[0]
         lines.append("  首要缺口: %s | %s" % (first_gap.get("severity"), first_gap.get("id")))
+    holdings = value.get("holdings_coverage", {}) if isinstance(value.get("holdings_coverage"), dict) else {}
+    if holdings:
+        lines.append(
+            "  持仓覆盖: %s/%s | 待复核 %s | 未覆盖 %s"
+            % (
+                holdings.get("matched_count", 0),
+                holdings.get("holding_count", 0),
+                holdings.get("needs_review_count", 0),
+                holdings.get("unmatched_count", 0),
+            )
+        )
     return lines
 
 
