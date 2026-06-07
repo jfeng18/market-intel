@@ -1902,9 +1902,12 @@ def render_dashboard_action_summary(value: Dict[str, object]) -> List[str]:
         )
     record = value.get("record_template", {}) if isinstance(value.get("record_template"), dict) else {}
     if record.get("prefilled_note_command"):
-        lines.append("  记录: %s" % record.get("prefilled_note_command"))
-        if record.get("run_after"):
-            lines.append("  记录前置: %s" % record.get("run_after"))
+        if record.get("runnable"):
+            lines.append("  记录: %s" % record.get("prefilled_note_command"))
+            if record.get("run_after"):
+                lines.append("  记录前置: %s" % record.get("run_after"))
+        else:
+            lines.append("  记录前置: %s" % (record.get("blocked_reason") or "先完成待读和人工确认项。"))
     return lines
 
 

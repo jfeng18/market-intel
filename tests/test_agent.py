@@ -1227,6 +1227,7 @@ def test_dashboard_returns_one_screen_workbench(monkeypatch, tmp_path):
     assert data["action_summary"]["next_chain"][0]["json_command"] == data["today_focus"]["focus_chain"][0]["json_command"]
     assert data["action_summary"]["record_template"]["available"] is True
     assert data["action_summary"]["record_template"]["section"] == "market_structure"
+    assert data["action_summary"]["record_template"]["runnable"] is False
     assert data["action_summary"]["record_template"]["prefilled_note_command"].startswith("market-intel journal note --section")
     assert data["action_summary"]["record_template"]["run_after"] == "market-intel journal save --runtime --json"
     assert [item["json_command"] for item in data["today_focus"]["focus_chain"][:3]] == [
@@ -1238,6 +1239,7 @@ def test_dashboard_returns_one_screen_workbench(monkeypatch, tmp_path):
     assert "data.today_focus" in data["agent_contract"]["stable_fields"]
     assert "data.action_summary" in data["agent_contract"]["stable_fields"]
     assert "data.action_summary.next_command" in data["agent_contract"]["stable_fields"]
+    assert "data.action_summary.record_template.runnable" in data["agent_contract"]["stable_fields"]
     assert "data.action_summary.record_template.prefilled_note_command" in data["agent_contract"]["stable_fields"]
     assert "data.action_summary.next_chain[].json_command" in data["agent_contract"]["stable_fields"]
     assert "data.today_focus.json_command" in data["agent_contract"]["stable_fields"]
@@ -1296,7 +1298,7 @@ def test_dashboard_returns_one_screen_workbench(monkeypatch, tmp_path):
     assert "market-intel dashboard" in text
     assert len(text.splitlines()) <= 80
     assert "操作摘要" in text
-    assert "记录: market-intel journal note --section" in text
+    assert "记录前置:" in text
     assert "今日焦点" in text
     assert "为什么:" in text
     assert "接力:" in text
@@ -1443,6 +1445,8 @@ def test_dashboard_action_summary_selects_record_template_by_focus_source():
     )
 
     assert summary["record_template"]["section"] == "security_review"
+    assert summary["record_template"]["runnable"] is False
+    assert summary["record_template"]["blocked_reason"] == "先读候选。"
     assert "security_review" in summary["record_template"]["prefilled_note_command"]
 
 
@@ -1464,6 +1468,9 @@ def test_dashboard_blocked_handoff_does_not_duplicate_next_read(monkeypatch, tmp
 
     assert payload["ok"] is True
     assert data["state"] == "blocked"
+    assert data["action_summary"]["record_template"]["available"] is True
+    assert data["action_summary"]["record_template"]["runnable"] is False
+    assert data["action_summary"]["record_template"]["blocked_reason"]
     assert "market-intel validate runtime --json" in next_read_commands
     assert "market-intel validate runtime --json" not in manual_commands
     assert data["review_plan"]["items"][0]["json_command"] == "market-intel validate runtime --json"
