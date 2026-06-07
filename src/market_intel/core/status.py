@@ -5,7 +5,7 @@ from typing import Dict, List, Optional
 from .fixtures import load_quotes_file
 from .models import PoolItem, Quote
 from .pool_loader import DEFAULT_POOL
-from .runtime import runtime_holdings_path, runtime_missing_files, runtime_paths, runtime_quotes_path
+from .runtime import runtime_holdings_path, runtime_missing_files, runtime_paths, runtime_profile, runtime_quotes_path
 from .validation import validate_runtime
 
 
@@ -20,14 +20,16 @@ def build_runtime_status(
     files = runtime_file_status()
     freshness = build_freshness(max_quote_age_days, current_date) if not validation["errors"] else missing_freshness()
     universe = build_universe_status(items, pool)
-    readiness = build_readiness(validation, freshness, universe)
-    next_actions = build_next_actions(validation, freshness, readiness, universe)
+    profile = runtime_profile()
+    readiness = build_readiness(validation, freshness, universe, profile)
+    next_actions = build_next_actions(validation, freshness, readiness, universe, profile)
 
     return {
         "readiness": readiness,
         "validation": validation,
         "freshness": freshness,
         "universe": universe,
+        "profile": profile,
         "files": files,
         "next_actions": next_actions,
         "agent_contract": {
@@ -41,6 +43,9 @@ def build_runtime_status(
                 "data.validation.summary",
                 "data.freshness",
                 "data.universe",
+                "data.profile",
+                "data.profile.mode",
+                "data.profile.sample_datasets",
                 "data.files",
                 "data.next_actions",
                 "data.next_actions[].priority",
@@ -60,6 +65,8 @@ def runtime_file_status() -> Dict[str, object]:
         "quotes": file_status(Path(paths["quotes"])),
         "holdings": file_status(Path(paths["holdings"])),
         "universe": file_status(Path(paths["universe"])),
+        "research": file_status(Path(paths["research"])),
+        "manifest": file_status(Path(paths["manifest"])),
     }
 
 
@@ -272,7 +279,12 @@ def build_universe_status(items: List[PoolItem], pool: str) -> Dict[str, object]
     }
 
 
-def build_readiness(validation: Dict[str, object], freshness: Dict[str, object], universe: Dict[str, object]) -> Dict[str, object]:
+def build_readiness(
+    validation: Dict[str, object],
+    freshness: Dict[str, object],
+    universe: Dict[str, object],
+    profile: Optional[Dict[str, object]] = None,
+) -> Dict[str, object]:
     validation_error_count = (
         int(validation.get("summary", {}).get("error_count", 0)) if isinstance(validation.get("summary"), dict) else 0
     )
@@ -280,10 +292,12 @@ def build_readiness(validation: Dict[str, object], freshness: Dict[str, object],
     freshness_error_count = len(freshness.get("errors", [])) if isinstance(freshness.get("errors"), list) else 0
     freshness_warning_count = len(freshness.get("warnings", [])) if isinstance(freshness.get("warnings"), list) else 0
     universe_warning_count = len(universe.get("warnings", [])) if isinstance(universe.get("warnings"), list) else 0
+    profile_data = profile if isinstance(profile, dict) else {}
+    profile_warning_count = len(profile_data.get("warnings", [])) if isinstance(profile_data.get("warnings"), list) else 0
     error_count = validation_error_count + freshness_error_count
     if error_count:
         state = "blocked"
-    elif warning_count or freshness_warning_count or universe_warning_count:
+    elif warning_count or freshness_warning_count or universe_warning_count or profile_warning_count:
         state = "degraded"
     else:
         state = "ready"
@@ -291,8 +305,15 @@ def build_readiness(validation: Dict[str, object], freshness: Dict[str, object],
         "state": state,
         "can_run_daily": state != "blocked",
         "error_count": error_count,
-        "warning_count": warning_count + freshness_warning_count + universe_warning_count,
-        "reason": readiness_reason(state, error_count, warning_count, freshness_warning_count, universe_warning_count),
+        "warning_count": warning_count + freshness_warning_count + universe_warning_count + profile_warning_count,
+        "reason": readiness_reason(
+            state,
+            error_count,
+            warning_count,
+            freshness_warning_count,
+            universe_warning_count,
+            profile_warning_count,
+        ),
     }
 
 
@@ -302,14 +323,16 @@ def readiness_reason(
     warning_count: int,
     freshness_warning_count: int,
     universe_warning_count: int,
+    profile_warning_count: int = 0,
 ) -> str:
     if state == "blocked":
         return "runtime 数据存在错误，先处理 errors。"
     if state == "degraded":
-        return "runtime 可生成报告，但有 %s 个数据告警、%s 个新鲜度告警和 %s 个 universe 告警。" % (
+        return "runtime 可生成报告，但有 %s 个数据告警、%s 个新鲜度告警、%s 个 universe 告警和 %s 个来源告警。" % (
             warning_count,
             freshness_warning_count,
             universe_warning_count,
+            profile_warning_count,
         )
     return "runtime 数据可用，可以生成日报。"
 
@@ -319,6 +342,7 @@ def build_next_actions(
     freshness: Dict[str, object],
     readiness: Dict[str, object],
     universe: Dict[str, object],
+    profile: Optional[Dict[str, object]] = None,
 ) -> List[Dict[str, object]]:
     actions = []
     missing = runtime_missing_files()
@@ -344,6 +368,10 @@ def build_next_actions(
             )
         )
         return actions
+
+    profile_data = profile if isinstance(profile, dict) else {}
+    if profile_data.get("mode") == "sample":
+        actions.extend(sample_runtime_actions(profile_data))
 
     errors = validation.get("errors", []) if isinstance(validation.get("errors"), list) else []
     if errors:
@@ -423,6 +451,56 @@ def build_next_actions(
         )
     )
     return sorted(actions, key=lambda item: int(item.get("priority", 999)))
+
+
+def sample_runtime_actions(profile: Dict[str, object]) -> List[Dict[str, object]]:
+    sample_datasets = set(profile.get("sample_datasets", [])) if isinstance(profile.get("sample_datasets"), list) else set()
+    rows = []
+    if "quotes" in sample_datasets:
+        rows.append(
+            action(
+                11,
+                "import_real_quotes",
+                "market-intel import quotes <quotes.csv> --runtime --dry-run --json",
+                "当前 quotes 来自 init 示例数据；正式复盘前先 dry-run 真实行情。",
+                "真实 quotes dry-run 无 errors，确认字段后去掉 --dry-run 写入 runtime。",
+                runnable=False,
+            )
+        )
+    if "holdings" in sample_datasets:
+        rows.append(
+            action(
+                12,
+                "import_real_holdings",
+                "market-intel import holdings <holdings.csv> --runtime --dry-run --json",
+                "当前 holdings 来自 init 示例数据；正式复盘前先 dry-run 真实持仓。",
+                "真实 holdings dry-run 无 errors，确认字段后去掉 --dry-run 写入 runtime。",
+                runnable=False,
+            )
+        )
+    if "universe" in sample_datasets:
+        rows.append(
+            action(
+                13,
+                "import_real_universe",
+                "market-intel import universe <a_share_universe.csv> --runtime --dry-run --json",
+                "当前 A 股基础清单来自示例数据；正式全 A 复盘前先 dry-run 真实清单。",
+                "真实 universe dry-run 无 errors，确认覆盖变化后去掉 --dry-run 写入 runtime。",
+                runnable=False,
+            )
+        )
+    if "research" in sample_datasets:
+        rows.append(
+            action(
+                14,
+                "import_real_research",
+                "market-intel import research <research_notes.csv> --runtime --dry-run --json",
+                "当前 research notes 来自示例数据；正式复盘前先 dry-run 真实研究证据。",
+                "真实 research dry-run 无 errors，确认 reviewed 记录证据齐全后写入 runtime。",
+                runnable=False,
+            )
+        )
+    return rows
 
 
 def action(priority: int, action_id: str, command: str, reason: str, done_when: str, runnable: bool) -> Dict[str, object]:

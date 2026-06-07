@@ -2,7 +2,14 @@ import json
 import subprocess
 from datetime import date
 
-from market_intel.cli import handle_import_holdings, handle_import_quotes, handle_import_universe, handle_init_runtime, handle_status_runtime
+from market_intel.cli import (
+    handle_import_holdings,
+    handle_import_quotes,
+    handle_import_research,
+    handle_import_universe,
+    handle_init_runtime,
+    handle_status_runtime,
+)
 from market_intel.core.pool_loader import load_pool
 from market_intel.core.status import build_runtime_status
 from market_intel.core.text_report import render_runtime_status_text
@@ -70,18 +77,45 @@ def test_status_runtime_ready_after_universe_import(monkeypatch, tmp_path):
     assert data["next_actions"][0]["done_when"]
 
 
-def test_status_runtime_ready_after_init_runtime(monkeypatch, tmp_path):
+def test_status_runtime_after_init_runtime_is_sample_degraded(monkeypatch, tmp_path):
+    monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(tmp_path / "runtime"))
+    init_payload = handle_init_runtime(force=False)
+
+    payload = handle_status_runtime("all-a", max_quote_age_days=9999)
+    data = payload["data"]
+
+    assert payload["ok"] is True
+    assert init_payload["data"]["profile"]["mode"] == "sample"
+    assert any(warning["code"] == "RUNTIME_SAMPLE_DATA" for warning in payload["warnings"])
+    assert data["profile"]["mode"] == "sample"
+    assert data["profile"]["sample_datasets"] == ["holdings", "quotes", "research", "universe"]
+    assert data["files"]["manifest"]["exists"] is True
+    assert data["readiness"]["state"] == "degraded"
+    assert data["validation"]["summary"]["warning_count"] == 0
+    assert data["universe"]["state"] == "ready"
+    assert data["next_actions"][0]["id"] == "import_real_quotes"
+    assert data["next_actions"][0]["runnable"] is False
+    assert data["next_actions"][0]["command"] == "market-intel import quotes <quotes.csv> --runtime --dry-run --json"
+    assert "data.profile.mode" in data["agent_contract"]["stable_fields"]
+    assert "data.profile.sample_datasets" in data["agent_contract"]["stable_fields"]
+
+
+def test_status_runtime_imports_clear_sample_profile(monkeypatch, tmp_path):
     monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(tmp_path / "runtime"))
     handle_init_runtime(force=False)
+    handle_import_quotes("examples/quotes.csv.example", use_runtime=True)
+    handle_import_holdings("examples/holdings.csv.example", use_runtime=True)
+    handle_import_universe("examples/a_share_universe.csv.example", use_runtime=True)
+    handle_import_research("examples/research_notes.csv.example", use_runtime=True)
 
     payload = handle_status_runtime("all-a", max_quote_age_days=9999)
     data = payload["data"]
 
     assert payload["ok"] is True
     assert payload["warnings"] == []
+    assert data["profile"]["mode"] == "runtime"
+    assert data["profile"]["sample_datasets"] == []
     assert data["readiness"]["state"] == "ready"
-    assert data["validation"]["summary"]["warning_count"] == 0
-    assert data["universe"]["state"] == "ready"
     assert data["next_actions"][0]["id"] == "run_daily_report"
 
 
@@ -233,6 +267,8 @@ def test_status_runtime_text_renderer(monkeypatch, tmp_path):
     text = render_runtime_status_text(payload)
 
     assert "market-intel status runtime" in text
+    assert "运行模式" in text
+    assert "正式 | 样例数据 无" in text
     assert "全 A 基础清单" in text
     assert "A_SHARE_UNIVERSE_MISSING" in text
     assert "下一步" in text

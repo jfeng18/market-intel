@@ -1649,6 +1649,8 @@ def test_dashboard_init_runtime_prioritizes_market_over_seed_quality(monkeypatch
 
     assert payload["ok"] is True
     assert data["state"] in {"needs_review", "ready_for_note", "blocked_review"}
+    assert data["runtime_profile"]["mode"] == "sample"
+    assert data["runtime_profile"]["sample_datasets"] == ["holdings", "quotes", "research", "universe"]
     assert data["today_focus"]["source"] == "market_scan"
     assert data["today_focus"]["json_command"] == "market-intel scan --runtime --json"
     assert item_types[0] == "market_scan"
@@ -1668,6 +1670,10 @@ def test_dashboard_init_runtime_prioritizes_market_over_seed_quality(monkeypatch
     assert gate["ready_for_journal_note"] is False
     assert gate["json_command"].startswith("market-intel portfolio explain")
     assert gate["blockers"][0].startswith("还有")
+    assert "data.runtime_profile.mode" in data["agent_contract"]["stable_fields"]
+    text = render_dashboard_text(payload)
+    assert "运行模式" in text
+    assert "样例数据" in text
 
 
 def test_dashboard_surfaces_universe_enrichment_queue(monkeypatch, tmp_path):

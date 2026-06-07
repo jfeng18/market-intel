@@ -99,6 +99,8 @@ LABELS = {
     "blocked": "阻塞",
     "unknown": "未知",
     "demo": "演示",
+    "sample": "样例",
+    "runtime": "正式",
     "demo_ready": "演示可用",
     "ready": "可留档",
     "ready_for_note": "可留档",
@@ -1912,14 +1914,23 @@ def render_runtime_status_text(payload: Dict[str, object]) -> str:
     readiness = data.get("readiness", {}) if isinstance(data.get("readiness"), dict) else {}
     freshness = data.get("freshness", {}) if isinstance(data.get("freshness"), dict) else {}
     universe = data.get("universe", {}) if isinstance(data.get("universe"), dict) else {}
+    profile = data.get("profile", {}) if isinstance(data.get("profile"), dict) else {}
     lines = [
         "market-intel status runtime",
         "",
         "状态",
         "- %s | %s" % (readiness.get("state"), readiness.get("reason")),
         "",
-        "数据检查",
+        "运行模式",
+        "- %s | 样例数据 %s"
+        % (label(profile.get("mode") or "runtime"), "、".join(str(item) for item in profile.get("sample_datasets", [])) if isinstance(profile.get("sample_datasets"), list) and profile.get("sample_datasets") else "无"),
     ]
+    if profile.get("warnings"):
+        lines.append("   告警: %s" % render_issue_codes(profile.get("warnings", [])))
+    lines.extend([
+        "",
+        "数据检查",
+    ])
     lines.extend(render_validation_summary(data.get("validation", {})))
     lines.extend(["", "行情新鲜度"])
     lines.append(
@@ -2020,6 +2031,16 @@ def render_dashboard_text(payload: Dict[str, object]) -> str:
         "状态",
         "- %s | %s" % (label(data.get("state")), dashboard_short_text(data.get("summary") or "暂无摘要。", 80)),
     ]
+    runtime_profile = data.get("runtime_profile", {}) if isinstance(data.get("runtime_profile"), dict) else {}
+    if runtime_profile.get("mode") == "sample":
+        sample_datasets = runtime_profile.get("sample_datasets", []) if isinstance(runtime_profile.get("sample_datasets"), list) else []
+        lines.extend(
+            [
+                "",
+                "运行模式",
+                "- 样例数据: %s | 正式复盘前先导入真实 runtime。" % ("、".join(str(item) for item in sample_datasets) if sample_datasets else "是"),
+            ]
+        )
     action_summary = data.get("action_summary", {}) if isinstance(data.get("action_summary"), dict) else {}
     has_action_summary = bool(action_summary.get("available"))
     if action_summary.get("available"):

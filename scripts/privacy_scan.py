@@ -4,9 +4,10 @@ import sys
 from pathlib import Path
 
 
-SCAN_ROOTS = [Path("README.md"), Path("docs"), Path("examples"), Path("data/pools"), Path(".github")]
+SCAN_ROOTS = [Path("README.md"), Path("AGENTS.md"), Path("docs"), Path("examples"), Path("data/pools"), Path(".github")]
 LINE_BUDGETS = {
     Path("README.md"): 160,
+    Path("AGENTS.md"): 80,
     Path("docs/data-model.md"): 180,
     Path("docs/design.md"): 120,
     Path("docs/design-review.md"): 80,

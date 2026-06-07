@@ -46,7 +46,7 @@ from .core.models import Holding, PoolItem
 from .core.normalize import explain_pool_item, find_pool_item
 from .core.pool_loader import DEFAULT_POOL, default_pool_path, list_pools, load_pool
 from .core.portfolio import build_portfolio_explain, build_portfolio_review
-from .core.runtime import init_runtime, runtime_missing_files, runtime_paths
+from .core.runtime import init_runtime, mark_runtime_dataset_imported, runtime_missing_files, runtime_paths
 from .core.scan import build_market_scan
 from .core.scoring import calculate_hotspots
 from .core.status import build_runtime_status
@@ -1868,6 +1868,7 @@ def handle_import_quotes(
         default_trade_date=trade_date,
         runtime=use_runtime,
     )
+    mark_runtime_import_if_written("quotes", data, use_runtime, dry_run)
     return import_envelope("import.quotes", data)
 
 
@@ -1886,6 +1887,7 @@ def handle_import_holdings(
         dry_run=dry_run,
         runtime=use_runtime,
     )
+    mark_runtime_import_if_written("holdings", data, use_runtime, dry_run)
     return import_envelope("import.holdings", data)
 
 
@@ -1906,6 +1908,7 @@ def handle_import_universe(
         runtime=use_runtime,
         merge=merge,
     )
+    mark_runtime_import_if_written("universe", data, use_runtime, dry_run)
     return import_envelope("import.universe", data)
 
 
@@ -1924,7 +1927,13 @@ def handle_import_research(
         dry_run=dry_run,
         runtime=use_runtime,
     )
+    mark_runtime_import_if_written("research", data, use_runtime, dry_run)
     return import_envelope("import.research", data)
+
+
+def mark_runtime_import_if_written(kind: str, data: Dict[str, object], use_runtime: bool, dry_run: bool) -> None:
+    if use_runtime and not dry_run and data.get("written") and not data.get("errors"):
+        data["runtime_manifest"] = mark_runtime_dataset_imported(kind, source="import.%s" % kind)
 
 
 def resolve_import_output(
@@ -2003,6 +2012,7 @@ def status_warnings(data: Dict[str, object]) -> List[Dict[str, Any]]:
     validation = data.get("validation", {}) if isinstance(data.get("validation"), dict) else {}
     freshness = data.get("freshness", {}) if isinstance(data.get("freshness"), dict) else {}
     universe = data.get("universe", {}) if isinstance(data.get("universe"), dict) else {}
+    profile = data.get("profile", {}) if isinstance(data.get("profile"), dict) else {}
     warnings = []
     if isinstance(validation.get("warnings"), list):
         warnings.extend(validation["warnings"])
@@ -2010,6 +2020,8 @@ def status_warnings(data: Dict[str, object]) -> List[Dict[str, Any]]:
         warnings.extend(freshness["warnings"])
     if isinstance(universe.get("warnings"), list):
         warnings.extend(universe["warnings"])
+    if isinstance(profile.get("warnings"), list):
+        warnings.extend(profile["warnings"])
     return warnings
 
 
@@ -3432,6 +3444,8 @@ def build_dashboard_data(
     digest: Dict[str, object],
     max_steps: int,
 ) -> Dict[str, object]:
+    status_data = build_runtime_status(load_pool(pool), pool=pool)
+    runtime_profile = status_data.get("profile", {}) if isinstance(status_data.get("profile"), dict) else {}
     coverage = dashboard_coverage_context(digest)
     market = dashboard_market_pulse(digest)
     portfolio = dashboard_portfolio_pulse(digest)
@@ -3446,6 +3460,7 @@ def build_dashboard_data(
         "state": dashboard_state(run_data, digest),
         "summary": dashboard_summary(run_data, digest),
         "source_agent_run_state": run_data.get("state"),
+        "runtime_profile": runtime_profile,
         "run_limits": run_data.get("run_limits", {"max_steps": max_steps, "read_only_only": True, "writes_are_skipped": True}),
         "action_summary": action_summary,
         "today_focus": today_focus,
@@ -4975,6 +4990,9 @@ def dashboard_contract() -> Dict[str, object]:
         "stable_fields": [
             "data.state",
             "data.summary",
+            "data.runtime_profile",
+            "data.runtime_profile.mode",
+            "data.runtime_profile.sample_datasets",
             "data.tiles",
             "data.action_summary",
             "data.action_summary.decision_card",
