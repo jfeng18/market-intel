@@ -161,6 +161,8 @@ def import_universe_csv(
         errors.append(issue("NO_UNIVERSE_RECORDS", "CSV 中没有可导入的 A 股基础清单记录。", {"path": command_path(csv_path)}))
 
     coverage_delta = universe_coverage_delta(output_path, records) if not errors else empty_universe_coverage_delta(output_path)
+    if not errors and dry_run:
+        warnings.extend(universe_dry_run_warnings(coverage_delta))
     written = False
     if not errors and not dry_run and output_path is not None:
         write_universe_csv(output_path, records)
@@ -312,8 +314,11 @@ def import_schema() -> Dict[str, object]:
                 "data.coverage_delta",
                 "data.coverage_delta.before",
                 "data.coverage_delta.after",
+                "data.coverage_delta.removed_symbol_count",
                 "data.coverage_delta.improvement",
                 "data.coverage_delta.improvement.improved_fields",
+                "data.coverage_delta.recommendation",
+                "data.coverage_delta.recommendation.requires_import",
             ],
             "follow_up": "写入 runtime 后可执行 market-intel validate runtime --json 和 market-intel daily --runtime --json",
         },
@@ -567,24 +572,28 @@ UNIVERSE_PLACEHOLDERS = {
 def universe_coverage_delta(output_path: Optional[Path], records: List[Dict[str, object]]) -> Dict[str, object]:
     existing_records = read_existing_universe_records(output_path)
     existing_by_symbol = {str(record.get("symbol") or ""): record for record in existing_records if record.get("symbol")}
-    merged_by_symbol = dict(existing_by_symbol)
-    for record in records:
-        symbol = str(record.get("symbol") or "")
-        if symbol:
-            merged_by_symbol[symbol] = record
+    incoming_by_symbol = {str(record.get("symbol") or ""): record for record in records if record.get("symbol")}
+    existing_symbols = set(existing_by_symbol)
+    incoming_symbols = set(incoming_by_symbol)
+    removed_symbols = sorted(existing_symbols - incoming_symbols)
     before = universe_field_coverage_summary(list(existing_by_symbol.values()))
-    after = universe_field_coverage_summary(list(merged_by_symbol.values()))
+    after = universe_field_coverage_summary(records)
+    improvement = universe_coverage_improvement(before, after)
+    removed_samples = [universe_removed_symbol_sample(existing_by_symbol[symbol]) for symbol in removed_symbols[:5]]
     return {
         "available": bool(records),
         "target": command_path(output_path) if output_path else None,
         "existing_record_count": len(existing_by_symbol),
         "incoming_record_count": len(records),
-        "after_record_count": len(merged_by_symbol),
-        "new_symbol_count": max(0, len(merged_by_symbol) - len(existing_by_symbol)),
-        "updated_symbol_count": sum(1 for record in records if str(record.get("symbol") or "") in existing_by_symbol),
+        "after_record_count": len(records),
+        "new_symbol_count": len(incoming_symbols - existing_symbols),
+        "updated_symbol_count": len(incoming_symbols & existing_symbols),
+        "removed_symbol_count": len(removed_symbols),
+        "removed_samples": removed_samples,
         "before": before,
         "after": after,
-        "improvement": universe_coverage_improvement(before, after),
+        "improvement": improvement,
+        "recommendation": universe_delta_recommendation(improvement, after, len(removed_symbols)),
         "done_when": "dry-run 预估显示目标字段缺口减少；正式导入后运行 market-intel pool coverage --runtime --json 复验 universe.enrichment_queue。",
     }
 
@@ -598,6 +607,8 @@ def empty_universe_coverage_delta(output_path: Optional[Path]) -> Dict[str, obje
         "after_record_count": 0,
         "new_symbol_count": 0,
         "updated_symbol_count": 0,
+        "removed_symbol_count": 0,
+        "removed_samples": [],
         "before": universe_field_coverage_summary([]),
         "after": universe_field_coverage_summary([]),
         "improvement": {
@@ -607,6 +618,11 @@ def empty_universe_coverage_delta(output_path: Optional[Path]) -> Dict[str, obje
             "improved_fields": [],
             "state": "no_valid_records",
             "summary": "未解析到可用于预估的 A 股基础清单记录。",
+        },
+        "recommendation": {
+            "action": "fix_csv",
+            "reason": "没有可用于预估的有效记录。",
+            "requires_import": False,
         },
         "done_when": "修复 CSV 错误后重新 dry-run。",
     }
@@ -674,6 +690,93 @@ def universe_coverage_improvement(before: Dict[str, object], after: Dict[str, ob
         "state": state,
         "summary": universe_improvement_summary(state, improved_fields, covered_delta, missing_delta),
     }
+
+
+def universe_removed_symbol_sample(record: Dict[str, object]) -> Dict[str, object]:
+    return {
+        "symbol": record.get("symbol"),
+        "name": record.get("name"),
+    }
+
+
+def universe_delta_recommendation(
+    improvement: Dict[str, object],
+    after: Dict[str, object],
+    removed_symbol_count: int,
+) -> Dict[str, object]:
+    after_missing = after.get("missing_count", {}) if isinstance(after.get("missing_count"), dict) else {}
+    remaining_missing = sum(int(after_missing.get(field, 0)) for field in ("industry", "concepts", "index_membership"))
+    if removed_symbol_count:
+        return {
+            "action": "review_removed_symbols_before_import",
+            "reason": "dry-run 会移除已有 A 股基础清单标的 %s 个；请确认 CSV 是完整清单后再正式导入。" % removed_symbol_count,
+            "requires_import": False,
+        }
+    if improvement.get("state") != "improved":
+        if not remaining_missing:
+            return {
+                "action": "skip_import",
+                "reason": "dry-run 未带来新的字段覆盖改善，当前目标字段也没有缺口；无需正式导入。",
+                "requires_import": False,
+            }
+        return {
+            "action": "review_enrichment_queue",
+            "reason": "dry-run 未减少行业、概念或指数成分缺口；不建议直接正式导入。",
+            "requires_import": False,
+        }
+    if remaining_missing:
+        return {
+            "action": "import_then_continue_enrichment",
+            "reason": "dry-run 会减少部分字段缺口，但导入后仍有 %s 个字段缺口需继续补数。" % remaining_missing,
+            "requires_import": True,
+        }
+    return {
+        "action": "import_and_verify",
+        "reason": "dry-run 会关闭当前目标中的行业、概念和指数成分字段缺口。",
+        "requires_import": True,
+    }
+
+
+def universe_dry_run_warnings(coverage_delta: Dict[str, object]) -> List[Dict[str, object]]:
+    warnings = []
+    recommendation = coverage_delta.get("recommendation", {}) if isinstance(coverage_delta.get("recommendation"), dict) else {}
+    action = recommendation.get("action")
+    if action == "review_removed_symbols_before_import":
+        warnings.append(
+            issue(
+                "UNIVERSE_DRY_RUN_REMOVES_EXISTING_SYMBOLS",
+                "dry-run 会移除已有 A 股基础清单标的，不建议直接正式导入。",
+                {
+                    "recommendation": action,
+                    "removed_symbol_count": int(coverage_delta.get("removed_symbol_count") or 0),
+                    "removed_samples": coverage_delta.get("removed_samples", []),
+                },
+            )
+        )
+    if action in {"review_enrichment_queue", "skip_import"}:
+        warnings.append(
+            issue(
+                "UNIVERSE_DRY_RUN_NO_COVERAGE_IMPROVEMENT",
+                "dry-run 未减少 A 股基础清单字段覆盖缺口，不建议直接正式导入。",
+                {
+                    "recommendation": action,
+                },
+            )
+        )
+    if action == "import_then_continue_enrichment":
+        after = coverage_delta.get("after", {}) if isinstance(coverage_delta.get("after"), dict) else {}
+        missing = after.get("missing_count", {}) if isinstance(after.get("missing_count"), dict) else {}
+        warnings.append(
+            issue(
+                "UNIVERSE_DRY_RUN_PARTIAL_COVERAGE_IMPROVEMENT",
+                "dry-run 会减少部分字段覆盖缺口，但导入后仍需继续补数。",
+                {
+                    "recommendation": action,
+                    "remaining_missing_count": sum(int(missing.get(field, 0)) for field in ("industry", "concepts", "index_membership")),
+                },
+            )
+        )
+    return warnings
 
 
 def universe_improvement_summary(
@@ -827,7 +930,23 @@ def universe_next_commands(
     if not dry_run:
         return []
     improvement = coverage_delta.get("improvement", {}) if isinstance(coverage_delta.get("improvement"), dict) else {}
-    if improvement.get("state") == "improved":
+    recommendation = coverage_delta.get("recommendation", {}) if isinstance(coverage_delta.get("recommendation"), dict) else {}
+    if recommendation.get("action") == "review_removed_symbols_before_import":
+        if runtime:
+            return [
+                "market-intel import universe <full_a_share_universe.csv> --runtime --dry-run --json",
+                "market-intel pool coverage --runtime --json",
+            ]
+        if output_path:
+            return [
+                "market-intel import universe <full_a_share_universe.csv> --output %s --dry-run --json" % command_path(output_path),
+                "MARKET_INTEL_A_SHARE_UNIVERSE_PATHS=%s market-intel pool coverage --text" % command_path(output_path),
+            ]
+        return [
+            "market-intel import universe <full_a_share_universe.csv> --dry-run --json",
+            "market-intel pool coverage --json",
+        ]
+    if improvement.get("state") == "improved" and recommendation.get("requires_import") is True:
         import_command = "market-intel import universe %s --json" % command_path(csv_path)
         if runtime:
             import_command = "market-intel import universe %s --runtime --json" % command_path(csv_path)
