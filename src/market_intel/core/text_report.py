@@ -79,6 +79,10 @@ LABELS = {
     "mild_rebound": "温和修复",
     "weak_market": "弱势整理",
     "no_matched_quotes": "无匹配行情",
+    "none": "无",
+    "reference": "参考",
+    "medium": "中",
+    "high": "高",
 }
 
 QUESTION_LABELS = {
@@ -807,6 +811,11 @@ def render_scan_groups(value: object) -> List[str]:
 
 def render_market_breadth(value: Dict[str, object]) -> List[str]:
     lines = ["- %s" % (value.get("summary") or "暂无市场宽度摘要。")]
+    if value.get("confidence") or value.get("sample_note"):
+        lines.append(
+            "   样本: 置信 %s | %s"
+            % (label(value.get("confidence")), value.get("sample_note") or "暂无样本提示。")
+        )
     if value.get("interpretation"):
         lines.append("   解读: %s" % value.get("interpretation"))
     return lines
@@ -1914,8 +1923,9 @@ def render_dashboard_compact_market(value: Dict[str, object]) -> List[str]:
 
 
 def render_compact_market_breadth(value: Dict[str, object]) -> str:
-    return "%s | 涨 %s/%s | 活跃 %s | 强板块 %s" % (
+    return "%s/%s | 涨 %s/%s | 活跃 %s | 强板块 %s" % (
         label(value.get("state")),
+        label(value.get("confidence") or "reference"),
         value.get("up_count", 0),
         value.get("matched_quote_count", 0),
         value.get("active_count", 0),

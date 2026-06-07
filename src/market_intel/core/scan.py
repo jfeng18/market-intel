@@ -28,8 +28,8 @@ def build_market_scan(
     groups = build_scan_groups(quoted_items)
     symbol_context = build_symbol_context(quoted_items, groups)
     candidates = build_scan_candidates(quoted_items, holding_symbols, symbol_context, limit=candidate_top, pool=pool)
-    market_breadth = build_market_breadth(quotes, quoted_items, groups)
     scan_mode = "all_a_universe" if any(has_universe_context(item) for item, _ in quoted_items) else "pool_chain_seed"
+    market_breadth = build_market_breadth(quotes, quoted_items, groups, scan_mode)
 
     return {
         "summary": scan_summary(quotes, quoted_items, groups, candidates, scan_mode, market_breadth),
@@ -148,6 +148,7 @@ def build_market_breadth(
     quotes: List[Quote],
     quoted_items: List[Tuple[PoolItem, Quote]],
     groups: List[Dict[str, object]],
+    scan_mode: str,
 ) -> Dict[str, object]:
     matched_quotes = [quote for _, quote in quoted_items]
     quote_count = len(quotes)
@@ -163,6 +164,8 @@ def build_market_breadth(
     active_group_count = sum(1 for group in groups if int(group.get("active_member_count") or 0) >= 2)
     strong_group_count = sum(1 for group in groups if float(group.get("score") or 0) >= 70)
     state = market_breadth_state(matched_count, up_count, active_count, active_group_count)
+    confidence = market_breadth_confidence(quote_count, matched_count, scan_mode)
+    sample_note = market_breadth_sample_note(confidence, quote_count, matched_count, scan_mode)
     summary = market_breadth_summary(
         state,
         matched_count,
@@ -175,7 +178,9 @@ def build_market_breadth(
     )
     return {
         "state": state,
+        "confidence": confidence,
         "summary": summary,
+        "sample_note": sample_note,
         "quote_count": quote_count,
         "matched_quote_count": matched_count,
         "matched_ratio": round(matched_count / quote_count, 4) if quote_count else 0,
@@ -216,6 +221,29 @@ def market_breadth_state(
     if up_ratio >= 0.5:
         return "mild_rebound"
     return "weak_market"
+
+
+def market_breadth_confidence(quote_count: int, matched_count: int, scan_mode: str) -> str:
+    if matched_count <= 0:
+        return "none"
+    matched_ratio = matched_count / quote_count if quote_count else 0
+    if scan_mode == "all_a_universe" and matched_count >= 200 and matched_ratio >= 0.7:
+        return "high"
+    if matched_count >= 50 and matched_ratio >= 0.5:
+        return "medium"
+    return "reference"
+
+
+def market_breadth_sample_note(confidence: str, quote_count: int, matched_count: int, scan_mode: str) -> str:
+    if confidence == "high":
+        return "全 A 样本较充分，可作为市场宽度主判断。"
+    if confidence == "medium":
+        return "样本可参考，但仍需结合覆盖缺口和未匹配行情。"
+    if confidence == "none":
+        return "暂无匹配行情，不能解读市场宽度。"
+    if scan_mode != "all_a_universe":
+        return "当前不是完整全 A 样本，宽度只代表复盘池或种子池。"
+    return "匹配样本偏少，宽度只作参考。"
 
 
 def market_breadth_summary(
@@ -830,6 +858,7 @@ def scan_contract() -> Dict[str, object]:
             "data.summary",
             "data.scan_mode",
             "data.market_breadth",
+            "data.market_breadth.confidence",
             "data.coverage_context",
             "data.coverage_context.universe.sector_profile",
             "data.coverage_context.top_data_quality_queue",

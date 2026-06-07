@@ -2914,7 +2914,9 @@ def compact_dashboard_market_breadth(value: object) -> Dict[str, object]:
         return {}
     return {
         "state": breadth.get("state"),
+        "confidence": breadth.get("confidence"),
         "summary": breadth.get("summary"),
+        "sample_note": breadth.get("sample_note"),
         "matched_quote_count": breadth.get("matched_quote_count", 0),
         "up_count": breadth.get("up_count", 0),
         "down_count": breadth.get("down_count", 0),

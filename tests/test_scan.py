@@ -2,6 +2,8 @@ import json
 import subprocess
 
 from market_intel.cli import handle_scan
+from market_intel.core.models import Quote
+from market_intel.core.scan import build_market_breadth
 from market_intel.core.text_report import render_scan_text
 
 
@@ -16,6 +18,8 @@ def test_scan_mock_defaults_to_all_a_seed():
     assert data["pool"] == "all-a"
     assert data["scan_mode"] == "pool_chain_seed"
     assert data["market_breadth"]["state"] == "broad_strength"
+    assert data["market_breadth"]["confidence"] == "reference"
+    assert "种子池" in data["market_breadth"]["sample_note"]
     assert data["market_breadth"]["up_count"] == 9
     assert data["market_breadth"]["active_group_count"] == 3
     assert data["sector_groups"]
@@ -32,12 +36,14 @@ def test_scan_mock_defaults_to_all_a_seed():
     assert data["coverage_context"]["top_data_quality_queue"]
     assert "data.sector_groups" in data["agent_contract"]["stable_fields"]
     assert "data.market_breadth" in data["agent_contract"]["stable_fields"]
+    assert "data.market_breadth.confidence" in data["agent_contract"]["stable_fields"]
     assert "data.candidate_securities[].review_focus" in data["agent_contract"]["stable_fields"]
     assert "data.candidate_securities[].review_focus.classification" in data["agent_contract"]["stable_fields"]
     assert "data.candidate_securities[].why_now" in data["agent_contract"]["stable_fields"]
     assert "market-intel scan" in text
     assert "市场宽度" in text
     assert "普遍走强" in text
+    assert "置信 参考" in text
     assert "板块扫描" in text
     assert "候选复盘" in text
     assert "复核焦点" in text
@@ -102,6 +108,7 @@ def test_scan_uses_a_share_universe_groups(monkeypatch, tmp_path):
     assert data["scan_mode"] == "all_a_universe"
     assert data["matched_quote_count"] == 2
     assert data["market_breadth"]["state"] == "thin_strength"
+    assert data["market_breadth"]["confidence"] == "reference"
     assert data["market_breadth"]["up_count"] == 2
     assert data["market_breadth"]["active_count"] == 1
     assert any(group["group_type"] == "industry" and group["name"] == "银行" for group in data["sector_groups"])
@@ -232,10 +239,41 @@ def test_scan_breadth_classifies_weak_market(monkeypatch, tmp_path):
 
     assert payload["ok"] is True
     assert breadth["state"] == "weak_market"
+    assert breadth["confidence"] == "reference"
     assert breadth["up_count"] == 0
     assert breadth["active_count"] == 0
     assert "弱势整理" in breadth["summary"]
     assert "弱势整理" in text
+
+
+def test_market_breadth_confidence_high_for_large_all_a_sample():
+    quotes = [
+        Quote(
+            symbol="%06d" % index,
+            trade_date="2026-06-06",
+            last_price=10.0,
+            change_pct=1.2,
+            amount=100000000,
+            amount_ratio=1.1,
+            turnover_rate=1.0,
+            amplitude_pct=2.0,
+            is_limit_up=False,
+            is_stage_high=False,
+            intraday_fade_pct=0.2,
+            source="test",
+        )
+        for index in range(1, 201)
+    ]
+
+    breadth = build_market_breadth(
+        quotes,
+        [(None, quote) for quote in quotes],
+        [],
+        "all_a_universe",
+    )
+
+    assert breadth["confidence"] == "high"
+    assert "主判断" in breadth["sample_note"]
 
 
 def test_scan_requires_quote_source_has_text_guidance():

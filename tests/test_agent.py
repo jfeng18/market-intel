@@ -967,6 +967,7 @@ def test_agent_next_returns_compact_handoff(monkeypatch, tmp_path):
     assert data["coverage_context"]["pool"] == "ai-energy"
     assert data["market_scan"]["available"] is True
     assert data["market_scan"]["market_breadth"]["state"]
+    assert data["market_scan"]["market_breadth"]["confidence"]
     assert data["market_scan"]["top_groups"]
     assert data["market_scan"]["top_candidates"]
     assert data["market_scan"]["top_candidates"][0]["review_focus"]["headline"]
@@ -1025,6 +1026,7 @@ def test_dashboard_returns_one_screen_workbench(monkeypatch, tmp_path):
     assert "data.positioning.selection_rule" in data["agent_contract"]["stable_fields"]
     assert data["market_pulse"]["available"] is True
     assert data["market_pulse"]["market_breadth"]["state"]
+    assert data["market_pulse"]["market_breadth"]["confidence"]
     assert data["market_pulse"]["top_groups"]
     assert data["market_pulse"]["candidates"]
     assert "universe_context" in data["market_pulse"]["candidates"][0]
