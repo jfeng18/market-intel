@@ -41,20 +41,6 @@
       "is_stage_high": true,
       "intraday_fade_pct": 0.9,
       "source": "manual"
-    },
-    {
-      "symbol": "300604",
-      "trade_date": "2026-06-06",
-      "last_price": 44.7,
-      "change_pct": 2.1,
-      "amount": 760000000,
-      "amount_ratio": 1.2,
-      "turnover_rate": 5.2,
-      "amplitude_pct": 7.4,
-      "is_limit_up": false,
-      "is_stage_high": false,
-      "intraday_fade_pct": 3.2,
-      "source": "manual"
     }
   ]
 }

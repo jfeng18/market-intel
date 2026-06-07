@@ -2,7 +2,7 @@ import json
 import subprocess
 from datetime import date
 
-from market_intel.cli import handle_import_holdings, handle_import_quotes, handle_import_universe, handle_status_runtime
+from market_intel.cli import handle_import_holdings, handle_import_quotes, handle_import_universe, handle_init_runtime, handle_status_runtime
 from market_intel.core.pool_loader import load_pool
 from market_intel.core.status import build_runtime_status
 from market_intel.core.text_report import render_runtime_status_text
@@ -55,6 +55,21 @@ def test_status_runtime_ready_after_universe_import(monkeypatch, tmp_path):
     assert data["readiness"]["state"] == "ready"
     assert data["universe"]["state"] == "ready"
     assert data["universe"]["record_count"] == 16
+    assert data["next_actions"][0]["id"] == "run_daily_report"
+
+
+def test_status_runtime_ready_after_init_runtime(monkeypatch, tmp_path):
+    monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(tmp_path / "runtime"))
+    handle_init_runtime(force=False)
+
+    payload = handle_status_runtime("all-a", max_quote_age_days=9999)
+    data = payload["data"]
+
+    assert payload["ok"] is True
+    assert payload["warnings"] == []
+    assert data["readiness"]["state"] == "ready"
+    assert data["validation"]["summary"]["warning_count"] == 0
+    assert data["universe"]["state"] == "ready"
     assert data["next_actions"][0]["id"] == "run_daily_report"
 
 

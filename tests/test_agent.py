@@ -7,6 +7,7 @@ from market_intel.cli import (
     handle_agent_next,
     handle_agent_plan,
     handle_agent_run,
+    handle_init_runtime,
     handle_dashboard,
     handle_import_holdings,
     handle_import_quotes,
@@ -1132,13 +1133,13 @@ def test_dashboard_returns_one_screen_workbench(monkeypatch, tmp_path):
     assert data["coverage_context"]["top_data_quality_queue"]
     assert data["coverage_context"]["top_data_quality_queue"][0]["samples"]
     assert data["today_focus"]["available"] is True
-    assert data["today_focus"]["source"] == "coverage_review"
-    assert data["today_focus"]["json_command"] == data["action_lane"]["items"][0]["json_command"]
+    assert data["today_focus"]["source"] == "market_scan"
+    assert data["today_focus"]["json_command"] == "market-intel scan --runtime --json"
     assert data["today_focus"]["done_when"]
     assert [item["json_command"] for item in data["today_focus"]["focus_chain"][:3]] == [
         item["json_command"] for item in data["review_plan"]["items"][:3]
     ]
-    assert data["today_focus"]["focus_chain"][2]["source"] == "candidate_queue"
+    assert data["today_focus"]["focus_chain"][1]["source"] == "candidate_queue"
     assert data["positioning"]["headline"].startswith("面向全 A")
     assert data["positioning"]["differentiators"][0]["agent_path"] == "data.coverage_context"
     assert "data.today_focus" in data["agent_contract"]["stable_fields"]
@@ -1165,9 +1166,11 @@ def test_dashboard_returns_one_screen_workbench(monkeypatch, tmp_path):
     assert data["action_lane"]["items"]
     assert data["review_plan"]["available"] is True
     assert data["review_plan"]["items"]
-    assert data["review_plan"]["items"][0]["item_type"] == "coverage_review"
-    assert data["review_plan"]["items"][0]["json_command"] == "market-intel pool quality invalid_symbol --json"
-    assert data["review_plan"]["items"][1]["item_type"] == "market_scan"
+    assert data["review_plan"]["items"][0]["item_type"] == "market_scan"
+    assert any(
+        item["item_type"] == "coverage_review" and item["json_command"] == "market-intel pool quality invalid_symbol --json"
+        for item in data["review_plan"]["items"]
+    )
     assert any(item["item_type"] == "candidate_queue" for item in data["review_plan"]["items"])
     assert data["review_plan"]["items"][0]["done_when"]
     assert data["action_lane"]["items"][0]["item_type"] == "coverage_review"
@@ -1212,9 +1215,8 @@ def test_dashboard_returns_one_screen_workbench(monkeypatch, tmp_path):
     first_command = data["review_plan"]["items"][0]["json_command"]
     first_payload = run_agent_read_command(first_command, "all-a", 5, 2, 9999)
     assert first_payload["ok"] is True
-    assert first_payload["command"] == "pool.quality"
+    assert first_payload["command"] == "scan"
     assert first_payload["data"]["pool"] == "all-a"
-    assert first_payload["data"]["flag"] == "invalid_symbol"
     quality_command = data["coverage_context"]["top_data_quality_queue"][0]["review_command"]
     quality_payload = run_agent_read_command(quality_command, "all-a", 5, 2, 9999)
     assert quality_payload["ok"] is True
@@ -1317,6 +1319,23 @@ def test_dashboard_blocked_handoff_does_not_duplicate_next_read(monkeypatch, tmp
     assert "market-intel validate runtime --json" in next_read_commands
     assert "market-intel validate runtime --json" not in manual_commands
     assert data["review_plan"]["items"][0]["json_command"] == "market-intel validate runtime --json"
+
+
+def test_dashboard_init_runtime_prioritizes_market_over_seed_quality(monkeypatch, tmp_path):
+    monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(tmp_path / "runtime"))
+    handle_init_runtime(force=False)
+
+    payload = handle_dashboard("all-a", max_quote_age_days=9999, max_steps=5)
+    data = payload["data"]
+    item_types = [item["item_type"] for item in data["review_plan"]["items"]]
+
+    assert payload["ok"] is True
+    assert data["state"] in {"needs_review", "ready_for_note", "blocked_review"}
+    assert data["today_focus"]["source"] == "market_scan"
+    assert data["today_focus"]["json_command"] == "market-intel scan --runtime --json"
+    assert item_types[0] == "market_scan"
+    assert "coverage_review" in item_types
+    assert data["coverage_context"]["top_gaps"][0]["id"] == "data_quality_flags"
 
 
 def test_dashboard_surfaces_universe_enrichment_queue(monkeypatch, tmp_path):

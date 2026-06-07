@@ -34,7 +34,8 @@ def init_runtime(force: bool = False) -> Dict[str, object]:
             "Edit %s with current holdings." % display_path(holdings_path),
             "Edit %s with A-share universe rows if you want broader all-a coverage." % display_path(universe_path),
             "Edit %s with reviewed single-name research notes when a foundation holding is confirmed." % display_path(research_path),
-            "Run: market-intel brief --runtime --text",
+            "Run: market-intel status runtime --text",
+            "Run: market-intel dashboard --text",
         ],
     }
 

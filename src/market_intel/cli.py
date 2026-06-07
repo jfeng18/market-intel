@@ -3676,10 +3676,15 @@ def first_dashboard_focus_item(value: object, prefer_read: bool) -> Dict[str, ob
 
 def dashboard_review_plan(pool: str, digest: Dict[str, object]) -> Dict[str, object]:
     items: List[Dict[str, object]] = []
-    add_dashboard_plan_coverage(items, dashboard_coverage_context(digest), pool, "runtime")
+    coverage = dashboard_coverage_context(digest)
+    leading_coverage = dashboard_coverage_needs_frontload(coverage)
+    if leading_coverage:
+        add_dashboard_plan_coverage(items, coverage, pool, "runtime")
     add_dashboard_plan_market(items, digest)
     add_dashboard_plan_candidate_queue(items, dashboard_market_pulse(digest), pool, "runtime")
     add_dashboard_plan_portfolio(items, digest)
+    if not leading_coverage:
+        add_dashboard_plan_coverage(items, coverage, pool, "runtime")
     add_dashboard_plan_evidence(items, digest)
     add_dashboard_plan_attention(items, digest)
     add_dashboard_plan_handoff(items, digest)
@@ -3691,6 +3696,26 @@ def dashboard_review_plan(pool: str, digest: Dict[str, object]) -> Dict[str, obj
         "items": items[:10],
         "write_policy": "review_plan 只安排复盘顺序；写入、导入和研究结论仍需人工确认。",
     }
+
+
+FRONTLOAD_COVERAGE_GAPS = {
+    "all_a_seed_only",
+    "a_share_industry_missing",
+    "a_share_theme_sources_missing",
+    "cn_a_coverage_thin",
+    "holding_coverage_gap",
+}
+
+
+def dashboard_coverage_needs_frontload(coverage: Dict[str, object]) -> bool:
+    if not coverage.get("available"):
+        return False
+    universe = coverage.get("universe", {}) if isinstance(coverage.get("universe"), dict) else {}
+    if universe and not universe.get("available"):
+        return True
+    gaps = coverage.get("top_gaps", []) if isinstance(coverage.get("top_gaps"), list) else []
+    gap_ids = {str(item.get("id") or "") for item in gaps if isinstance(item, dict)}
+    return bool(gap_ids & FRONTLOAD_COVERAGE_GAPS)
 
 
 def add_dashboard_plan_coverage(

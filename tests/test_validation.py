@@ -15,7 +15,41 @@ def test_validate_runtime_after_init(monkeypatch, tmp_path):
     assert payload["data"]["summary"]["quote_count"] > 0
     assert payload["data"]["summary"]["holding_count"] > 0
     assert payload["errors"] == []
-    assert payload["data"]["validation_warnings"]
+    assert payload["data"]["validation_warnings"] == []
+
+
+def test_validate_runtime_warns_when_quotes_and_holdings_do_not_match(monkeypatch, tmp_path):
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(runtime))
+    quote = {
+        "symbol": "002837",
+        "trade_date": "2026-06-06",
+        "last_price": 1,
+        "change_pct": 1,
+        "amount": 1,
+        "amount_ratio": 1,
+        "turnover_rate": 1,
+        "amplitude_pct": 1,
+        "is_limit_up": False,
+        "is_stage_high": False,
+        "intraday_fade_pct": 0,
+    }
+    (runtime / "quotes.json").write_text(
+        json.dumps({"quotes": [quote]}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    (runtime / "holdings.json").write_text(
+        json.dumps({"holdings": [{"symbol": "002261", "name": "拓维信息"}]}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    payload = handle_validate_runtime("ai-energy")
+    warning_codes = {warning["code"] for warning in payload["data"]["validation_warnings"]}
+
+    assert payload["ok"] is True
+    assert "HOLDING_WITHOUT_QUOTE" in warning_codes
+    assert "QUOTE_NOT_IN_HOLDINGS" in warning_codes
 
 
 def test_validate_runtime_missing_files(monkeypatch, tmp_path):
