@@ -794,6 +794,14 @@ def test_pool_explain_acceptance_sample_shape():
     assert "exposures" in data
 
 
+def test_pool_explain_accepts_common_a_share_symbol_formats():
+    payload = handle_pool_explain("ai-energy", "300308.SZ")
+
+    assert payload["ok"] is True
+    assert payload["data"]["facts"]["symbol"] == "300308"
+    assert payload["data"]["facts"]["name"] == "中际旭创"
+
+
 def test_pool_explain_not_found_returns_error_envelope():
     payload = handle_pool_explain("ai-energy", "NOPE")
 

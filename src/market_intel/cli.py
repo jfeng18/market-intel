@@ -981,6 +981,7 @@ def pool_universe_contract() -> Dict[str, object]:
 
 
 def handle_pool_explain(pool: str, symbol: str, use_runtime: bool = False) -> Dict[str, Any]:
+    symbol = normalize_cli_symbol(symbol) or ""
     items = load_pool(pool)
     item = find_pool_item(items, symbol)
     if item is None:
@@ -1290,6 +1291,7 @@ def handle_portfolio_explain(
     holdings_file: Optional[str] = None,
     use_runtime: bool = False,
 ) -> Dict[str, Any]:
+    symbol = normalize_cli_symbol(symbol) or ""
     if use_runtime:
         missing = runtime_missing_files()
         if missing:
@@ -2057,7 +2059,7 @@ def handle_agent_next(
     max_steps: int = 8,
     symbol: Optional[str] = None,
 ) -> Dict[str, Any]:
-    symbol = normalize_agent_symbol(symbol)
+    symbol = normalize_cli_symbol(symbol)
     run_payload = handle_agent_run(pool, top=top, map_top=map_top, max_quote_age_days=max_quote_age_days, max_steps=max_steps)
     run_data = run_payload.get("data", {}) if isinstance(run_payload.get("data"), dict) else {}
     digest = run_data.get("review_digest", {}) if isinstance(run_data.get("review_digest"), dict) else {}
@@ -2121,7 +2123,7 @@ def handle_agent_next(
     )
 
 
-def normalize_agent_symbol(symbol: Optional[str]) -> Optional[str]:
+def normalize_cli_symbol(symbol: Optional[str]) -> Optional[str]:
     if symbol is None:
         return None
     text = str(symbol).strip().upper()

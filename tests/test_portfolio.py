@@ -80,6 +80,18 @@ def test_portfolio_explain_runtime(monkeypatch, tmp_path):
     assert payload["data"]["mode"] == "runtime"
 
 
+def test_portfolio_explain_accepts_common_a_share_symbol_formats(monkeypatch, tmp_path):
+    monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(tmp_path / "runtime"))
+    handle_import_quotes("examples/quotes.csv.example", use_runtime=True)
+    handle_import_holdings("examples/holdings.csv.example", use_runtime=True)
+
+    payload = handle_portfolio_explain("ai-energy", "SZ:300308", use_mock=False, use_runtime=True)
+
+    assert payload["ok"] is True
+    assert payload["data"]["symbol"] == "300308"
+    assert payload["data"]["item"]["symbol"] == "300308"
+
+
 def test_portfolio_review_detects_missing_quote(tmp_path):
     quotes_path = tmp_path / "quotes.json"
     holdings_path = tmp_path / "holdings.json"
