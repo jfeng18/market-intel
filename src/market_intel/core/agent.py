@@ -16,7 +16,7 @@ def build_agent_plan(
     entries = journal_list.get("entries", []) if isinstance(journal_list.get("entries"), list) else []
     journal_errors = journal_list.get("errors", []) if isinstance(journal_list.get("errors"), list) else []
     state = agent_state(readiness, entries)
-    steps = build_steps(readiness, freshness, universe, entries)
+    steps = build_steps(pool, readiness, freshness, universe, entries)
 
     return {
         "pool": pool,
@@ -2552,6 +2552,7 @@ def agent_summary(state: str, readiness: Dict[str, object], entries: List[object
 
 
 def build_steps(
+    pool: str,
     readiness: Dict[str, object],
     freshness: Dict[str, object],
     universe: Dict[str, object],
@@ -2579,10 +2580,10 @@ def build_steps(
         steps.append(
             step(
                 15,
-                "import_universe",
-                "market-intel import universe examples/a_share_universe.csv.example --runtime --json",
+                "export_a_share_universe_patch",
+                "market-intel pool universe --runtime --dry-run --json%s" % pool_arg(pool),
                 True,
-                "补齐 all-a 的 A 股基础清单，减少种子覆盖偏差。",
+                "先导出 A 股基础清单补丁草稿，减少种子覆盖偏差。",
             )
         )
 
@@ -2622,6 +2623,10 @@ def step(priority: int, step_id: str, command: str, runnable: bool, reason: str)
         "runnable": runnable,
         "reason": reason,
     }
+
+
+def pool_arg(pool: str) -> str:
+    return "" if pool == "all-a" else " --pool %s" % pool
 
 
 def execution_summary(steps: List[Dict[str, object]]) -> Dict[str, object]:

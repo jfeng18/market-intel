@@ -38,7 +38,9 @@ def test_status_runtime_all_a_degraded_without_universe(monkeypatch, tmp_path):
     assert data["freshness"]["is_stale"] is False
     assert data["universe"]["state"] == "missing"
     assert data["universe"]["required"] is True
-    assert any(action["id"] == "import_universe" for action in data["next_actions"])
+    action = next(item for item in data["next_actions"] if item["id"] == "export_a_share_universe_patch")
+    assert action["command"] == "market-intel pool universe --runtime --dry-run --json"
+    assert action["runnable"] is True
 
 
 def test_status_runtime_ready_after_universe_import(monkeypatch, tmp_path):
@@ -223,7 +225,7 @@ def test_status_runtime_text_renderer(monkeypatch, tmp_path):
     assert "全 A 基础清单" in text
     assert "A_SHARE_UNIVERSE_MISSING" in text
     assert "下一步" in text
-    assert "import universe" in text
+    assert "pool universe" in text
     assert "buy" not in text.lower()
     assert "sell" not in text.lower()
 

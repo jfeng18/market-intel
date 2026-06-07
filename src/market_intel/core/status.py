@@ -364,9 +364,9 @@ def build_next_actions(
         actions.append(
             action(
                 15,
-                "import_universe",
-                "market-intel import universe examples/a_share_universe.csv.example --runtime --json",
-                "补齐 all-a 的 A 股基础清单，减少种子覆盖偏差。",
+                "export_a_share_universe_patch",
+                "market-intel pool universe --runtime --dry-run --json",
+                "先导出 A 股基础清单补丁草稿，减少种子覆盖偏差。",
                 runnable=True,
             )
         )

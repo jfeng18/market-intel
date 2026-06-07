@@ -18,6 +18,7 @@ from market_intel.cli import (
     dashboard_journal_gate,
     run_agent_read_command,
 )
+from market_intel.core.agent import build_agent_plan
 from market_intel.core.text_report import render_agent_briefing_text, render_agent_next_text, render_agent_plan_text, render_agent_run_text, render_dashboard_text
 
 
@@ -199,7 +200,7 @@ def test_agent_plan_ready_without_journal(monkeypatch, tmp_path):
     assert "data.execution.next_runnable_command" in data["agent_contract"]["stable_fields"]
 
 
-def test_agent_plan_all_a_prompts_universe_import(monkeypatch, tmp_path):
+def test_agent_plan_all_a_prompts_universe_patch(monkeypatch, tmp_path):
     import_runtime_examples(monkeypatch, tmp_path)
 
     payload = handle_agent_plan("all-a", max_quote_age_days=9999)
@@ -208,9 +209,24 @@ def test_agent_plan_all_a_prompts_universe_import(monkeypatch, tmp_path):
     assert payload["ok"] is True
     assert data["state"] == "degraded"
     assert data["runtime"]["universe"]["state"] == "missing"
-    assert data["execution"]["next_runnable_command"] == "market-intel import universe examples/a_share_universe.csv.example --runtime --json"
-    assert any(step["id"] == "import_universe" for step in data["steps"])
+    assert data["execution"]["next_runnable_command"] == "market-intel pool universe --runtime --dry-run --json"
+    assert any(step["id"] == "export_a_share_universe_patch" for step in data["steps"])
     assert "data.runtime.universe" in data["agent_contract"]["stable_fields"]
+
+
+def test_agent_plan_universe_patch_preserves_non_default_pool():
+    data = {
+        "readiness": {"state": "degraded", "can_run_daily": True},
+        "freshness": {"is_stale": False},
+        "universe": {"required": True, "state": "missing"},
+        "validation": {"summary": {}},
+    }
+
+    payload = build_agent_plan("ai-energy", data, {"entries": []}, max_quote_age_days=3)
+
+    assert payload["execution"]["next_runnable_command"] == (
+        "market-intel pool universe --runtime --dry-run --json --pool ai-energy"
+    )
 
 
 def test_agent_plan_all_a_ready_after_universe_import(monkeypatch, tmp_path):
