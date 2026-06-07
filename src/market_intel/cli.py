@@ -1651,6 +1651,9 @@ def resolve_import_output(
             )
         }
     if dry_run:
+        if use_runtime:
+            paths = runtime_paths()
+            return {"path": Path(paths[kind])}
         return {"path": Path(output) if output else None}
     if use_runtime:
         paths = runtime_paths()

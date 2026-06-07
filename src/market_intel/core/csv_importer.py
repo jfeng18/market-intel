@@ -160,6 +160,7 @@ def import_universe_csv(
     if not errors and not records:
         errors.append(issue("NO_UNIVERSE_RECORDS", "CSV 中没有可导入的 A 股基础清单记录。", {"path": command_path(csv_path)}))
 
+    coverage_delta = universe_coverage_delta(output_path, records) if not errors else empty_universe_coverage_delta(output_path)
     written = False
     if not errors and not dry_run and output_path is not None:
         write_universe_csv(output_path, records)
@@ -175,6 +176,7 @@ def import_universe_csv(
         "written": written,
         "preview": records[:5],
         "canonical_schema": universe_schema(),
+        "coverage_delta": coverage_delta,
         "next_commands": next_commands("universe", written, runtime, output_path),
         "warnings": warnings,
         "errors": errors,
@@ -300,6 +302,19 @@ def import_schema() -> Dict[str, object]:
             "success": "ok=true 且 errors=[]",
             "warnings": "warnings 为可继续但需要复核的问题",
             "errors": "errors 非空时不会写入输出文件",
+            "stable_fields": [
+                "data.record_count",
+                "data.preview",
+                "data.canonical_schema",
+                "data.next_commands",
+            ],
+            "universe_stable_fields": [
+                "data.coverage_delta",
+                "data.coverage_delta.before",
+                "data.coverage_delta.after",
+                "data.coverage_delta.improvement",
+                "data.coverage_delta.improvement.improved_fields",
+            ],
             "follow_up": "写入 runtime 后可执行 market-intel validate runtime --json 和 market-intel daily --runtime --json",
         },
     }
@@ -540,6 +555,169 @@ def write_research_csv(path: Path, records: List[Dict[str, object]]) -> None:
         writer.writeheader()
         for record in records:
             writer.writerow({field: record.get(field, "") for field in fields})
+
+
+UNIVERSE_PLACEHOLDERS = {
+    "industry": {"行业待补", "待补", "unknown", "未知"},
+    "concepts": {"概念待补", "待补", "unknown", "未知"},
+    "index_membership": {"指数待补", "指数成分待补", "待补", "unknown", "未知"},
+}
+
+
+def universe_coverage_delta(output_path: Optional[Path], records: List[Dict[str, object]]) -> Dict[str, object]:
+    existing_records = read_existing_universe_records(output_path)
+    existing_by_symbol = {str(record.get("symbol") or ""): record for record in existing_records if record.get("symbol")}
+    merged_by_symbol = dict(existing_by_symbol)
+    for record in records:
+        symbol = str(record.get("symbol") or "")
+        if symbol:
+            merged_by_symbol[symbol] = record
+    before = universe_field_coverage_summary(list(existing_by_symbol.values()))
+    after = universe_field_coverage_summary(list(merged_by_symbol.values()))
+    return {
+        "available": bool(records),
+        "target": command_path(output_path) if output_path else None,
+        "existing_record_count": len(existing_by_symbol),
+        "incoming_record_count": len(records),
+        "after_record_count": len(merged_by_symbol),
+        "new_symbol_count": max(0, len(merged_by_symbol) - len(existing_by_symbol)),
+        "updated_symbol_count": sum(1 for record in records if str(record.get("symbol") or "") in existing_by_symbol),
+        "before": before,
+        "after": after,
+        "improvement": universe_coverage_improvement(before, after),
+        "done_when": "dry-run 预估显示目标字段缺口减少；正式导入后运行 market-intel pool coverage --runtime --json 复验 universe.enrichment_queue。",
+    }
+
+
+def empty_universe_coverage_delta(output_path: Optional[Path]) -> Dict[str, object]:
+    return {
+        "available": False,
+        "target": command_path(output_path) if output_path else None,
+        "existing_record_count": 0,
+        "incoming_record_count": 0,
+        "after_record_count": 0,
+        "new_symbol_count": 0,
+        "updated_symbol_count": 0,
+        "before": universe_field_coverage_summary([]),
+        "after": universe_field_coverage_summary([]),
+        "improvement": {
+            "record_count_delta": 0,
+            "covered_count_delta": {"industry": 0, "concepts": 0, "index_membership": 0},
+            "missing_count_delta": {"industry": 0, "concepts": 0, "index_membership": 0},
+            "improved_fields": [],
+            "state": "no_valid_records",
+            "summary": "未解析到可用于预估的 A 股基础清单记录。",
+        },
+        "done_when": "修复 CSV 错误后重新 dry-run。",
+    }
+
+
+def read_existing_universe_records(output_path: Optional[Path]) -> List[Dict[str, object]]:
+    if output_path is None or not output_path.exists():
+        return []
+    rows, errors = read_csv_rows(output_path)
+    if errors:
+        return []
+    records = []
+    for index, row in enumerate(rows):
+        record, _, row_errors = parse_universe_row(row, index, output_path)
+        if record and not row_errors:
+            records.append(record)
+    return records
+
+
+def universe_field_coverage_summary(records: List[Dict[str, object]]) -> Dict[str, object]:
+    total = len(records)
+    covered = {field: 0 for field in ("industry", "concepts", "index_membership")}
+    missing_samples = []
+    for record in records:
+        missing_fields = []
+        for field in covered:
+            if universe_field_present(record.get(field), field):
+                covered[field] += 1
+            else:
+                missing_fields.append(field)
+        if missing_fields and len(missing_samples) < 5:
+            missing_samples.append(
+                {
+                    "symbol": record.get("symbol"),
+                    "name": record.get("name"),
+                    "missing_fields": missing_fields,
+                }
+            )
+    missing = {field: total - count for field, count in covered.items()}
+    ratios = {field: coverage_ratio(count, total) for field, count in covered.items()}
+    return {
+        "record_count": total,
+        "covered_count": covered,
+        "missing_count": missing,
+        "coverage_ratio": ratios,
+        "missing_samples": missing_samples,
+    }
+
+
+def universe_coverage_improvement(before: Dict[str, object], after: Dict[str, object]) -> Dict[str, object]:
+    fields = ("industry", "concepts", "index_membership")
+    before_covered = before.get("covered_count", {}) if isinstance(before.get("covered_count"), dict) else {}
+    after_covered = after.get("covered_count", {}) if isinstance(after.get("covered_count"), dict) else {}
+    before_missing = before.get("missing_count", {}) if isinstance(before.get("missing_count"), dict) else {}
+    after_missing = after.get("missing_count", {}) if isinstance(after.get("missing_count"), dict) else {}
+    covered_delta = {field: int(after_covered.get(field, 0)) - int(before_covered.get(field, 0)) for field in fields}
+    missing_delta = {field: int(after_missing.get(field, 0)) - int(before_missing.get(field, 0)) for field in fields}
+    improved_fields = [field for field in fields if covered_delta[field] > 0 or missing_delta[field] < 0]
+    state = "improved" if improved_fields else "unchanged"
+    return {
+        "record_count_delta": int(after.get("record_count", 0)) - int(before.get("record_count", 0)),
+        "covered_count_delta": covered_delta,
+        "missing_count_delta": missing_delta,
+        "improved_fields": improved_fields,
+        "state": state,
+        "summary": universe_improvement_summary(state, improved_fields, covered_delta, missing_delta),
+    }
+
+
+def universe_improvement_summary(
+    state: str,
+    improved_fields: List[str],
+    covered_delta: Dict[str, int],
+    missing_delta: Dict[str, int],
+) -> str:
+    if state != "improved":
+        return "本次导入未改善行业、概念或指数成分字段覆盖。"
+    parts = []
+    labels = {"industry": "行业", "concepts": "概念", "index_membership": "指数成分"}
+    for field in improved_fields:
+        parts.append("%s 覆盖 +%s，缺口 %+d" % (labels[field], covered_delta[field], missing_delta[field]))
+    return "；".join(parts)
+
+
+def universe_field_present(value: object, field: str) -> bool:
+    text = str(value or "").strip()
+    if is_empty(text):
+        return False
+    normalized = text.lower()
+    placeholders = {item.lower() for item in UNIVERSE_PLACEHOLDERS.get(field, set())}
+    if normalized in placeholders:
+        return False
+    if field in {"concepts", "index_membership"}:
+        return any(part.lower() not in placeholders for part in split_universe_values(text))
+    return True
+
+
+def split_universe_values(value: object) -> List[str]:
+    text = str(value or "").strip()
+    if not text:
+        return []
+    parts = []
+    for chunk in text.replace("，", ";").replace(",", ";").replace("|", ";").replace("/", ";").split(";"):
+        chunk = chunk.strip()
+        if chunk:
+            parts.append(chunk)
+    return parts
+
+
+def coverage_ratio(count: int, total: int) -> float:
+    return round(count / total, 4) if total else 0
 
 
 def quote_schema() -> List[Dict[str, object]]:

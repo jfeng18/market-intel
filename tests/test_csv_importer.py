@@ -23,6 +23,7 @@ def test_import_schema_is_agent_friendly():
     assert payload["data"]["holdings"]["canonical_schema"]
     assert payload["data"]["universe"]["accepted_columns"]["symbol"]
     assert payload["data"]["universe"]["canonical_schema"]
+    assert "data.coverage_delta" in payload["data"]["agent_contract"]["universe_stable_fields"]
 
 
 def test_import_quotes_dry_run_normalizes_chinese_csv(tmp_path):
@@ -78,6 +79,48 @@ def test_import_universe_dry_run_normalizes_chinese_csv(tmp_path):
     assert preview["industry"] == "银行"
     assert preview["concepts"] == "股份行;金融科技"
     assert preview["listing_status"] == "listed"
+    assert payload["data"]["coverage_delta"]["available"] is True
+    assert payload["data"]["coverage_delta"]["incoming_record_count"] == 1
+    assert payload["data"]["coverage_delta"]["after"]["coverage_ratio"]["industry"] == 1
+    assert str(csv_path) not in json.dumps(payload, ensure_ascii=False)
+
+
+def test_import_universe_dry_run_estimates_runtime_coverage_delta(monkeypatch, tmp_path):
+    runtime = tmp_path / "runtime"
+    monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(runtime))
+    runtime.mkdir()
+    (runtime / "a_share_universe.csv").write_text(
+        "symbol,name,industry,concepts,index_membership,listing_status,source\n"
+        "000001,平安银行,银行,,沪深300,listed,existing\n"
+        "600519,贵州茅台,行业待补,白酒;消费,,listed,existing\n",
+        encoding="utf-8",
+    )
+    csv_path = tmp_path / "a_share_universe_update.csv"
+    csv_path.write_text(
+        "证券代码,证券名称,行业,概念,指数成分\n"
+        "000001,平安银行,银行,股份行;金融科技,沪深300\n"
+        "600519,贵州茅台,食品饮料,白酒;消费,上证50;沪深300\n",
+        encoding="utf-8",
+    )
+
+    payload = handle_import_universe(str(csv_path), use_runtime=True, dry_run=True)
+    delta = payload["data"]["coverage_delta"]
+
+    assert payload["ok"] is True
+    assert payload["data"]["written"] is False
+    assert delta["target"] == "a_share_universe.csv"
+    assert delta["existing_record_count"] == 2
+    assert delta["incoming_record_count"] == 2
+    assert delta["new_symbol_count"] == 0
+    assert delta["updated_symbol_count"] == 2
+    assert delta["before"]["missing_count"] == {"industry": 1, "concepts": 1, "index_membership": 1}
+    assert delta["after"]["missing_count"] == {"industry": 0, "concepts": 0, "index_membership": 0}
+    assert delta["improvement"]["state"] == "improved"
+    assert delta["improvement"]["covered_count_delta"] == {"industry": 1, "concepts": 1, "index_membership": 1}
+    assert delta["improvement"]["missing_count_delta"] == {"industry": -1, "concepts": -1, "index_membership": -1}
+    assert delta["improvement"]["improved_fields"] == ["industry", "concepts", "index_membership"]
+    assert "行业 覆盖 +1" in delta["improvement"]["summary"]
+    assert str(runtime) not in json.dumps(payload, ensure_ascii=False)
     assert str(csv_path) not in json.dumps(payload, ensure_ascii=False)
 
 
