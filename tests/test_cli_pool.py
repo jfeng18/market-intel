@@ -914,6 +914,22 @@ def test_pool_quality_writes_suggested_rows(tmp_path):
     assert str(output_file) not in json.dumps(payload, ensure_ascii=False)
 
 
+def test_pool_quality_fix_draft_reviews_as_expansion_csv(tmp_path):
+    output_file = tmp_path / "pool_quality_column_shift_suspected.csv"
+    handle_pool_quality("all-a", "column_shift_suspected", limit=1, output=str(output_file))
+
+    review_payload = handle_pool_expansion("all-a", review_file=str(output_file))
+    data = review_payload["data"]
+
+    assert review_payload["ok"] is True
+    assert data["review_state"] == "ready"
+    assert data["ready_count"] == 1
+    assert data["ready_rows"][0]["symbol"] == "002156"
+    assert data["ready_rows"][0]["name"] == "通富微电"
+    assert data["ready_rows"][0]["normalized"]["data_quality_flags"] == []
+    assert str(output_file) not in json.dumps(review_payload, ensure_ascii=False)
+
+
 def test_pool_quality_export_warns_without_suggested_rows():
     payload = handle_pool_quality("all-a", "missing_role", limit=2, dry_run=True)
 
