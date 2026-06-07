@@ -2056,6 +2056,7 @@ def build_mock_dashboard_data(
             "writes_are_skipped": True,
             "mode": "mock",
         },
+        "positioning": dashboard_positioning(pool, mode="mock"),
         "coverage_context": coverage,
         "tiles": tiles,
         "market_pulse": market,
@@ -2505,6 +2506,7 @@ def build_dashboard_data(
         "summary": dashboard_summary(run_data, digest),
         "source_agent_run_state": run_data.get("state"),
         "run_limits": run_data.get("run_limits", {"max_steps": max_steps, "read_only_only": True, "writes_are_skipped": True}),
+        "positioning": dashboard_positioning(pool, mode="runtime"),
         "coverage_context": dashboard_coverage_context(digest),
         "tiles": dashboard_tiles(digest),
         "market_pulse": dashboard_market_pulse(digest),
@@ -2519,6 +2521,48 @@ def build_dashboard_data(
             "写入 journal 或导入 runtime 的命令需要人工确认后执行。",
         ],
         "agent_contract": dashboard_contract(),
+    }
+
+
+def dashboard_positioning(pool: str, mode: str) -> Dict[str, object]:
+    return {
+        "headline": "面向全 A 的个人复盘操作系统，不是行情 App、交易入口或买卖建议引擎。",
+        "pool": pool,
+        "mode": mode,
+        "scope": "默认按全 A 复盘闭环组织信息；主题池只是覆盖样例或局部视角。",
+        "differentiators": [
+            {
+                "id": "coverage_boundary",
+                "label": "先确认覆盖边界",
+                "agent_path": "data.coverage_context",
+                "done_when": "已确认 A 股基础清单、行业/概念/指数字段完整度、数据质量队列和覆盖缺口。",
+            },
+            {
+                "id": "holding_first",
+                "label": "持仓优先映射",
+                "agent_path": "data.portfolio_pulse",
+                "done_when": "已确认持仓是否进入热点、是否缺行情/上下文、是否存在重复链路或主题暴露。",
+            },
+            {
+                "id": "evidence_loop",
+                "label": "证据闭环",
+                "agent_path": "data.evidence_gaps",
+                "done_when": "已把未覆盖、foundation、draft 和数据修复项转成可复核命令和完成标准。",
+            },
+            {
+                "id": "agent_handoff",
+                "label": "agent 可接力",
+                "agent_path": "data.review_plan",
+                "done_when": "已生成只读 JSON 命令、人工确认项、journal 前置和 done_when。",
+            },
+        ],
+        "not_competing_on": [
+            "实时盘口、交易通道和账户管理。",
+            "资讯流、社区分发和大 V 内容消费。",
+            "黑盒诊股、目标价、仓位建议和自动下单。",
+        ],
+        "selection_rule": "新功能必须增强全 A 覆盖、持仓复核、证据留痕或 agent 接力；否则只作为外部输入，不进入核心工作台。",
+        "write_policy": "positioning 只说明产品边界和复盘取舍，不生成交易指令。",
     }
 
 
@@ -3179,6 +3223,11 @@ def dashboard_contract() -> Dict[str, object]:
             "data.state",
             "data.summary",
             "data.tiles",
+            "data.positioning",
+            "data.positioning.differentiators",
+            "data.positioning.differentiators[].agent_path",
+            "data.positioning.differentiators[].done_when",
+            "data.positioning.selection_rule",
             "data.coverage_context",
             "data.coverage_context.universe",
             "data.coverage_context.universe.sector_profile",

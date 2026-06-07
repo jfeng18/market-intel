@@ -1460,6 +1460,10 @@ def render_dashboard_text(payload: Dict[str, object]) -> str:
         for item in tiles:
             if isinstance(item, dict):
                 lines.append("- %s: %s | %s" % (item.get("label"), item.get("value"), item.get("detail") or ""))
+    positioning = data.get("positioning", {}) if isinstance(data.get("positioning"), dict) else {}
+    if positioning:
+        lines.extend(["", "定位"])
+        lines.extend(render_dashboard_positioning(positioning))
     coverage = data.get("coverage_context", {}) if isinstance(data.get("coverage_context"), dict) else {}
     if coverage:
         lines.extend(["", "覆盖底座"])
@@ -1493,6 +1497,23 @@ def render_dashboard_text(payload: Dict[str, object]) -> str:
         lines.extend(["", "边界"])
         lines.extend(render_list(guardrails, empty="不生成交易指令。"))
     return "\n".join(lines)
+
+
+def render_dashboard_positioning(value: Dict[str, object]) -> List[str]:
+    lines = ["- %s" % (value.get("headline") or "个人复盘工作台。")]
+    if value.get("scope"):
+        lines.append("- 范围: %s" % value.get("scope"))
+    differentiators = value.get("differentiators", []) if isinstance(value.get("differentiators"), list) else []
+    if differentiators:
+        parts = []
+        for item in differentiators[:4]:
+            if isinstance(item, dict):
+                parts.append("%s -> %s" % (item.get("label"), item.get("agent_path")))
+        if parts:
+            lines.append("- 取舍: %s" % "；".join(parts))
+    if value.get("selection_rule"):
+        lines.append("- 准入: %s" % value.get("selection_rule"))
+    return lines
 
 
 def render_dashboard_market_pulse(value: Dict[str, object]) -> List[str]:

@@ -1012,6 +1012,11 @@ def test_dashboard_returns_one_screen_workbench(monkeypatch, tmp_path):
     assert data["coverage_context"]["top_gaps"]
     assert data["coverage_context"]["top_data_quality_queue"]
     assert data["coverage_context"]["top_data_quality_queue"][0]["samples"]
+    assert data["positioning"]["headline"].startswith("面向全 A")
+    assert data["positioning"]["differentiators"][0]["agent_path"] == "data.coverage_context"
+    assert "data.positioning" in data["agent_contract"]["stable_fields"]
+    assert "data.positioning.differentiators[].agent_path" in data["agent_contract"]["stable_fields"]
+    assert "data.positioning.selection_rule" in data["agent_contract"]["stable_fields"]
     assert data["market_pulse"]["available"] is True
     assert data["market_pulse"]["top_groups"]
     assert data["market_pulse"]["candidates"]
@@ -1042,6 +1047,9 @@ def test_dashboard_returns_one_screen_workbench(monkeypatch, tmp_path):
     assert "data.action_lane.items" in data["agent_contract"]["stable_fields"]
     assert "data.review_plan.items[].json_command" in data["agent_contract"]["stable_fields"]
     assert "market-intel dashboard" in text
+    assert "定位" in text
+    assert "个人复盘操作系统" in text
+    assert "准入:" in text
     assert "覆盖底座" in text
     assert "全 A: 已接入 | 记录 16" in text
     assert "全市场" in text
@@ -1081,6 +1089,8 @@ def test_dashboard_mock_returns_demo_workbench_without_runtime(monkeypatch, tmp_
     assert data["state"] == "demo_ready"
     assert data["source_agent_run_state"] == "mock_demo"
     assert data["run_limits"]["mode"] == "mock"
+    assert data["positioning"]["mode"] == "mock"
+    assert data["positioning"]["differentiators"][1]["agent_path"] == "data.portfolio_pulse"
     assert data["coverage_context"]["available"] is True
     assert data["coverage_context"]["universe"]["available"] is False
     assert data["market_pulse"]["available"] is True
@@ -1102,6 +1112,8 @@ def test_dashboard_mock_returns_demo_workbench_without_runtime(monkeypatch, tmp_
     assert data["handoff"]["next_read"]
     assert any("mock" in item for item in data["guardrails"])
     assert "mock 示例" in text
+    assert "定位" in text
+    assert "个人复盘操作系统" in text
     assert "焦点:" in text
     assert "下一条:" in text
     assert "覆盖底座" in text
