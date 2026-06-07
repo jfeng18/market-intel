@@ -1229,6 +1229,7 @@ def test_dashboard_returns_one_screen_workbench(monkeypatch, tmp_path):
     assert data["action_summary"]["record_template"]["section"] == "market_structure"
     assert data["action_summary"]["record_template"]["runnable"] is False
     assert data["action_summary"]["record_template"]["prerequisite_command"] == data["handoff"]["journal_gate"]["json_command"]
+    assert data["action_summary"]["record_template"]["prerequisite_done_when"] == data["today_focus"]["done_when"]
     assert data["action_summary"]["record_template"]["prefilled_note_command"].startswith("market-intel journal note --section")
     assert data["action_summary"]["record_template"]["run_after"] == "market-intel journal save --runtime --json"
     assert [item["json_command"] for item in data["today_focus"]["focus_chain"][:3]] == [
@@ -1242,6 +1243,7 @@ def test_dashboard_returns_one_screen_workbench(monkeypatch, tmp_path):
     assert "data.action_summary.next_command" in data["agent_contract"]["stable_fields"]
     assert "data.action_summary.record_template.runnable" in data["agent_contract"]["stable_fields"]
     assert "data.action_summary.record_template.prerequisite_command" in data["agent_contract"]["stable_fields"]
+    assert "data.action_summary.record_template.prerequisite_done_when" in data["agent_contract"]["stable_fields"]
     assert "data.action_summary.record_template.prefilled_note_command" in data["agent_contract"]["stable_fields"]
     assert "data.action_summary.next_chain[].json_command" in data["agent_contract"]["stable_fields"]
     assert "data.today_focus.json_command" in data["agent_contract"]["stable_fields"]
@@ -1302,6 +1304,7 @@ def test_dashboard_returns_one_screen_workbench(monkeypatch, tmp_path):
     assert "操作摘要" in text
     assert "记录前置:" in text
     assert "前置命令:" in text
+    assert "前置完成:" in text
     assert "今日焦点" in text
     assert "为什么:" in text
     assert "接力:" in text
@@ -1475,6 +1478,7 @@ def test_dashboard_blocked_handoff_does_not_duplicate_next_read(monkeypatch, tmp
     assert data["action_summary"]["record_template"]["runnable"] is False
     assert data["action_summary"]["record_template"]["blocked_reason"]
     assert data["action_summary"]["record_template"]["prerequisite_command"] == "market-intel validate runtime --json"
+    assert data["action_summary"]["record_template"]["prerequisite_done_when"]
     assert "market-intel validate runtime --json" in next_read_commands
     assert "market-intel validate runtime --json" not in manual_commands
     assert data["review_plan"]["items"][0]["json_command"] == "market-intel validate runtime --json"
