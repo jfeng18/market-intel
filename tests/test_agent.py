@@ -15,6 +15,7 @@ from market_intel.cli import (
     handle_import_universe,
     handle_journal_note,
     handle_journal_save,
+    dashboard_journal_gate,
     run_agent_read_command,
 )
 from market_intel.core.text_report import render_agent_briefing_text, render_agent_next_text, render_agent_plan_text, render_agent_run_text, render_dashboard_text
@@ -1111,6 +1112,26 @@ def test_agent_next_returns_compact_handoff(monkeypatch, tmp_path):
     assert "sell" not in text.lower()
 
 
+def test_dashboard_journal_gate_requires_manual_items_before_ready():
+    gate = dashboard_journal_gate(
+        {
+            "completion_state": "ready_for_manual_record",
+            "ready_for_journal_note": True,
+            "blocking_count": 0,
+            "manual_required_count": 1,
+            "pending_count": 0,
+        },
+        [],
+        [{"json_command": "market-intel journal save --runtime --json"}],
+        [],
+    )
+
+    assert gate["state"] == "needs_manual"
+    assert gate["ready_for_journal_note"] is False
+    assert gate["json_command"] == "market-intel journal save --runtime --json"
+    assert gate["blockers"] == ["还有 1 个人工确认项，留档前需要确认。"]
+
+
 def test_dashboard_returns_one_screen_workbench(monkeypatch, tmp_path):
     import_runtime_examples(monkeypatch, tmp_path)
     handle_import_universe("examples/a_share_universe.csv.example", use_runtime=True)
@@ -1176,6 +1197,11 @@ def test_dashboard_returns_one_screen_workbench(monkeypatch, tmp_path):
     assert data["action_lane"]["items"][0]["item_type"] == "coverage_review"
     assert data["action_lane"]["items"][0]["json_command"] == "market-intel pool quality invalid_symbol --json"
     assert data["handoff"]["next_read"]
+    gate = data["handoff"]["journal_gate"]
+    assert gate["state"] in {"needs_read", "needs_manual", "blocked", "ready"}
+    assert gate["ready_for_journal_note"] is False
+    assert gate["json_command"]
+    assert gate["blockers"]
     assert data["guardrails"]
     assert "data.coverage_context" in data["agent_contract"]["stable_fields"]
     assert "data.coverage_context.universe.sector_profile" in data["agent_contract"]["stable_fields"]
@@ -1189,6 +1215,8 @@ def test_dashboard_returns_one_screen_workbench(monkeypatch, tmp_path):
     assert "data.portfolio_pulse.top_holdings" in data["agent_contract"]["stable_fields"]
     assert "data.action_lane.items" in data["agent_contract"]["stable_fields"]
     assert "data.review_plan.items[].json_command" in data["agent_contract"]["stable_fields"]
+    assert "data.handoff.journal_gate" in data["agent_contract"]["stable_fields"]
+    assert "data.handoff.journal_gate.state" in data["agent_contract"]["stable_fields"]
     assert "market-intel dashboard" in text
     assert len(text.splitlines()) <= 80
     assert "今日焦点" in text
@@ -1207,6 +1235,7 @@ def test_dashboard_returns_one_screen_workbench(monkeypatch, tmp_path):
     assert "证据缺口" in text
     assert "复盘计划" in text
     assert "下一步" in text
+    assert "留档门槛" in text
     assert "读:" in text
     assert "不生成买卖指令" in text
     assert "buy" not in text.lower()
@@ -1273,6 +1302,9 @@ def test_dashboard_mock_returns_demo_workbench_without_runtime(monkeypatch, tmp_
     assert data["handoff"]["next_read"]
     assert data["handoff"]["next_read"][2]["source"] == "market_scan"
     assert data["handoff"]["manual_items"][0]["json_command"] == "market-intel init runtime --json"
+    assert data["handoff"]["journal_gate"]["state"] == "needs_read"
+    assert data["handoff"]["journal_gate"]["ready_for_journal_note"] is False
+    assert data["handoff"]["journal_gate"]["json_command"] == "market-intel import schema --json"
     assert any("mock" in item for item in data["guardrails"])
     assert "mock 示例" in text
     assert len(text.splitlines()) <= 80
@@ -1283,6 +1315,7 @@ def test_dashboard_mock_returns_demo_workbench_without_runtime(monkeypatch, tmp_
     assert "候选:" in text
     assert "先看:" in text
     assert "下一步" in text
+    assert "留档门槛" in text
     assert "覆盖底座" in text
     assert "全 A: 未接入" in text
     assert "market-intel dashboard" in text
@@ -1330,6 +1363,7 @@ def test_dashboard_init_runtime_prioritizes_market_over_seed_quality(monkeypatch
     item_types = [item["item_type"] for item in data["review_plan"]["items"]]
     candidates = {item["symbol"]: item for item in data["market_pulse"]["candidates"]}
     holdings = {item["symbol"]: item for item in data["portfolio_pulse"]["top_holdings"]}
+    gate = data["handoff"]["journal_gate"]
 
     assert payload["ok"] is True
     assert data["state"] in {"needs_review", "ready_for_note", "blocked_review"}
@@ -1348,6 +1382,10 @@ def test_dashboard_init_runtime_prioritizes_market_over_seed_quality(monkeypatch
     assert holdings["300308"]["primary_question"].startswith("研究证据已复核")
     assert holdings["002281"]["primary_question"].startswith("研究证据已复核")
     assert holdings["002837"]["primary_question"].startswith("先确认候选补池行")
+    assert gate["state"] == "needs_read"
+    assert gate["ready_for_journal_note"] is False
+    assert gate["json_command"].startswith("market-intel portfolio explain")
+    assert gate["blockers"][0].startswith("还有")
 
 
 def test_dashboard_surfaces_universe_enrichment_queue(monkeypatch, tmp_path):

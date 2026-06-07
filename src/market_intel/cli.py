@@ -2909,30 +2909,33 @@ def mock_dashboard_handoff(pool: str, plan: Dict[str, object]) -> Dict[str, obje
         )
         if len(next_read) >= 4:
             break
+    manual_items = [
+        {
+            "rank": 1,
+            "source": "mock_to_runtime",
+            "title": "初始化 runtime 并导入数据",
+            "reason": "mock 示例不能代表真实持仓或全市场结论。",
+            "json_command": "market-intel init runtime --json",
+            "done_when": "已初始化 runtime，并导入行情、持仓和全 A 基础清单文件。",
+        }
+    ]
+    completion = {
+        "completion_state": "demo",
+        "ready_for_journal_note": False,
+        "blocking_count": 0,
+        "manual_required_count": 1,
+        "pending_count": len(next_read),
+    }
     return {
         "available": bool(next_read),
         "summary": "mock 示例已生成；正式使用请导入 runtime 后运行 %s。" % with_pool_arg("market-intel dashboard --text", pool),
         "handoff_state": "demo",
         "resume_prompt": "接手复盘：先运行 %s 理解结构，再切换 runtime。" % with_pool_arg("market-intel dashboard --mock --text", pool),
         "next_read": next_read,
-        "manual_items": [
-            {
-                "rank": 1,
-                "source": "mock_to_runtime",
-                "title": "初始化 runtime 并导入数据",
-                "reason": "mock 示例不能代表真实持仓或全市场结论。",
-                "json_command": "market-intel init runtime --json",
-                "done_when": "已初始化 runtime，并导入行情、持仓和全 A 基础清单文件。",
-            }
-        ],
+        "manual_items": manual_items,
         "record_templates": [],
-        "completion": {
-            "completion_state": "demo",
-            "ready_for_journal_note": False,
-            "blocking_count": 0,
-            "manual_required_count": 1,
-            "pending_count": len(next_read),
-        },
+        "completion": completion,
+        "journal_gate": dashboard_journal_gate(completion, next_read, manual_items, []),
     }
 
 
@@ -3524,21 +3527,72 @@ def dashboard_handoff(digest: Dict[str, object]) -> Dict[str, object]:
     handoff = digest.get("review_handoff", {}) if isinstance(digest.get("review_handoff"), dict) else {}
     completion = digest.get("review_completion", {}) if isinstance(digest.get("review_completion"), dict) else {}
     next_read = list(handoff.get("next_read", []))[:4] if isinstance(handoff.get("next_read"), list) else []
+    manual_items = compact_dashboard_manual_items(handoff.get("manual_items", []), next_read)
+    record_templates = list(handoff.get("record_templates", []))[:3] if isinstance(handoff.get("record_templates"), list) else []
+    completion_summary = {
+        "completion_state": completion.get("completion_state"),
+        "ready_for_journal_note": bool(completion.get("ready_for_journal_note")),
+        "blocking_count": completion.get("blocking_count", 0),
+        "manual_required_count": completion.get("manual_required_count", 0),
+        "pending_count": completion.get("pending_count", 0),
+    }
     return {
         "available": bool(handoff.get("available")),
         "summary": handoff.get("summary") or completion.get("summary") or "暂无交接信息。",
         "handoff_state": handoff.get("handoff_state"),
         "resume_prompt": handoff.get("resume_prompt"),
         "next_read": next_read,
-        "manual_items": compact_dashboard_manual_items(handoff.get("manual_items", []), next_read),
-        "record_templates": list(handoff.get("record_templates", []))[:3] if isinstance(handoff.get("record_templates"), list) else [],
-        "completion": {
-            "completion_state": completion.get("completion_state"),
-            "ready_for_journal_note": bool(completion.get("ready_for_journal_note")),
-            "blocking_count": completion.get("blocking_count", 0),
-            "manual_required_count": completion.get("manual_required_count", 0),
-            "pending_count": completion.get("pending_count", 0),
-        },
+        "manual_items": manual_items,
+        "record_templates": record_templates,
+        "completion": completion_summary,
+        "journal_gate": dashboard_journal_gate(completion_summary, next_read, manual_items, record_templates),
+    }
+
+
+def dashboard_journal_gate(
+    completion: Dict[str, object],
+    next_read: List[Dict[str, object]],
+    manual_items: List[Dict[str, object]],
+    record_templates: List[Dict[str, object]],
+) -> Dict[str, object]:
+    pending_count = safe_int(completion.get("pending_count"))
+    blocking_count = safe_int(completion.get("blocking_count"))
+    manual_count = safe_int(completion.get("manual_required_count"))
+    review_read_complete = bool(completion.get("ready_for_journal_note")) and not pending_count and not blocking_count
+    ready = review_read_complete and not manual_count
+    first_read = next((item for item in next_read if isinstance(item, dict) and item.get("json_command")), {})
+    first_manual = next((item for item in manual_items if isinstance(item, dict) and item.get("json_command")), {})
+    first_record = next((item for item in record_templates if isinstance(item, dict) and item.get("prefilled_note_command")), {})
+    blockers: List[str] = []
+    if blocking_count:
+        blockers.append("还有 %s 个阻塞项，先处理数据或证据错误。" % blocking_count)
+    if pending_count:
+        blockers.append("还有 %s 个待读项，先运行下一条只读命令。" % pending_count)
+    if manual_count:
+        blockers.append("还有 %s 个人工确认项，留档前需要确认。" % manual_count)
+    if ready:
+        state = "ready"
+        next_step = "可人工确认后保存日报并写入 journal note。"
+        command = str(first_record.get("run_after") or first_manual.get("json_command") or "market-intel journal save --runtime --json")
+    elif blocking_count:
+        state = "blocked"
+        next_step = blockers[0]
+        command = str(first_read.get("json_command") or first_manual.get("json_command") or "")
+    elif pending_count:
+        state = "needs_read"
+        next_step = blockers[0]
+        command = str(first_read.get("json_command") or "")
+    else:
+        state = "needs_manual"
+        next_step = blockers[-1] if blockers else "人工确认后保存日报并写入 journal note。"
+        command = str(first_manual.get("json_command") or first_record.get("run_after") or "market-intel journal save --runtime --json")
+    return {
+        "state": state,
+        "ready_for_journal_note": ready,
+        "next_step": next_step,
+        "json_command": command,
+        "blockers": blockers[:4],
+        "record_template_count": len(record_templates),
     }
 
 
@@ -4108,6 +4162,10 @@ def dashboard_contract() -> Dict[str, object]:
             "data.review_plan.items[].json_command",
             "data.review_plan.items[].done_when",
             "data.handoff",
+            "data.handoff.journal_gate",
+            "data.handoff.journal_gate.state",
+            "data.handoff.journal_gate.json_command",
+            "data.handoff.journal_gate.blockers",
             "data.handoff.next_read",
             "data.guardrails",
         ],

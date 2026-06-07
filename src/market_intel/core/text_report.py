@@ -2126,6 +2126,14 @@ def render_dashboard_compact_review_plan(value: Dict[str, object]) -> List[str]:
 
 def render_dashboard_compact_next_steps(value: Dict[str, object]) -> List[str]:
     lines = []
+    gate = value.get("journal_gate", {}) if isinstance(value.get("journal_gate"), dict) else {}
+    if gate:
+        lines.append(
+            "- 留档门槛: %s | %s"
+            % (gate.get("state") or "unknown", gate.get("next_step") or "")
+        )
+        if gate.get("json_command"):
+            lines.append("  命令: %s" % gate.get("json_command"))
     next_read = value.get("next_read", []) if isinstance(value.get("next_read"), list) else []
     if next_read:
         for item in next_read[:3]:
