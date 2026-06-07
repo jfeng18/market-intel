@@ -120,6 +120,11 @@ def test_import_universe_dry_run_estimates_runtime_coverage_delta(monkeypatch, t
     assert delta["improvement"]["missing_count_delta"] == {"industry": -1, "concepts": -1, "index_membership": -1}
     assert delta["improvement"]["improved_fields"] == ["industry", "concepts", "index_membership"]
     assert "行业 覆盖 +1" in delta["improvement"]["summary"]
+    assert payload["data"]["next_commands"] == [
+        "market-intel import universe a_share_universe_update.csv --runtime --json",
+        "market-intel pool coverage --runtime --json",
+        "market-intel dashboard --text",
+    ]
     assert str(runtime) not in json.dumps(payload, ensure_ascii=False)
     assert str(csv_path) not in json.dumps(payload, ensure_ascii=False)
 

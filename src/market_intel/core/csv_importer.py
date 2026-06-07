@@ -177,7 +177,7 @@ def import_universe_csv(
         "preview": records[:5],
         "canonical_schema": universe_schema(),
         "coverage_delta": coverage_delta,
-        "next_commands": next_commands("universe", written, runtime, output_path),
+        "next_commands": universe_next_commands(csv_path, written, dry_run, runtime, output_path, coverage_delta),
         "warnings": warnings,
         "errors": errors,
     }
@@ -811,6 +811,43 @@ def next_commands(kind: str, written: bool, runtime: bool, output_path: Optional
         "market-intel validate runtime --json",
         "market-intel daily --runtime --json",
         "market-intel daily --runtime --text",
+    ]
+
+
+def universe_next_commands(
+    csv_path: Path,
+    written: bool,
+    dry_run: bool,
+    runtime: bool,
+    output_path: Optional[Path],
+    coverage_delta: Dict[str, object],
+) -> List[str]:
+    if written:
+        return next_commands("universe", written, runtime, output_path)
+    if not dry_run:
+        return []
+    improvement = coverage_delta.get("improvement", {}) if isinstance(coverage_delta.get("improvement"), dict) else {}
+    if improvement.get("state") == "improved":
+        import_command = "market-intel import universe %s --json" % command_path(csv_path)
+        if runtime:
+            import_command = "market-intel import universe %s --runtime --json" % command_path(csv_path)
+            return [
+                import_command,
+                "market-intel pool coverage --runtime --json",
+                "market-intel dashboard --text",
+            ]
+        if output_path:
+            return [
+                "%s --output %s" % (import_command, command_path(output_path)),
+                "MARKET_INTEL_A_SHARE_UNIVERSE_PATHS=%s market-intel pool coverage --text" % command_path(output_path),
+            ]
+        return [
+            "market-intel import universe %s --runtime --json" % command_path(csv_path),
+            "market-intel pool coverage --runtime --json",
+        ]
+    return [
+        "market-intel pool coverage --runtime --json" if runtime else "market-intel pool coverage --json",
+        "market-intel import schema --json",
     ]
 
 
