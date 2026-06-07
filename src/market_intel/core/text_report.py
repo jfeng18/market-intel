@@ -2019,6 +2019,9 @@ def render_dashboard_compact_coverage(value: Dict[str, object]) -> List[str]:
                     float(profile.get("index_coverage_ratio") or 0) * 100,
                 )
             )
+            top_line = render_dashboard_universe_top_dimensions(profile)
+            if top_line:
+                lines.append("  分布: %s" % top_line)
         queue = (
             universe.get("enrichment_queue", [])
             if isinstance(universe.get("enrichment_queue"), list)
@@ -2057,6 +2060,28 @@ def render_dashboard_compact_coverage(value: Dict[str, object]) -> List[str]:
             )
         )
     return lines
+
+
+def render_dashboard_universe_top_dimensions(profile: Dict[str, object]) -> str:
+    parts = []
+    for label_text, key in [("行业", "top_industries"), ("概念", "top_concepts"), ("指数", "top_indexes")]:
+        values = profile.get(key, []) if isinstance(profile.get(key), list) else []
+        rendered = render_dashboard_counter_items(values, limit=3)
+        if rendered:
+            parts.append("%s %s" % (label_text, rendered))
+    return " | ".join(parts)
+
+
+def render_dashboard_counter_items(values: List[object], limit: int = 3) -> str:
+    rows = []
+    for item in values[:limit]:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name") or "").strip()
+        if not name:
+            continue
+        rows.append("%s(%s)" % (name, item.get("count", 0)))
+    return "、".join(rows)
 
 
 def render_dashboard_compact_market(value: Dict[str, object]) -> List[str]:

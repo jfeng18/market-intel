@@ -515,7 +515,11 @@ def test_agent_briefing_surfaces_all_a_sector_profile(monkeypatch, tmp_path):
     assert profile["industry_coverage_ratio"] == 1
     assert profile["concept_coverage_ratio"] == 0
     assert profile["index_coverage_ratio"] == 1
+    assert profile["top_industries"] == [{"name": "银行", "count": 1}]
+    assert profile["top_concepts"] == []
+    assert profile["top_indexes"] == [{"name": "沪深300", "count": 1}]
     assert profile["coverage_flags"] == ["concepts_missing"]
+    assert "data.daily.coverage_context.universe.sector_profile.top_concepts" in payload["data"]["agent_contract"]["stable_fields"]
     assert any(action["id"] == "export_a_share_universe_patch" for action in coverage["next_actions"])
     assert any(action["id"] == "merge_a_share_universe_patch" for action in coverage["next_actions"])
 
@@ -1614,11 +1618,17 @@ def test_dashboard_surfaces_universe_enrichment_queue(monkeypatch, tmp_path):
     text = render_dashboard_text(payload)
 
     queue = data["coverage_context"]["universe"]["enrichment_queue"]
+    profile = data["coverage_context"]["universe"]["sector_profile"]
     assert queue
     assert queue[0]["field"] == "industry"
     assert queue[0]["samples"][0] == {"symbol": "600519", "name": "贵州茅台"}
     assert queue[0]["command"] == "market-intel import universe <a_share_universe_patch.csv> --runtime --merge --dry-run --json"
+    assert profile["top_industries"] == [{"name": "银行", "count": 1}]
+    assert profile["top_concepts"][:2] == [{"name": "消费", "count": 1}, {"name": "白酒", "count": 1}]
+    assert profile["top_indexes"] == [{"name": "沪深300", "count": 1}]
+    assert "data.coverage_context.universe.sector_profile.top_concepts" in data["agent_contract"]["stable_fields"]
     assert "补数: #1 行业 | 缺 1" in text
+    assert "分布: 行业 银行(1) | 概念 消费(1)、白酒(1) | 指数 沪深300(1)" in text
     assert str(universe_file) not in text
 
 
