@@ -3997,6 +3997,11 @@ def dashboard_today_focus(
 def dashboard_action_summary(today_focus: Dict[str, object], handoff: Dict[str, object]) -> Dict[str, object]:
     gate = handoff.get("journal_gate", {}) if isinstance(handoff.get("journal_gate"), dict) else {}
     chain = today_focus.get("focus_chain", []) if isinstance(today_focus.get("focus_chain"), list) else []
+    record_templates = handoff.get("record_templates", []) if isinstance(handoff.get("record_templates"), list) else []
+    first_record = next(
+        (item for item in record_templates if isinstance(item, dict) and item.get("prefilled_note_command")),
+        {},
+    )
     title = str(today_focus.get("title") or "暂无焦点")
     command = str(today_focus.get("json_command") or gate.get("json_command") or "")
     journal_state = str(gate.get("state") or "unknown")
@@ -4010,6 +4015,13 @@ def dashboard_action_summary(today_focus: Dict[str, object], handoff: Dict[str, 
         "journal_state": journal_state,
         "journal_ready": bool(gate.get("ready_for_journal_note")),
         "journal_next_step": next_step,
+        "record_template": {
+            "available": bool(first_record),
+            "section": first_record.get("section"),
+            "title": first_record.get("title"),
+            "prefilled_note_command": first_record.get("prefilled_note_command"),
+            "run_after": first_record.get("run_after"),
+        },
         "blockers": list(gate.get("blockers", []))[:3] if isinstance(gate.get("blockers"), list) else [],
         "next_chain": [
             {
@@ -4483,6 +4495,8 @@ def dashboard_contract() -> Dict[str, object]:
             "data.action_summary.headline",
             "data.action_summary.next_command",
             "data.action_summary.journal_state",
+            "data.action_summary.record_template",
+            "data.action_summary.record_template.prefilled_note_command",
             "data.action_summary.next_chain",
             "data.action_summary.next_chain[].json_command",
             "data.today_focus",

@@ -1224,6 +1224,9 @@ def test_dashboard_returns_one_screen_workbench(monkeypatch, tmp_path):
     assert data["action_summary"]["next_command"] == data["today_focus"]["json_command"]
     assert data["action_summary"]["journal_state"] == data["handoff"]["journal_gate"]["state"]
     assert data["action_summary"]["next_chain"][0]["json_command"] == data["today_focus"]["focus_chain"][0]["json_command"]
+    assert data["action_summary"]["record_template"]["available"] is True
+    assert data["action_summary"]["record_template"]["prefilled_note_command"].startswith("market-intel journal note --section")
+    assert data["action_summary"]["record_template"]["run_after"] == "market-intel journal save --runtime --json"
     assert [item["json_command"] for item in data["today_focus"]["focus_chain"][:3]] == [
         item["json_command"] for item in data["review_plan"]["items"][:3]
     ]
@@ -1233,6 +1236,7 @@ def test_dashboard_returns_one_screen_workbench(monkeypatch, tmp_path):
     assert "data.today_focus" in data["agent_contract"]["stable_fields"]
     assert "data.action_summary" in data["agent_contract"]["stable_fields"]
     assert "data.action_summary.next_command" in data["agent_contract"]["stable_fields"]
+    assert "data.action_summary.record_template.prefilled_note_command" in data["agent_contract"]["stable_fields"]
     assert "data.action_summary.next_chain[].json_command" in data["agent_contract"]["stable_fields"]
     assert "data.today_focus.json_command" in data["agent_contract"]["stable_fields"]
     assert "data.today_focus.focus_chain[].json_command" in data["agent_contract"]["stable_fields"]
@@ -1290,6 +1294,7 @@ def test_dashboard_returns_one_screen_workbench(monkeypatch, tmp_path):
     assert "market-intel dashboard" in text
     assert len(text.splitlines()) <= 80
     assert "操作摘要" in text
+    assert "记录: market-intel journal note --section" in text
     assert "今日焦点" in text
     assert "为什么:" in text
     assert "接力:" in text
@@ -1347,6 +1352,7 @@ def test_dashboard_mock_returns_demo_workbench_without_runtime(monkeypatch, tmp_
     assert data["today_focus"]["json_command"] == data["action_lane"]["items"][0]["json_command"]
     assert data["action_summary"]["next_command"] == "market-intel import schema --json"
     assert data["action_summary"]["journal_state"] == data["handoff"]["journal_gate"]["state"]
+    assert data["action_summary"]["record_template"]["available"] is False
     assert [item["source"] for item in data["today_focus"]["focus_chain"][:3]] == [
         "runtime_setup",
         "coverage_review",
@@ -1382,6 +1388,7 @@ def test_dashboard_mock_returns_demo_workbench_without_runtime(monkeypatch, tmp_
     assert "mock 示例" in text
     assert len(text.splitlines()) <= 80
     assert "操作摘要" in text
+    assert "记录: market-intel journal note --section" not in text
     assert "今日焦点" in text
     assert "接力:" in text
     assert "定位" in text

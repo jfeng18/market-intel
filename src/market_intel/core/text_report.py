@@ -1900,6 +1900,11 @@ def render_dashboard_action_summary(value: Dict[str, object]) -> List[str]:
             "  留档: %s | %s"
             % (value.get("journal_state"), "可记录" if value.get("journal_ready") else value.get("journal_next_step") or "未就绪")
         )
+    record = value.get("record_template", {}) if isinstance(value.get("record_template"), dict) else {}
+    if record.get("prefilled_note_command"):
+        lines.append("  记录: %s" % record.get("prefilled_note_command"))
+        if record.get("run_after"):
+            lines.append("  记录前置: %s" % record.get("run_after"))
     return lines
 
 
