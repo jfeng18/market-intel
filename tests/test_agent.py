@@ -1819,7 +1819,8 @@ def test_agent_next_closes_foundation_gap_with_reviewed_research(monkeypatch, tm
     assert "foundation_pool_match" not in card["risk_flags"]
     assert not any("全 A 基础清单" in gap for gap in card["open_gaps"])
     assert "data.security_cards.cards[].research_status" in data["agent_contract"]["stable_fields"]
-    assert "研究: reviewed" in text
+    assert "研究: 已确认" in text
+    assert "研究: reviewed" not in text
     assert "buy" not in text.lower()
     assert "sell" not in text.lower()
 

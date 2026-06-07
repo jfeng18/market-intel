@@ -43,6 +43,11 @@ LABELS = {
     "quote_not_in_universe": "行情未入基础清单",
     "extra_pool_overlay": "扩展池叠加",
     "pending_fields": "字段待补",
+    "thesis": "核心逻辑",
+    "evidence": "关键证据",
+    "invalidation": "证伪风险",
+    "updated_at": "更新日期",
+    "source": "来源",
     "unmatched_holdings": "持仓未匹配池子",
     "turnover_expansion_watch": "成交放大待复核",
     "weak_price_context": "价格上下文偏弱",
@@ -100,6 +105,14 @@ LABELS = {
     "stage_high": "新高",
     "holding_attention": "持仓",
     "coverage_gap": "覆盖缺口",
+    "all_a_seed_only": "全 A 仍是种子覆盖",
+    "data_quality_flags": "数据质量待清理",
+    "a_share_industry_missing": "行业字段缺失",
+    "a_share_theme_sources_missing": "概念或指数字段缺失",
+    "cn_a_coverage_thin": "A 股覆盖偏薄",
+    "holding_coverage_gap": "持仓覆盖缺口",
+    "foundation_research_missing": "基础覆盖待补研究",
+    "draft_pool_matches": "草稿匹配待复核",
     "research_unconfirmed": "研究待确认",
     "data_quality_attention": "数据质量",
     "thin_resonance": "弱共振",
@@ -1738,7 +1751,7 @@ def render_focus_coverage_context(value: object) -> List[str]:
     gaps = coverage.get("top_gaps", []) if isinstance(coverage.get("top_gaps"), list) else []
     for gap in gaps[:3]:
         if isinstance(gap, dict):
-            lines.append("   缺口: %s | %s" % (gap.get("severity"), gap.get("id")))
+            lines.append("   缺口: %s | %s" % (label(gap.get("severity")), label(gap.get("id"))))
     actions = coverage.get("next_actions", []) if isinstance(coverage.get("next_actions"), list) else []
     for action in actions[:2]:
         if isinstance(action, dict) and action.get("command"):
@@ -2779,7 +2792,7 @@ def render_agent_next_security_cards(value: Dict[str, object], compact: bool = F
             lines.append("      热点: %s | 分 %s" % (hotspot.get("chain") or "未命名链路", hotspot.get("score")))
         risks = item.get("risk_flags", []) if isinstance(item.get("risk_flags"), list) else []
         if risks:
-            lines.append("      风险: %s" % "、".join(str(row) for row in risks[:3]))
+            lines.append("      风险: %s" % "、".join(label(row) for row in risks[:3]))
         gaps = item.get("open_gaps", []) if isinstance(item.get("open_gaps"), list) else []
         if gaps:
             lines.append("      待补: %s" % "；".join(str(row) for row in gaps[:2]))
@@ -2808,7 +2821,7 @@ def render_agent_next_review_completion(value: Dict[str, object]) -> List[str]:
     for item in checks[:3]:
         if not isinstance(item, dict):
             continue
-        lines.append("   #%s %s | %s" % (item.get("check_id"), item.get("title"), item.get("status")))
+        lines.append("   #%s %s | %s" % (item.get("check_id"), item.get("title"), label(item.get("status"))))
         if item.get("json_command"):
             lines.append("      命令: %s" % item.get("json_command"))
         if item.get("done_when"):
@@ -2846,7 +2859,7 @@ def render_agent_next_market_scan(value: Dict[str, object], compact: bool = Fals
                     item.get("symbol"),
                     item.get("name"),
                     item.get("review_score"),
-                    item.get("coverage_state"),
+                    label(item.get("coverage_state")),
                 )
             )
             lines.extend(render_compact_review_focus(item.get("review_focus", {}), indent="      "))
@@ -2865,7 +2878,7 @@ def render_compact_review_focus(value: object, indent: str = "   ") -> List[str]
     coverage = focus.get("coverage", {}) if isinstance(focus.get("coverage"), dict) else {}
     missing = coverage.get("missing_research_fields", []) if isinstance(coverage.get("missing_research_fields"), list) else []
     if missing:
-        lines.append("%s缺口: %s" % (indent, "、".join(str(item) for item in missing[:3])))
+        lines.append("%s缺口: %s" % (indent, "、".join(label(item) for item in missing[:3])))
     if focus.get("first_check"):
         lines.append("%s核对: %s" % (indent, focus.get("first_check")))
     if focus.get("next_command"):
@@ -3263,7 +3276,7 @@ def render_agent_run_review_completion(value: Dict[str, object]) -> List[str]:
     for item in checks[:6]:
         if not isinstance(item, dict):
             continue
-        lines.append("   #%s %s | %s" % (item.get("check_id"), item.get("title"), item.get("status")))
+        lines.append("   #%s %s | %s" % (item.get("check_id"), item.get("title"), label(item.get("status"))))
         if item.get("reason"):
             lines.append("      原因: %s" % item.get("reason"))
         if item.get("json_command"):
@@ -5348,11 +5361,11 @@ def render_research_status(value: object) -> str:
     status = str(data.get("status") or "draft")
     if data.get("confirmed"):
         source = data.get("source_file")
-        return "reviewed%s" % (" | %s" % source if source else "")
+        return "%s%s" % (label("confirmed"), " | %s" % source if source else "")
     missing = data.get("missing_fields", []) if isinstance(data.get("missing_fields"), list) else []
     if missing:
-        return "%s | 待补 %s" % (status, "、".join(str(field) for field in missing[:3]))
-    return status
+        return "%s | 待补 %s" % (label(status), "、".join(label(field) for field in missing[:3]))
+    return label(status)
 
 
 def label(value: object) -> str:
