@@ -1257,6 +1257,7 @@ def test_agent_next_can_focus_symbol(monkeypatch, tmp_path):
     assert data["review_handoff"]["command_chain"][0]["json_command"].startswith("market-intel portfolio explain 300308")
     assert data["focus_chain"][0]["json_command"].startswith("market-intel portfolio explain 300308")
     assert data["focus_chain"][0]["related_symbols"] == ["300308"]
+    assert data["focus_chain"][1]["json_command"].startswith("market-intel pool explain 300308")
     assert all("300308" in item["json_command"] or "300308" in item.get("related_symbols", []) for item in data["focus_chain"])
     assert len(data["security_cards"]["cards"]) == 1
     assert data["security_cards"]["cards"][0]["symbol"] == "300308"

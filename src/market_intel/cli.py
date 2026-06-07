@@ -2150,6 +2150,22 @@ def agent_next_symbol_focus_chain(
         )
         if len(rows) >= 3:
             return rows
+        for command in card.get("commands", []) if isinstance(card.get("commands"), list) else []:
+            add_agent_next_symbol_focus_item(
+                rows,
+                seen,
+                {
+                    "source": "security_card",
+                    "title": "%s %s" % (card.get("symbol"), card.get("name") or ""),
+                    "json_command": command,
+                    "done_when": "已确认该标的行情、板块、覆盖状态、证据缺口和下一步留档项。",
+                    "related_symbols": [card.get("symbol")],
+                },
+                symbol,
+                allow_global=False,
+            )
+            if len(rows) >= 3:
+                return rows
     for item in fallback:
         symbols = item.get("related_symbols", []) if isinstance(item, dict) and isinstance(item.get("related_symbols"), list) else []
         if symbols and symbol not in symbols:
@@ -2175,7 +2191,7 @@ def add_agent_next_symbol_focus_item(
     related = item.get("related_symbols", []) if isinstance(item.get("related_symbols"), list) else []
     if related and symbol not in related:
         return
-    if symbol not in command and not (related and symbol in related) and not allow_global:
+    if symbol not in command and not allow_global:
         return
     key = command
     if key in seen:
