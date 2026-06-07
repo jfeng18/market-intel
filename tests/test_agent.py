@@ -84,6 +84,17 @@ def import_foundation_runtime(monkeypatch, tmp_path):
     handle_import_holdings(str(holdings_path), use_runtime=True)
 
 
+def import_foundation_runtime_without_holding(monkeypatch, tmp_path):
+    import_foundation_runtime(monkeypatch, tmp_path)
+    holdings_path = tmp_path / "empty_holdings.csv"
+    holdings_path.write_text(
+        "证券代码,证券名称,持仓数量\n"
+        "002837,英维克,100\n",
+        encoding="utf-8",
+    )
+    handle_import_holdings(str(holdings_path), use_runtime=True)
+
+
 def import_foundation_research(tmp_path):
     research_path = tmp_path / "research_notes.csv"
     research_path.write_text(
@@ -248,11 +259,34 @@ def test_agent_next_focuses_pool_symbol_outside_holdings(monkeypatch, tmp_path):
     assert data["symbol"] == "002261"
     assert len(data["security_cards"]["cards"]) == 1
     assert card["symbol"] == "002261"
-    assert card["coverage_state"] == "pool_only"
+    assert card["coverage_state"] == "confirmed"
     assert "not_in_runtime_holdings" in card["coverage_state_reasons"]
     assert card["next_json_command"] == "market-intel pool explain 002261 --runtime --json"
     assert data["review_handoff"]["next_read"][0]["json_command"] == "market-intel pool explain 002261 --runtime --json"
     assert focus_commands == ["market-intel pool explain 002261 --runtime --json --pool ai-energy"]
+    assert any("不在当前 runtime 持仓" in gap for gap in card["open_gaps"])
+
+
+def test_agent_next_surfaces_foundation_symbol_outside_holdings(monkeypatch, tmp_path):
+    import_foundation_runtime_without_holding(monkeypatch, tmp_path)
+
+    payload = handle_agent_next("all-a", max_quote_age_days=9999, max_steps=5, symbol="000001")
+    data = payload["data"]
+    card = data["security_cards"]["cards"][0]
+    focus_commands = [item["json_command"] for item in data["focus_chain"]]
+
+    assert payload["ok"] is True
+    assert data["state"] == "continue_reading"
+    assert card["symbol"] == "000001"
+    assert card["coverage_state"] == "foundation"
+    assert "a_share_universe_foundation" in card["coverage_state_reasons"]
+    assert "not_in_runtime_holdings" in card["coverage_state_reasons"]
+    assert card["research_status"]["status"] == "missing"
+    assert card["research_workflow"][0]["json_command"].startswith("market-intel pool research")
+    assert any(step["json_command"].startswith("market-intel import research") and "--dry-run" in step["json_command"] for step in card["research_workflow"])
+    assert card["next_json_command"] == "market-intel pool explain 000001 --runtime --json"
+    assert focus_commands == ["market-intel pool explain 000001 --runtime --json"]
+    assert any("全 A 基础清单只说明存在" in gap for gap in card["open_gaps"])
     assert any("不在当前 runtime 持仓" in gap for gap in card["open_gaps"])
 
 

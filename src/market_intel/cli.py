@@ -21,6 +21,8 @@ from .core.coverage import (
     export_expansion_queue_csv,
     export_research_queue_csv,
     export_universe_patch_csv,
+    matched_coverage_state,
+    research_status,
     review_expansion_csv,
 )
 from .core.daily import build_daily_report, validate_daily_files
@@ -2181,6 +2183,7 @@ def ensure_agent_next_pool_symbol_card(
 
 
 def agent_next_pool_symbol_item(pool: str, symbol: str) -> Dict[str, object]:
+    source_item = find_pool_item(load_pool(pool), symbol)
     explain_payload = handle_pool_explain(pool, symbol, use_runtime=True)
     if not explain_payload.get("ok"):
         return {}
@@ -2189,6 +2192,11 @@ def agent_next_pool_symbol_item(pool: str, symbol: str) -> Dict[str, object]:
     facts = data.get("facts", {}) if isinstance(data.get("facts"), dict) else {}
     if not item or str(facts.get("symbol") or item.get("symbol") or "") != symbol:
         return {}
+    if source_item:
+        coverage = matched_coverage_state(source_item)
+        data["coverage_state"] = coverage.get("state")
+        data["coverage_state_reasons"] = coverage.get("reasons", [])
+        data["research_status"] = research_status(source_item)
     return data
 
 
@@ -2201,18 +2209,32 @@ def pool_symbol_security_card(data: Dict[str, object]) -> Dict[str, object]:
     quote = runtime_context.get("quote") if isinstance(runtime_context.get("quote"), dict) else None
     holding = runtime_context.get("holding") if isinstance(runtime_context.get("holding"), dict) else None
     chain = "%s/%s" % (facts.get("primary_layer"), facts.get("primary_sub_sector"))
+    coverage_state = str(data.get("coverage_state") or ("pool_context" if holding else "pool_only"))
+    coverage_state_reasons = (
+        list(data.get("coverage_state_reasons", []))
+        if isinstance(data.get("coverage_state_reasons"), list)
+        else ["pool_item_match"]
+    )
+    if "pool_item_match" not in coverage_state_reasons:
+        coverage_state_reasons.insert(0, "pool_item_match")
+    if not holding and "not_in_runtime_holdings" not in coverage_state_reasons:
+        coverage_state_reasons.append("not_in_runtime_holdings")
+    research = compact_digest_research_status(data.get("research_status", {}))
+    research_workflow = foundation_research_workflow(symbol, coverage_state)
     supporting = dedupe_queue_texts(
         [
             data.get("explain"),
             "池内标的：%s，主链路 %s。" % (facts.get("name") or item.get("name") or symbol, chain),
             "runtime 有行情。" if quote else None,
             "runtime 有持仓。" if holding else "runtime 未持仓。",
+            "研究证据 reviewed。" if research.get("confirmed") else None,
         ]
     )[:6]
     gaps = dedupe_queue_texts(
         list(data.get("questions", []) if isinstance(data.get("questions"), list) else [])
         + (["该标的不在当前 runtime 持仓中，先按池内标的核对，不进入持仓暴露结论。"] if not holding else [])
         + (["runtime 缺少该标的行情。"] if not quote else [])
+        + (["全 A 基础清单只说明存在，仍需补 research notes 的核心逻辑、关键证据和证伪风险。"] if coverage_state == "foundation" and not research.get("confirmed") else [])
     )[:6]
     question = (
         "先确认该池内标的的链路、角色、可交易状态和 runtime 行情/持仓上下文。"
@@ -2226,10 +2248,10 @@ def pool_symbol_security_card(data: Dict[str, object]) -> Dict[str, object]:
         "name": facts.get("name") or item.get("name"),
         "priority": facts.get("priority"),
         "review_score": None,
-        "coverage_state": "pool_only" if not holding else "pool_context",
-        "coverage_state_reasons": ["pool_item_match"] + ([] if holding else ["not_in_runtime_holdings"]),
-        "research_status": {},
-        "research_workflow": [],
+        "coverage_state": coverage_state,
+        "coverage_state_reasons": [str(reason) for reason in coverage_state_reasons[:6] if reason],
+        "research_status": research,
+        "research_workflow": research_workflow,
         "change_priority": 0,
         "has_quote": bool(quote),
         "in_hotspot": False,
