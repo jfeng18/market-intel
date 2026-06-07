@@ -622,9 +622,9 @@ def universe_enrichment_queue(universe_items: List[PoolItem], sector_profile: Di
                 "missing_ratio": coverage_ratio(count, len(universe_items)),
                 "reason": meta["reason"],
                 "samples": universe_missing_field_samples(universe_items, field),
-                "command": "market-intel import universe <a_share_universe.csv> --runtime --dry-run --json",
+                "command": "market-intel import universe <a_share_universe_patch.csv> --runtime --merge --dry-run --json",
                 "done_when": (
-                    "已补齐 %s 字段并通过 dry-run；pool coverage 中 "
+                    "已用 --merge 补齐 %s 字段并通过 dry-run；pool coverage 中 "
                     "universe.sector_profile.missing_field_counts.%s=0。"
                 )
                 % (meta["label"], field),
@@ -1333,8 +1333,8 @@ def coverage_next_actions(
                 {
                     "rank": len(actions) + 1,
                     "id": "complete_a_share_universe_fields",
-                    "command": "market-intel import universe <a_share_universe.csv> --runtime --dry-run --json",
-                    "done_when": "已补齐 A 股基础清单缺失的行业、概念或指数成分字段，并通过 dry-run 校验。",
+                    "command": "market-intel import universe <a_share_universe_patch.csv> --runtime --merge --dry-run --json",
+                    "done_when": "已用 --merge 补齐 A 股基础清单缺失的行业、概念或指数成分字段，并通过 dry-run 校验。",
                 }
             )
     if not holdings_coverage.get("available"):

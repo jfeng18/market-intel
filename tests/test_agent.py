@@ -1151,7 +1151,7 @@ def test_dashboard_surfaces_universe_enrichment_queue(monkeypatch, tmp_path):
     assert queue
     assert queue[0]["field"] == "industry"
     assert queue[0]["samples"][0] == {"symbol": "600519", "name": "贵州茅台"}
-    assert queue[0]["command"] == "market-intel import universe <a_share_universe.csv> --runtime --dry-run --json"
+    assert queue[0]["command"] == "market-intel import universe <a_share_universe_patch.csv> --runtime --merge --dry-run --json"
     assert "补数: #1 行业 | 缺 1" in text
     assert str(universe_file) not in text
 

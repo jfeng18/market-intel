@@ -298,7 +298,7 @@ market-intel holdings impact --runtime --json
 
 `pool quality <flag>` 是单个质量标记的聚焦复核命令：展开该 flag 的样本行、来源文件、原始字段、修复提示、原因、建议动作、完成标准和下一步命令，适合按 `data_quality_queue[].rank` 逐项清理。它不会在 envelope 里重复完整 pool 的全局 warnings；agent 应优先读取 `data.samples`。
 
-`data.universe.enrichment_queue` 会把 A 股基础清单缺失的行业、概念、指数成分字段转成补数队列。每项包含 `field`、`missing_count`、样本标的、dry-run 导入命令和 `done_when`，适合按 rank 逐项补齐全 A 覆盖底座。
+`data.universe.enrichment_queue` 会把 A 股基础清单缺失的行业、概念、指数成分字段转成补数队列。每项包含 `field`、`missing_count`、样本标的、`--merge --dry-run` 导入命令和 `done_when`，适合按 rank 逐项补齐全 A 覆盖底座。
 
 `import universe --dry-run --json` 会返回 `data.coverage_delta`，在写入前按正式导入后的目标文件预估这份 CSV 对 A 股基础清单字段覆盖的影响：导入前后记录数、行业/概念/指数成分覆盖率、缺字段数量、`write_mode`、`improved_fields`、缺口变化、`removed_symbol_count` 和 `recommendation.requires_import`。若 dry-run 确认改善且不会移除已有标的，`data.next_commands` 会给出正式 `import universe --runtime --json`、`pool coverage --runtime --json` 和 `dashboard --text` 的接力命令；若没有改善或会缩小现有清单，warnings 会说明原因并把下一步停在补数复核或完整 CSV dry-run。配合 `universe.enrichment_queue` 可以先判断 CSV 是否真的减少全 A 补数任务，再正式导入。默认导入按完整清单覆盖写入；局部补行业/概念/指数成分时使用 `--merge`，会保留已有标的和已有有效字段，只写入 CSV 中明确提供的有效补数字段。
 

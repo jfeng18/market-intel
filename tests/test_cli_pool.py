@@ -183,9 +183,10 @@ def test_pool_coverage_reports_universe_sector_profile_gaps(monkeypatch, tmp_pat
     assert queue[0]["severity"] == "high"
     assert queue[0]["missing_count"] == 1
     assert queue[0]["samples"][0]["symbol"] == "600519"
-    assert queue[0]["command"] == "market-intel import universe <a_share_universe.csv> --runtime --dry-run --json"
+    assert queue[0]["command"] == "market-intel import universe <a_share_universe_patch.csv> --runtime --merge --dry-run --json"
     assert queue[0]["done_when"]
-    assert any(action["id"] == "complete_a_share_universe_fields" for action in payload["data"]["next_actions"])
+    action = next(action for action in payload["data"]["next_actions"] if action["id"] == "complete_a_share_universe_fields")
+    assert action["command"] == "market-intel import universe <a_share_universe_patch.csv> --runtime --merge --dry-run --json"
     assert "data.universe.enrichment_queue" in payload["data"]["agent_contract"]["stable_fields"]
     assert "data.universe.enrichment_queue[].samples" in payload["data"]["agent_contract"]["stable_fields"]
     assert "字段覆盖 | 行业 50.0% | 概念 50.0% | 指数 50.0%" in text
