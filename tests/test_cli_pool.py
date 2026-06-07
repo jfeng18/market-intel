@@ -62,7 +62,10 @@ def test_pool_coverage_all_a_reports_seed_boundaries():
     assert "data.expansion_queue" in data["agent_contract"]["stable_fields"]
     assert "data.research_queue" in data["agent_contract"]["stable_fields"]
     assert "data.gaps" in data["agent_contract"]["stable_fields"]
-    assert data["next_actions"][0]["command"] == "market-intel pool coverage --text"
+    assert data["next_actions"][0]["id"] == "clean_data_quality_queue"
+    assert data["next_actions"][0]["command"].startswith("market-intel pool quality ")
+    assert data["next_actions"][1]["id"] == "expand_all_a_sources"
+    assert any(action["id"] == "inspect_coverage" for action in data["next_actions"])
     assert data["holdings_source"] == {"provided": False}
     assert data["expansion_queue"] == []
     assert data["data_quality_queue"]
@@ -73,7 +76,7 @@ def test_pool_coverage_all_a_reports_seed_boundaries():
     assert data["data_quality_queue"][0]["review_command"].startswith("market-intel pool quality ")
     cleanup_action = next(action for action in data["next_actions"] if action["id"] == "clean_data_quality_queue")
     assert cleanup_action["focus"]["flag"] == data["data_quality_queue"][0]["flag"]
-    assert cleanup_action["rank"] == 2
+    assert cleanup_action["rank"] == 1
     assert "data.data_quality_queue" in data["agent_contract"]["stable_fields"]
     assert "data.data_quality_queue[].samples" in data["agent_contract"]["stable_fields"]
 
@@ -777,7 +780,9 @@ def test_pool_coverage_theme_pool_stays_explicit():
     assert data["pool"] == "ai-energy"
     assert data["scope"] == "theme"
     assert all(gap["id"] != "all_a_seed_only" for gap in data["gaps"])
-    assert data["next_actions"][0]["command"] == "market-intel pool coverage --text --pool ai-energy"
+    assert data["next_actions"][0]["id"] == "clean_data_quality_queue"
+    assert data["next_actions"][0]["command"].endswith("--pool ai-energy")
+    assert any(action["id"] == "inspect_coverage" for action in data["next_actions"])
 
 
 def test_pool_coverage_text_renderer():

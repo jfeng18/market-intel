@@ -56,7 +56,8 @@ def build_pool_coverage(
     next_actions = coverage_next_actions(pool, scope, holdings_coverage, expansion_queue, research_queue, universe)
     cleanup_action = data_quality_cleanup_action(pool, data_quality_queue)
     if cleanup_action:
-        next_actions.insert(1, cleanup_action)
+        next_actions.insert(0, cleanup_action)
+    prioritize_action_queue(next_actions)
     rerank_actions(next_actions)
     return {
         "pool": pool,
@@ -1600,6 +1601,29 @@ def data_quality_detail_contract() -> Dict[str, object]:
 def rerank_actions(actions: List[Dict[str, object]]) -> None:
     for index, action in enumerate(actions, start=1):
         action["rank"] = index
+
+
+def prioritize_action_queue(actions: List[Dict[str, object]]) -> None:
+    actions.sort(key=lambda action: action_priority(str(action.get("id") or "")))
+
+
+def action_priority(action_id: str) -> int:
+    priorities = {
+        "clean_data_quality_queue": 0,
+        "expand_all_a_sources": 10,
+        "export_a_share_universe_patch": 11,
+        "merge_a_share_universe_patch": 12,
+        "review_a_share_universe": 13,
+        "review_expansion_queue": 20,
+        "export_research_queue": 21,
+        "review_foundation_holdings": 22,
+        "review_draft_pool_matches": 23,
+        "review_unmatched_holdings": 24,
+        "check_holdings_coverage": 30,
+        "inspect_coverage": 90,
+        "run_focus": 100,
+    }
+    return priorities.get(action_id, 50)
 
 
 def coverage_contract() -> Dict[str, object]:
