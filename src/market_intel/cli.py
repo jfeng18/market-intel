@@ -1243,7 +1243,7 @@ def localize_scan_commands(
 
 
 def localize_scan_command(command: str, pool: str, mode: str) -> str:
-    if "import universe <a_share_universe.csv>" in command:
+    if "import universe <a_share_universe.csv>" in command or "pool universe --runtime --dry-run --json" in command:
         return with_pool_arg(scan_universe_patch_command(mode), pool)
     if mode == "runtime":
         if "pool explain" in command and " --runtime" not in command:

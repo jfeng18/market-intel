@@ -41,6 +41,9 @@ def test_scan_mock_defaults_to_all_a_seed():
     assert data["coverage_context"]["available"] is True
     assert data["coverage_context"]["pool"] == "all-a"
     assert data["coverage_context"]["top_data_quality_queue"]
+    patch_action = next(action for action in data["next_actions"] if action["id"] == "export_a_share_universe_patch")
+    assert patch_action["command"] == "market-intel pool universe --mock --dry-run --json"
+    assert "补丁草稿" in patch_action["done_when"]
     assert "data.sector_groups" in data["agent_contract"]["stable_fields"]
     assert "data.market_breadth" in data["agent_contract"]["stable_fields"]
     assert "data.market_breadth.confidence" in data["agent_contract"]["stable_fields"]
@@ -59,6 +62,8 @@ def test_scan_mock_defaults_to_all_a_seed():
     assert "板块扫描" in text
     assert "候选复盘" in text
     assert "复核焦点" in text
+    assert "market-intel pool universe --mock --dry-run --json" in text
+    assert "已导入行业" not in text
     assert "buy" not in text.lower()
     assert "sell" not in text.lower()
 

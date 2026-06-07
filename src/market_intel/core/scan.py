@@ -1130,9 +1130,9 @@ def scan_next_actions(scan_mode: str, pool: str) -> List[Dict[str, object]]:
         actions.append(
             {
                 "rank": 2,
-                "id": "import_a_share_universe",
-                "command": "market-intel import universe <a_share_universe.csv> --runtime --dry-run --json",
-                "done_when": "已导入行业、概念、指数成分字段，scan_mode 变为 all_a_universe。",
+                "id": "export_a_share_universe_patch",
+                "command": "market-intel pool universe --runtime --dry-run --json",
+                "done_when": "已导出 A 股基础清单补丁草稿，并确认需补行业、概念或指数成分字段。",
             }
         )
     actions.append(
