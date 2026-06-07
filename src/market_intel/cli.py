@@ -1216,7 +1216,11 @@ def scan_runtime_missing_files() -> List[str]:
     return [] if quotes_path.exists() else [str(quotes_path)]
 
 
-def localize_scan_commands(data: Dict[str, object], pool: str, mode: object) -> None:
+def localize_scan_commands(
+    data: Dict[str, object],
+    pool: str,
+    mode: object,
+) -> None:
     mode_text = str(mode or "")
     candidates = data.get("candidate_securities", []) if isinstance(data.get("candidate_securities"), list) else []
     for item in candidates:
@@ -1239,6 +1243,8 @@ def localize_scan_commands(data: Dict[str, object], pool: str, mode: object) -> 
 
 
 def localize_scan_command(command: str, pool: str, mode: str) -> str:
+    if "import universe <a_share_universe.csv>" in command:
+        return with_pool_arg(scan_universe_patch_command(mode), pool)
     if mode == "runtime":
         if "pool explain" in command and " --runtime" not in command:
             return with_pool_arg(command.replace(" --text", " --runtime --text"), pool)
@@ -1262,6 +1268,16 @@ def localize_scan_command(command: str, pool: str, mode: str) -> str:
         if "focus " in command:
             return with_pool_arg("market-intel focus --json", pool)
     return with_pool_arg(command, pool)
+
+
+def scan_universe_patch_command(mode: str) -> str:
+    if mode == "runtime":
+        return "market-intel pool universe --runtime --dry-run --json"
+    if mode == "mock":
+        return "market-intel pool universe --mock --dry-run --json"
+    if mode == "file":
+        return "market-intel pool universe --quotes-file <quotes.json> --dry-run --json"
+    return "market-intel pool universe --dry-run --json"
 
 
 def sync_scan_review_focus_next_command(item: Dict[str, object], commands: List[str]) -> None:

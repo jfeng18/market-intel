@@ -255,13 +255,17 @@ def test_scan_all_a_keeps_quote_only_candidates_without_universe(tmp_path):
     assert quote_only["coverage_state"] == "quote_only"
     assert quote_only["coverage_state_reasons"] == ["quote_not_in_universe"]
     assert "quote_only_candidate" in quote_only["risk_flags"]
-    assert quote_only["commands"] == ["market-intel import universe <a_share_universe.csv> --runtime --merge --dry-run --json"]
+    assert quote_only["commands"] == ["market-intel pool universe --quotes-file <quotes.json> --dry-run --json"]
     assert quote_only["review_focus"]["coverage"]["state"] == "quote_only"
     assert quote_only["review_focus"]["next_command"] == quote_only["commands"][0]
+    assert data["sources"]["quotes"]["source"] == "quotes_file"
     assert data["candidate_queue"]["buckets"]["data_first"]["items"][0]["symbol"] == "600000"
+    assert data["candidate_queue"]["buckets"]["data_first"]["items"][0]["next_command"] == quote_only["commands"][0]
     assert "浦发银行" in text
     assert "行情待覆盖" in text
+    assert "market-intel pool universe --quotes-file <quotes.json> --dry-run --json" in text
     assert str(quotes_file) not in json.dumps(payload, ensure_ascii=False)
+    assert str(quotes_file) not in text
 
 
 def test_scan_breadth_classifies_weak_market(monkeypatch, tmp_path):
