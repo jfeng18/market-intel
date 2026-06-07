@@ -28,6 +28,7 @@ def build_market_scan(
     groups = build_scan_groups(quoted_items)
     symbol_context = build_symbol_context(quoted_items, groups)
     candidates = build_scan_candidates(quoted_items, holding_symbols, symbol_context, limit=candidate_top, pool=pool)
+    candidate_queue = build_candidate_queue(candidates)
     scan_mode = "all_a_universe" if any(has_universe_context(item) for item, _ in quoted_items) else "pool_chain_seed"
     market_breadth = build_market_breadth(quotes, quoted_items, groups, scan_mode)
 
@@ -42,6 +43,7 @@ def build_market_scan(
         "trade_dates": sorted({quote.trade_date for quote in quotes if quote.trade_date}),
         "sector_groups": groups[:top],
         "candidate_securities": candidates,
+        "candidate_queue": candidate_queue,
         "questions": scan_questions(groups, candidates, scan_mode),
         "next_actions": scan_next_actions(scan_mode, pool),
         "agent_contract": scan_contract(),
@@ -900,6 +902,96 @@ def candidate_sort_key(row: Dict[str, object]):
     )
 
 
+def build_candidate_queue(candidates: List[Dict[str, object]]) -> Dict[str, object]:
+    buckets = {
+        "review_now": {
+            "label": "先看",
+            "summary": "分数高、共振较强或持仓相关，适合优先复盘。",
+            "items": [],
+        },
+        "deprioritized": {
+            "label": "降权",
+            "summary": "追高、回落、弱共振或缺上下文，先降权解读。",
+            "items": [],
+        },
+        "data_first": {
+            "label": "补数据",
+            "summary": "覆盖或研究证据不足，先补资料再正式复盘。",
+            "items": [],
+        },
+    }
+    for candidate in candidates:
+        if not isinstance(candidate, dict):
+            continue
+        lane = candidate_queue_lane(candidate)
+        row = compact_candidate_queue_item(candidate, lane)
+        buckets[lane]["items"].append(row)
+
+    for bucket in buckets.values():
+        items = bucket["items"]
+        items.sort(key=lambda row: (-float(row.get("review_score") or 0), int(row.get("rank") or 9999)))
+        bucket["count"] = len(items)
+        bucket["items"] = items[:5]
+
+    return {
+        "summary": candidate_queue_summary(buckets),
+        "buckets": buckets,
+    }
+
+
+def candidate_queue_lane(candidate: Dict[str, object]) -> str:
+    coverage_state = str(candidate.get("coverage_state") or "")
+    risk_flags = candidate.get("risk_flags", []) if isinstance(candidate.get("risk_flags"), list) else []
+    ranking = candidate.get("ranking_breakdown", {}) if isinstance(candidate.get("ranking_breakdown"), dict) else {}
+    penalty_score = float(ranking.get("penalty_score") or 0)
+    review_score = float(candidate.get("review_score") or 0)
+
+    if coverage_state in {"foundation", "draft"} or "invalid_symbol" in risk_flags:
+        return "data_first"
+    if (
+        penalty_score >= 8
+        or "intraday_fade_risk" in risk_flags
+        or "weak_price_context" in risk_flags
+        or ("chase_high_risk" in risk_flags and review_score < 90)
+    ):
+        return "deprioritized"
+    return "review_now"
+
+
+def compact_candidate_queue_item(candidate: Dict[str, object], lane: str) -> Dict[str, object]:
+    commands = candidate.get("commands", []) if isinstance(candidate.get("commands"), list) else []
+    return {
+        "rank": candidate.get("rank"),
+        "symbol": candidate.get("symbol"),
+        "name": candidate.get("name"),
+        "lane": lane,
+        "review_score": candidate.get("review_score"),
+        "coverage_state": candidate.get("coverage_state"),
+        "is_holding": bool(candidate.get("is_holding")),
+        "reason": candidate_queue_reason(candidate, lane),
+        "next_command": commands[0] if commands else "",
+    }
+
+
+def candidate_queue_reason(candidate: Dict[str, object], lane: str) -> str:
+    ranking = candidate.get("ranking_breakdown", {}) if isinstance(candidate.get("ranking_breakdown"), dict) else {}
+    summary = str(ranking.get("summary") or "").strip()
+    coverage_state = str(candidate.get("coverage_state") or "")
+    if lane == "data_first":
+        return "覆盖 %s，先补关键字段或研究证据；%s" % (coverage_state or "-", summary)
+    if lane == "deprioritized":
+        return "风险降权 %.0f；%s" % (float(ranking.get("penalty_score") or 0), summary)
+    return summary or str(candidate.get("why_now") or "")
+
+
+def candidate_queue_summary(buckets: Dict[str, Dict[str, object]]) -> str:
+    return "先看 %s，降权 %s，补数据 %s。" % (
+        buckets["review_now"].get("count", 0),
+        buckets["deprioritized"].get("count", 0),
+        buckets["data_first"].get("count", 0),
+    )
+
+
 def scan_summary(
     quotes: List[Quote],
     quoted_items: List[Tuple[PoolItem, Quote]],
@@ -992,6 +1084,10 @@ def scan_contract() -> Dict[str, object]:
             "data.sector_groups[].score",
             "data.sector_groups[].leaders",
             "data.candidate_securities",
+            "data.candidate_queue",
+            "data.candidate_queue.buckets.review_now.items",
+            "data.candidate_queue.buckets.deprioritized.items",
+            "data.candidate_queue.buckets.data_first.items",
             "data.candidate_securities[].review_score",
             "data.candidate_securities[].ranking_breakdown",
             "data.candidate_securities[].universe_context",

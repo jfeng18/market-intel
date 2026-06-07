@@ -29,6 +29,10 @@ def test_scan_mock_defaults_to_all_a_seed():
     assert data["candidate_securities"][0]["ranking_breakdown"]["total_score"] == data["candidate_securities"][0]["review_score"]
     assert data["candidate_securities"][0]["ranking_breakdown"]["factors"]
     assert data["candidate_securities"][0]["review_focus"]["ranking_breakdown"]["summary"]
+    assert data["candidate_queue"]["summary"]
+    assert data["candidate_queue"]["buckets"]["review_now"]["count"] >= 1
+    assert data["candidate_queue"]["buckets"]["data_first"]["count"] >= 1
+    assert data["candidate_queue"]["buckets"]["review_now"]["items"][0]["next_command"].startswith("market-intel pool explain")
     assert data["candidate_securities"][0]["review_focus"]["headline"]
     assert data["candidate_securities"][0]["review_focus"]["classification"]["primary_context"]
     assert data["candidate_securities"][0]["review_focus"]["coverage"]["state"] == data["candidate_securities"][0]["coverage_state"]
@@ -41,6 +45,7 @@ def test_scan_mock_defaults_to_all_a_seed():
     assert "data.market_breadth" in data["agent_contract"]["stable_fields"]
     assert "data.market_breadth.confidence" in data["agent_contract"]["stable_fields"]
     assert "data.candidate_securities[].ranking_breakdown" in data["agent_contract"]["stable_fields"]
+    assert "data.candidate_queue" in data["agent_contract"]["stable_fields"]
     assert "data.candidate_securities[].review_focus" in data["agent_contract"]["stable_fields"]
     assert "data.candidate_securities[].review_focus.ranking_breakdown" in data["agent_contract"]["stable_fields"]
     assert "data.candidate_securities[].review_focus.classification" in data["agent_contract"]["stable_fields"]
@@ -49,6 +54,7 @@ def test_scan_mock_defaults_to_all_a_seed():
     assert "市场宽度" in text
     assert "普遍走强" in text
     assert "置信 参考" in text
+    assert "候选队列" in text
     assert "排序:" in text
     assert "板块扫描" in text
     assert "候选复盘" in text
@@ -123,6 +129,7 @@ def test_scan_uses_a_share_universe_groups(monkeypatch, tmp_path):
     assert first["symbol"] == "000001"
     assert first["ranking_breakdown"]["penalty_score"] >= 0
     assert any(factor["id"] == "universe_context" for factor in first["ranking_breakdown"]["factors"])
+    assert data["candidate_queue"]["buckets"]["data_first"]["count"] >= 1
     assert first["coverage_state"] == "foundation"
     assert "foundation_pool_match" in first["risk_flags"]
     assert first["universe_context"]["available"] is True

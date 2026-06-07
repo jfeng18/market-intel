@@ -171,6 +171,10 @@ def render_scan_text(payload: Dict[str, object]) -> str:
         lines.extend(render_market_breadth(breadth))
     lines.extend(["", "板块扫描"])
     lines.extend(render_scan_groups(data.get("sector_groups", [])))
+    queue = data.get("candidate_queue", {}) if isinstance(data.get("candidate_queue"), dict) else {}
+    if queue:
+        lines.extend(["", "候选队列"])
+        lines.extend(render_candidate_queue(queue))
     lines.extend(["", "候选复盘"])
     lines.extend(render_scan_candidates(data.get("candidate_securities", [])))
     lines.extend(["", "待验证问题"])
@@ -888,6 +892,26 @@ def render_scan_candidates(value: object) -> List[str]:
             lines.append("   命令: %s" % "；".join(str(command) for command in commands[:2]))
         if row.get("done_when"):
             lines.append("   完成: %s" % row.get("done_when"))
+    return lines
+
+
+def render_candidate_queue(value: Dict[str, object]) -> List[str]:
+    lines = ["- %s" % (value.get("summary") or "暂无候选队列。")]
+    buckets = value.get("buckets", {}) if isinstance(value.get("buckets"), dict) else {}
+    for key in ["review_now", "deprioritized", "data_first"]:
+        bucket = buckets.get(key, {}) if isinstance(buckets.get(key), dict) else {}
+        if not bucket:
+            continue
+        items = bucket.get("items", []) if isinstance(bucket.get("items"), list) else []
+        rendered = []
+        for item in items[:3]:
+            if isinstance(item, dict):
+                rendered.append("%s %s" % (item.get("symbol"), item.get("name")))
+        if rendered or bucket.get("count"):
+            lines.append(
+                "   %s %s: %s"
+                % (bucket.get("label") or label(key), bucket.get("count", len(items)), "；".join(rendered) if rendered else "暂无")
+            )
     return lines
 
 
@@ -1967,7 +1991,27 @@ def render_dashboard_compact_market(value: Dict[str, object]) -> List[str]:
                 )
         if rendered_candidates:
             lines.append("  候选: %s" % "；".join(rendered_candidates))
+    queue = value.get("candidate_queue", {}) if isinstance(value.get("candidate_queue"), dict) else {}
+    queue_line = render_compact_candidate_queue(queue)
+    if queue_line:
+        lines.append("  队列: %s" % queue_line)
     return lines
+
+
+def render_compact_candidate_queue(value: Dict[str, object]) -> str:
+    buckets = value.get("buckets", {}) if isinstance(value.get("buckets"), dict) else {}
+    if not buckets:
+        return ""
+    return "先看 %s | 降权 %s | 补数据 %s" % (
+        candidate_queue_bucket_count(buckets, "review_now"),
+        candidate_queue_bucket_count(buckets, "deprioritized"),
+        candidate_queue_bucket_count(buckets, "data_first"),
+    )
+
+
+def candidate_queue_bucket_count(buckets: Dict[str, object], key: str) -> object:
+    bucket = buckets.get(key, {}) if isinstance(buckets.get(key), dict) else {}
+    return bucket.get("count", 0)
 
 
 def render_compact_market_breadth(value: Dict[str, object]) -> str:

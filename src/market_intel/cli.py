@@ -1150,6 +1150,13 @@ def localize_scan_commands(data: Dict[str, object], pool: str, mode: object) -> 
     for item in actions:
         if isinstance(item, dict) and item.get("command"):
             item["command"] = localize_scan_command(str(item.get("command")), pool, mode_text)
+    queue = data.get("candidate_queue", {}) if isinstance(data.get("candidate_queue"), dict) else {}
+    buckets = queue.get("buckets", {}) if isinstance(queue.get("buckets"), dict) else {}
+    for bucket in buckets.values():
+        items = bucket.get("items", []) if isinstance(bucket, dict) and isinstance(bucket.get("items"), list) else []
+        for item in items:
+            if isinstance(item, dict) and item.get("next_command"):
+                item["next_command"] = localize_scan_command(str(item.get("next_command")), pool, mode_text)
 
 
 def localize_scan_command(command: str, pool: str, mode: str) -> str:
@@ -2232,6 +2239,7 @@ def mock_dashboard_market_pulse(pool: str, scan: Dict[str, object]) -> Dict[str,
         "top_groups": [mock_dashboard_group(item) for item in groups[:4] if isinstance(item, dict)],
         "seed_chains": [],
         "candidates": [mock_dashboard_candidate(pool, item) for item in candidates[:5] if isinstance(item, dict)],
+        "candidate_queue": compact_dashboard_candidate_queue(scan.get("candidate_queue", {})),
         "questions": list(scan.get("questions", []))[:4] if isinstance(scan.get("questions"), list) else [],
         "write_policy": "mock 只读市场扫描，不读取 runtime，不生成交易指令。",
     }
@@ -2880,6 +2888,7 @@ def dashboard_market_pulse(digest: Dict[str, object]) -> Dict[str, object]:
         "top_groups": list(scan.get("top_groups", []))[:4] if isinstance(scan.get("top_groups"), list) else [],
         "seed_chains": list(structure.get("top_chains", []))[:3] if isinstance(structure.get("top_chains"), list) else [],
         "candidates": dashboard_scan_candidates(scan),
+        "candidate_queue": compact_dashboard_candidate_queue(scan.get("candidate_queue", {})),
         "questions": list(scan.get("questions", []))[:4] if isinstance(scan.get("questions"), list) else [],
         "write_policy": scan.get("write_policy") or "只读市场扫描，不生成交易指令。",
     }
@@ -2991,6 +3000,44 @@ def compact_dashboard_ranking_rows(value: object) -> List[Dict[str, object]]:
             key=lambda row: -float(row.get("score") or 0),
         )[:4]
     ]
+
+
+def compact_dashboard_candidate_queue(value: object) -> Dict[str, object]:
+    queue = value if isinstance(value, dict) else {}
+    if not queue:
+        return {}
+    buckets = queue.get("buckets", {}) if isinstance(queue.get("buckets"), dict) else {}
+    return {
+        "summary": queue.get("summary"),
+        "buckets": {
+            "review_now": compact_dashboard_candidate_queue_bucket(buckets.get("review_now", {})),
+            "deprioritized": compact_dashboard_candidate_queue_bucket(buckets.get("deprioritized", {})),
+            "data_first": compact_dashboard_candidate_queue_bucket(buckets.get("data_first", {})),
+        },
+    }
+
+
+def compact_dashboard_candidate_queue_bucket(value: object) -> Dict[str, object]:
+    bucket = value if isinstance(value, dict) else {}
+    return {
+        "label": bucket.get("label"),
+        "summary": bucket.get("summary"),
+        "count": bucket.get("count", 0),
+        "items": [
+            {
+                "rank": item.get("rank"),
+                "symbol": item.get("symbol"),
+                "name": item.get("name"),
+                "review_score": item.get("review_score"),
+                "coverage_state": item.get("coverage_state"),
+                "is_holding": bool(item.get("is_holding")),
+                "reason": item.get("reason"),
+                "next_command": item.get("next_command"),
+            }
+            for item in (bucket.get("items", []) if isinstance(bucket.get("items"), list) else [])[:4]
+            if isinstance(item, dict)
+        ],
+    }
 
 
 def dashboard_portfolio_pulse(digest: Dict[str, object]) -> Dict[str, object]:
@@ -3475,6 +3522,7 @@ def dashboard_contract() -> Dict[str, object]:
             "data.market_pulse.market_breadth",
             "data.market_pulse.top_groups",
             "data.market_pulse.candidates",
+            "data.market_pulse.candidate_queue",
             "data.market_pulse.candidates[].ranking_breakdown",
             "data.market_pulse.candidates[].universe_context",
             "data.portfolio_pulse",
@@ -3917,6 +3965,7 @@ def agent_run_digest_market_scan(briefing_data: Dict[str, object], results: List
         "market_breadth": scan.get("market_breadth", {}),
         "quote_count": scan.get("quote_count", 0),
         "matched_quote_count": scan.get("matched_quote_count", 0),
+        "candidate_queue": compact_dashboard_candidate_queue(scan.get("candidate_queue", {})),
         "top_groups": [
             {
                 "rank": item.get("rank"),
@@ -7433,6 +7482,7 @@ def agent_run_contract() -> Dict[str, object]:
             "data.review_digest.market_scan.market_breadth",
             "data.review_digest.market_scan.top_groups",
             "data.review_digest.market_scan.top_candidates",
+            "data.review_digest.market_scan.candidate_queue",
             "data.review_digest.market_scan.top_candidates[].ranking_breakdown",
             "data.review_digest.market_scan.top_candidates[].universe_context",
             "data.review_digest.data_repair_plan",
@@ -7574,6 +7624,7 @@ def agent_next_contract() -> Dict[str, object]:
             "data.market_scan.market_breadth",
             "data.market_scan.top_groups",
             "data.market_scan.top_candidates",
+            "data.market_scan.candidate_queue",
             "data.market_scan.top_candidates[].ranking_breakdown",
             "data.market_scan.top_candidates[].universe_context",
             "data.review_handoff",

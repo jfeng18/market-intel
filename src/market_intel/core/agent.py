@@ -187,6 +187,7 @@ def compact_market_scan(payload: Optional[Dict[str, object]]) -> Dict[str, objec
         "unmatched_quote_count": data.get("unmatched_quote_count", 0),
         "sector_groups": [compact_scan_group(item) for item in groups[:5] if isinstance(item, dict)],
         "candidate_securities": [compact_scan_candidate(item) for item in candidates[:8] if isinstance(item, dict)],
+        "candidate_queue": compact_candidate_queue(data.get("candidate_queue", {})),
         "questions": list(data.get("questions", []))[:5] if isinstance(data.get("questions"), list) else [],
         "next_actions": [
             {
@@ -198,6 +199,44 @@ def compact_market_scan(payload: Optional[Dict[str, object]]) -> Dict[str, objec
             if isinstance(item, dict)
         ],
         "errors": [],
+    }
+
+
+def compact_candidate_queue(value: object) -> Dict[str, object]:
+    queue = value if isinstance(value, dict) else {}
+    if not queue:
+        return {}
+    buckets = queue.get("buckets", {}) if isinstance(queue.get("buckets"), dict) else {}
+    return {
+        "summary": queue.get("summary"),
+        "buckets": {
+            "review_now": compact_candidate_queue_bucket(buckets.get("review_now", {})),
+            "deprioritized": compact_candidate_queue_bucket(buckets.get("deprioritized", {})),
+            "data_first": compact_candidate_queue_bucket(buckets.get("data_first", {})),
+        },
+    }
+
+
+def compact_candidate_queue_bucket(value: object) -> Dict[str, object]:
+    bucket = value if isinstance(value, dict) else {}
+    return {
+        "label": bucket.get("label"),
+        "summary": bucket.get("summary"),
+        "count": bucket.get("count", 0),
+        "items": [
+            {
+                "rank": item.get("rank"),
+                "symbol": item.get("symbol"),
+                "name": item.get("name"),
+                "review_score": item.get("review_score"),
+                "coverage_state": item.get("coverage_state"),
+                "is_holding": bool(item.get("is_holding")),
+                "reason": item.get("reason"),
+                "next_command": item.get("next_command"),
+            }
+            for item in (bucket.get("items", []) if isinstance(bucket.get("items"), list) else [])[:4]
+            if isinstance(item, dict)
+        ],
     }
 
 
@@ -1415,6 +1454,7 @@ def agent_briefing_contract(max_quote_age_days: int) -> Dict[str, object]:
             "data.market_scan.market_breadth",
             "data.market_scan.sector_groups",
             "data.market_scan.candidate_securities",
+            "data.market_scan.candidate_queue",
             "data.market_scan.candidate_securities[].ranking_breakdown",
             "data.market_scan.candidate_securities[].universe_context",
             "data.market_scan.candidate_securities[].why_now",
