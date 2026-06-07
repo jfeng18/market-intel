@@ -2166,6 +2166,7 @@ def handle_agent_next(
         focus_chain = agent_next_symbol_focus_chain(pool, symbol, handoff, cards, focus_chain)
         if not cards.get("cards"):
             focus_chain = []
+            action_summary = agent_next_action_summary(focus_chain, handoff, completion)
             return envelope(
                 command="agent.next",
                 data={
@@ -2175,6 +2176,7 @@ def handle_agent_next(
                     "symbol": symbol,
                     "source_agent_run_state": run_data.get("state"),
                     "run_limits": run_data.get("run_limits", {}),
+                    "action_summary": action_summary,
                     "coverage_context": coverage_context,
                     "market_scan": market_scan,
                     "focus_chain": focus_chain,
@@ -2187,6 +2189,7 @@ def handle_agent_next(
                 source=run_payload.get("meta", {}).get("source") if isinstance(run_payload.get("meta"), dict) else None,
                 ok=False,
             )
+    action_summary = agent_next_action_summary(focus_chain, handoff, completion)
     data = {
         "pool": pool,
         "symbol": symbol,
@@ -2194,6 +2197,7 @@ def handle_agent_next(
         "summary": handoff.get("summary") or run_data.get("summary"),
         "source_agent_run_state": run_data.get("state"),
         "run_limits": run_data.get("run_limits", {}),
+        "action_summary": action_summary,
         "coverage_context": coverage_context,
         "market_scan": market_scan,
         "focus_chain": focus_chain,
@@ -2230,6 +2234,8 @@ def handle_mock_agent_next(
         cards = filter_agent_next_cards_for_symbol(cards, symbol)
         focus_chain = mock_agent_next_symbol_focus_chain(symbol, cards, focus_chain)
         if not cards.get("cards"):
+            focus_chain = []
+            action_summary = agent_next_action_summary(focus_chain, handoff, completion)
             return envelope(
                 command="agent.next",
                 data={
@@ -2239,6 +2245,7 @@ def handle_mock_agent_next(
                     "symbol": symbol,
                     "source_agent_run_state": dashboard.get("state"),
                     "run_limits": dashboard.get("run_limits", {}),
+                    "action_summary": action_summary,
                     "coverage_context": dashboard.get("coverage_context", {}),
                     "market_scan": mock_agent_next_market_scan(dashboard.get("market_pulse", {})),
                     "focus_chain": [],
@@ -2251,6 +2258,7 @@ def handle_mock_agent_next(
                 source="mock",
                 ok=False,
             )
+    action_summary = agent_next_action_summary(focus_chain, handoff, completion)
     data = {
         "pool": pool,
         "symbol": symbol,
@@ -2258,6 +2266,7 @@ def handle_mock_agent_next(
         "summary": handoff.get("summary") or dashboard.get("summary"),
         "source_agent_run_state": dashboard.get("state"),
         "run_limits": dashboard.get("run_limits", {}),
+        "action_summary": action_summary,
         "coverage_context": dashboard.get("coverage_context", {}),
         "market_scan": mock_agent_next_market_scan(dashboard.get("market_pulse", {})),
         "focus_chain": focus_chain,
@@ -2274,6 +2283,60 @@ def handle_mock_agent_next(
         source="mock",
         ok=bool(dashboard_payload.get("ok")),
     )
+
+
+def agent_next_action_summary(
+    focus_chain: List[Dict[str, object]],
+    handoff: Dict[str, object],
+    completion: Dict[str, object],
+) -> Dict[str, object]:
+    compact_handoff = dashboard_handoff({"review_handoff": handoff, "review_completion": completion})
+    today_focus = agent_next_today_focus(focus_chain, compact_handoff)
+    return dashboard_action_summary(today_focus, compact_handoff)
+
+
+def agent_next_today_focus(focus_chain: List[Dict[str, object]], handoff: Dict[str, object]) -> Dict[str, object]:
+    item = first_dashboard_focus_item(focus_chain, prefer_read=True)
+    if not item:
+        item = first_dashboard_focus_item(handoff.get("next_read", []), prefer_read=False)
+    if not item:
+        item = first_dashboard_focus_item(handoff.get("manual_items", []), prefer_read=False)
+    if not item:
+        return {
+            "available": False,
+            "summary": "暂无下一步。",
+            "source": "",
+            "title": "",
+            "reason": "",
+            "json_command": "",
+            "done_when": "",
+            "runnable": False,
+            "requires_manual": False,
+            "related_symbols": [],
+            "focus_chain": focus_chain,
+        }
+    command = str(item.get("json_command") or "")
+    source = str(item.get("item_type") or item.get("source") or item.get("check_id") or "review_next")
+    requires_manual = bool(item.get("requires_manual")) or str(item.get("step_type") or "") == "manual"
+    runnable = bool(command) and not requires_manual and digest_command_is_read_only(command)
+    title = str(item.get("title") or source)
+    reason = str(item.get("reason") or "按 agent next 接力队列继续。")
+    done_when = str(item.get("done_when") or "已完成该步骤并确认下一条命令。")
+    return {
+        "available": True,
+        "summary": "下一步：%s。" % title,
+        "source": source,
+        "title": title,
+        "reason": reason,
+        "json_command": command,
+        "done_when": done_when,
+        "runnable": runnable,
+        "requires_manual": requires_manual,
+        "related_symbols": dedupe_queue_texts(
+            item.get("related_symbols", []) if isinstance(item.get("related_symbols"), list) else []
+        )[:5],
+        "focus_chain": focus_chain,
+    }
 
 
 def mock_agent_next_market_scan(value: object) -> Dict[str, object]:
@@ -4257,6 +4320,8 @@ def dashboard_action_command_queue(
     for item in checklist:
         if not isinstance(item, dict):
             continue
+        if not item.get("runnable"):
+            continue
         add_item(
             item.get("check_id"),
             item.get("title"),
@@ -4274,6 +4339,21 @@ def dashboard_action_command_queue(
             item.get("source"),
             item.get("title"),
             "next",
+            item.get("json_command"),
+            item.get("done_when"),
+            item.get("runnable"),
+        )
+        if len(rows) >= 5:
+            return rows
+    for item in checklist:
+        if not isinstance(item, dict):
+            continue
+        if item.get("runnable"):
+            continue
+        add_item(
+            item.get("check_id"),
+            item.get("title"),
+            item.get("status"),
             item.get("json_command"),
             item.get("done_when"),
             item.get("runnable"),
@@ -8971,6 +9051,22 @@ def agent_next_contract() -> Dict[str, object]:
             "data.market_scan.candidate_queue",
             "data.market_scan.top_candidates[].ranking_breakdown",
             "data.market_scan.top_candidates[].universe_context",
+            "data.action_summary",
+            "data.action_summary.headline",
+            "data.action_summary.next_command",
+            "data.action_summary.command_queue",
+            "data.action_summary.command_queue[].json_command",
+            "data.action_summary.command_queue[].done_when",
+            "data.action_summary.command_queue[].runnable",
+            "data.action_summary.completion_checklist",
+            "data.action_summary.completion_checklist[].status",
+            "data.action_summary.completion_checklist[].json_command",
+            "data.action_summary.completion_checklist[].done_when",
+            "data.action_summary.record_template",
+            "data.action_summary.record_template.runnable",
+            "data.action_summary.record_template.prerequisite_command",
+            "data.action_summary.record_template.prerequisite_done_when",
+            "data.action_summary.record_template.prefilled_note_command",
             "data.focus_chain",
             "data.focus_chain[].source",
             "data.focus_chain[].json_command",

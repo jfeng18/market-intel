@@ -1103,6 +1103,13 @@ def test_agent_next_returns_compact_handoff(monkeypatch, tmp_path):
     assert data["market_scan"]["top_candidates"][0]["review_focus"]["next_command"]
     assert data["market_scan"]["top_candidates"][0]["review_focus"]["next_command"] == data["market_scan"]["top_candidates"][0]["commands"][0]
     assert "universe_context" in data["market_scan"]["top_candidates"][0]
+    assert data["action_summary"]["next_command"] == data["focus_chain"][0]["json_command"]
+    assert data["action_summary"]["command_queue"]
+    assert data["action_summary"]["command_queue"][0]["json_command"] == data["action_summary"]["next_command"]
+    assert len({item["json_command"] for item in data["action_summary"]["command_queue"]}) == len(data["action_summary"]["command_queue"])
+    assert data["action_summary"]["completion_checklist"]
+    assert data["action_summary"]["completion_checklist"][0]["json_command"]
+    assert data["action_summary"]["record_template"]["available"] is True
     assert [item["source"] for item in data["focus_chain"][:3]] == [
         "coverage_review",
         "market_scan",
@@ -1124,9 +1131,13 @@ def test_agent_next_returns_compact_handoff(monkeypatch, tmp_path):
     assert "data.market_scan.candidate_queue" in data["agent_contract"]["stable_fields"]
     assert "data.market_scan.top_candidates[].ranking_breakdown" in data["agent_contract"]["stable_fields"]
     assert "data.market_scan.top_candidates[].universe_context" in data["agent_contract"]["stable_fields"]
+    assert "data.action_summary" in data["agent_contract"]["stable_fields"]
+    assert "data.action_summary.command_queue[].json_command" in data["agent_contract"]["stable_fields"]
+    assert "data.action_summary.completion_checklist[].done_when" in data["agent_contract"]["stable_fields"]
     assert "data.focus_chain[].json_command" in data["agent_contract"]["stable_fields"]
     assert "data.review_handoff.command_chain[].json_command" in data["agent_contract"]["stable_fields"]
     assert "market-intel agent next" in text
+    assert "操作摘要" in text
     assert "接力链" in text
     assert "覆盖底座" in text
     assert "全市场扫描" in text
@@ -1156,11 +1167,17 @@ def test_agent_next_mock_returns_demo_handoff_without_runtime(monkeypatch, tmp_p
     assert data["review_handoff"]["handoff_state"] == "demo"
     assert data["review_handoff"]["command_chain"]
     assert data["review_handoff"]["command_chain"][0]["json_command"] == "market-intel import schema --json"
+    assert data["action_summary"]["next_command"] == "market-intel import schema --json"
+    assert data["action_summary"]["command_queue"][0]["json_command"] == "market-intel import schema --json"
+    assert data["action_summary"]["command_queue"][1]["json_command"] == "market-intel pool quality invalid_symbol --json"
+    assert data["action_summary"]["completion_checklist"][0]["json_command"] == "market-intel import schema --json"
+    assert data["action_summary"]["record_template"]["available"] is False
     assert data["review_completion"]["checks"]
     assert data["review_completion"]["ready_for_journal_note"] is False
     assert data["security_cards"]["cards"]
     assert data["security_cards"]["cards"][0]["next_json_command"].endswith("--mock --json")
     assert "market-intel agent next" in text
+    assert "操作摘要" in text
     assert "mock 示例" in text
     assert "单票卡片" in text
     assert "复盘收尾" in text

@@ -2459,6 +2459,10 @@ def render_agent_next_text(payload: Dict[str, object]) -> str:
     ]
     if data.get("symbol"):
         lines.append("- 聚焦标的: %s" % data.get("symbol"))
+    action_summary = data.get("action_summary", {}) if isinstance(data.get("action_summary"), dict) else {}
+    if action_summary.get("available"):
+        lines.extend(["", "操作摘要"])
+        lines.extend(render_dashboard_action_summary(action_summary))
     focus_chain = data.get("focus_chain", []) if isinstance(data.get("focus_chain"), list) else []
     if focus_chain:
         lines.extend(["", "接力链"])
@@ -2476,26 +2480,32 @@ def render_agent_next_text(payload: Dict[str, object]) -> str:
     handoff = data.get("review_handoff", {}) if isinstance(data.get("review_handoff"), dict) else {}
     if handoff:
         lines.extend(["", "交接"])
-        lines.extend(render_agent_next_handoff(handoff))
+        lines.extend(render_agent_next_handoff(handoff, compact=bool(action_summary.get("available"))))
     cards = data.get("security_cards", {}) if isinstance(data.get("security_cards"), dict) else {}
     if cards:
         lines.extend(["", "单票卡片"])
-        lines.extend(render_agent_run_security_cards(cards))
+        lines.extend(render_agent_next_security_cards(cards))
     completion = data.get("review_completion", {}) if isinstance(data.get("review_completion"), dict) else {}
     if completion:
         lines.extend(["", "收尾"])
-        lines.extend(render_agent_run_review_completion(completion))
+        lines.extend(render_agent_next_review_completion(completion))
     return "\n".join(lines)
 
 
-def render_agent_next_handoff(value: Dict[str, object]) -> List[str]:
-    lines = ["- %s" % (value.get("summary") or "暂无。")]
+def render_agent_next_handoff(value: Dict[str, object], compact: bool = False) -> List[str]:
+    lines = ["- %s" % dashboard_short_text(value.get("summary") or "暂无。", 88)]
     if value.get("resume_prompt"):
-        lines.append("- 接手提示: %s" % value.get("resume_prompt"))
+        lines.append("- 接手提示: %s" % dashboard_short_text(value.get("resume_prompt"), 88))
+    if compact:
+        chain = value.get("command_chain", []) if isinstance(value.get("command_chain"), list) else []
+        first = next((item for item in chain if isinstance(item, dict) and item.get("json_command")), {})
+        if first:
+            lines.append("  命令链: %s 项 | 首条 %s" % (len(chain), first.get("json_command")))
+        return lines
     chain = value.get("command_chain", []) if isinstance(value.get("command_chain"), list) else []
     if chain:
         lines.append("- 命令链:")
-        for item in chain[:6]:
+        for item in chain[:4]:
             if isinstance(item, dict):
                 lines.append("   #%s %s | %s | %s" % (
                     item.get("rank"),
@@ -2506,8 +2516,83 @@ def render_agent_next_handoff(value: Dict[str, object]) -> List[str]:
     return lines
 
 
+def render_agent_next_security_cards(value: Dict[str, object]) -> List[str]:
+    cards = value.get("cards", []) if isinstance(value.get("cards"), list) else []
+    if not cards:
+        return ["- 单票卡片: 暂无。"]
+    lines = ["- 单票卡片: %s" % dashboard_short_text(value.get("summary") or "暂无。", 88)]
+    for item in cards[:2]:
+        if not isinstance(item, dict):
+            continue
+        lines.append(
+            "   #%s %s %s | %s | 分 %s"
+            % (
+                item.get("rank"),
+                item.get("symbol"),
+                item.get("name") or "",
+                label(item.get("priority")),
+                item.get("review_score"),
+            )
+        )
+        if item.get("next_json_command"):
+            lines.append("      命令: %s" % item.get("next_json_command"))
+        coverage_state = item.get("coverage_state")
+        if coverage_state and coverage_state != "confirmed":
+            reasons = item.get("coverage_state_reasons", []) if isinstance(item.get("coverage_state_reasons"), list) else []
+            reason_text = " | 原因: %s" % render_labels(reasons) if reasons else ""
+            lines.append("      覆盖: %s%s" % (label(coverage_state), reason_text))
+        research_text = render_research_status(item.get("research_status", {}))
+        if research_text:
+            lines.append("      研究: %s" % research_text)
+        workflow = item.get("research_workflow", []) if isinstance(item.get("research_workflow"), list) else []
+        if workflow:
+            lines.append("      研究流程: %s" % "；".join(render_workflow_step(step) for step in workflow[:3] if isinstance(step, dict)))
+        hotspot = item.get("hotspot", {}) if isinstance(item.get("hotspot"), dict) else {}
+        if hotspot:
+            lines.append("      热点: %s | 分 %s" % (hotspot.get("chain") or "未命名链路", hotspot.get("score")))
+        risks = item.get("risk_flags", []) if isinstance(item.get("risk_flags"), list) else []
+        if risks:
+            lines.append("      风险: %s" % "、".join(str(row) for row in risks[:3]))
+        gaps = item.get("open_gaps", []) if isinstance(item.get("open_gaps"), list) else []
+        if gaps:
+            lines.append("      待补: %s" % "；".join(str(row) for row in gaps[:2]))
+    if len(cards) > 2:
+        lines.append("   其余: %s 张卡片保留在 JSON 的 data.security_cards.cards。" % (len(cards) - 2))
+    if value.get("write_policy"):
+        lines.append("   策略: %s" % dashboard_short_text(value.get("write_policy"), 88))
+    return lines
+
+
+def render_agent_next_review_completion(value: Dict[str, object]) -> List[str]:
+    checks = value.get("checks", []) if isinstance(value.get("checks"), list) else []
+    if not checks:
+        return ["- 复盘收尾: 暂无。"]
+    lines = ["- 复盘收尾: %s" % dashboard_short_text(value.get("summary") or "暂无。", 88)]
+    lines.append(
+        "   状态: %s | 可记录: %s | 阻塞 %s | 需人工 %s | 待读 %s"
+        % (
+            value.get("completion_state"),
+            "是" if value.get("ready_for_journal_note") else "否",
+            value.get("blocking_count", 0),
+            value.get("manual_required_count", 0),
+            value.get("pending_count", 0),
+        )
+    )
+    for item in checks[:3]:
+        if not isinstance(item, dict):
+            continue
+        lines.append("   #%s %s | %s" % (item.get("check_id"), item.get("title"), item.get("status")))
+        if item.get("json_command"):
+            lines.append("      命令: %s" % item.get("json_command"))
+        if item.get("done_when"):
+            lines.append("      完成: %s" % dashboard_short_text(item.get("done_when"), 88))
+    if value.get("write_policy"):
+        lines.append("   策略: %s" % dashboard_short_text(value.get("write_policy"), 88))
+    return lines
+
+
 def render_agent_next_market_scan(value: Dict[str, object]) -> List[str]:
-    lines = ["- %s" % (value.get("summary") or "暂无。")]
+    lines = ["- %s" % dashboard_short_text(value.get("summary") or "暂无。", 100)]
     groups = value.get("top_groups", []) if isinstance(value.get("top_groups"), list) else []
     for group in groups[:2]:
         if isinstance(group, dict):
