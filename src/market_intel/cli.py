@@ -5,7 +5,13 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from .core.agent import build_agent_briefing, build_agent_plan, command_queue_item, compact_scan_review_focus
+from .core.agent import (
+    build_agent_briefing,
+    build_agent_plan,
+    command_queue_item,
+    compact_scan_review_focus,
+    portfolio_item_commands,
+)
 from .core.fixtures import load_holdings_file, load_mock_holdings, load_mock_quotes, load_quotes_file
 from .core.brief import build_daily_brief
 from .core.csv_importer import import_holdings_csv, import_quotes_csv, import_research_csv, import_schema, import_universe_csv
@@ -2061,6 +2067,7 @@ def handle_agent_next(
     if symbol:
         handoff = filter_agent_next_handoff_for_symbol(handoff, symbol)
         cards = filter_agent_next_cards_for_symbol(cards, symbol)
+        cards = ensure_agent_next_symbol_card(pool, symbol, digest, cards)
         focus_chain = agent_next_symbol_focus_chain(pool, symbol, handoff, cards, focus_chain)
         if not cards.get("cards"):
             focus_chain = []
@@ -2108,6 +2115,75 @@ def handle_agent_next(
         source=run_payload.get("meta", {}).get("source") if isinstance(run_payload.get("meta"), dict) else None,
         ok=bool(run_payload.get("ok")),
     )
+
+
+def ensure_agent_next_symbol_card(
+    pool: str,
+    symbol: str,
+    digest: Dict[str, object],
+    cards: Dict[str, object],
+) -> Dict[str, object]:
+    existing = cards.get("cards", []) if isinstance(cards.get("cards"), list) else []
+    if existing:
+        return cards
+    holding = agent_next_symbol_holding(pool, digest, symbol)
+    if not holding:
+        return cards
+    journal_draft = digest.get("journal_draft", {}) if isinstance(digest.get("journal_draft"), dict) else {}
+    archive_prerequisite = (
+        journal_draft.get("archive_prerequisite", {})
+        if isinstance(journal_draft.get("archive_prerequisite"), dict)
+        else journal_draft_archive_prerequisite([])
+    )
+    workbench_by_symbol = {
+        str(item.get("symbol")): item
+        for item in digest.get("security_workbench", [])
+        if isinstance(item, dict) and item.get("symbol")
+    } if isinstance(digest.get("security_workbench"), list) else {}
+    evidence_by_symbol = security_cards_group_by_symbol(digest.get("evidence_checklist", {}), "related_symbols")
+    hypothesis_by_symbol = security_cards_group_by_symbol(digest.get("hypothesis_board", {}), "related_symbols")
+    watch_by_symbol = security_cards_group_by_symbol(digest.get("followup_watch", {}), "symbols")
+    handoff_commands = security_cards_handoff_commands(digest.get("review_handoff", {}))
+    card = security_card_item(
+        1,
+        holding,
+        workbench_by_symbol.get(symbol, {}),
+        evidence_by_symbol.get(symbol, []),
+        hypothesis_by_symbol.get(symbol, []),
+        watch_by_symbol.get(symbol, []),
+        handoff_commands.get(symbol, []),
+        archive_prerequisite,
+    )
+    result = dict(cards)
+    result["available"] = True
+    result["summary"] = "聚焦 %s 的单票复核卡。" % symbol
+    result["cards"] = [card]
+    return result
+
+
+def agent_next_symbol_holding(pool: str, digest: Dict[str, object], symbol: str) -> Dict[str, object]:
+    dashboard = digest.get("holding_dashboard", {}) if isinstance(digest.get("holding_dashboard"), dict) else {}
+    rows = dashboard.get("top_holdings", []) if isinstance(dashboard.get("top_holdings"), list) else []
+    for item in rows:
+        if isinstance(item, dict) and str(item.get("symbol") or "") == symbol:
+            return item
+    explain_payload = handle_portfolio_explain(pool, symbol, use_mock=False, use_runtime=True)
+    if not explain_payload.get("ok"):
+        return {}
+    data = explain_payload.get("data", {}) if isinstance(explain_payload.get("data"), dict) else {}
+    item = data.get("item", {}) if isinstance(data.get("item"), dict) else {}
+    if not item or str(item.get("symbol") or "") != symbol:
+        return {}
+    return holding_dashboard_row(agent_next_portfolio_item_for_dashboard(item), {})
+
+
+def agent_next_portfolio_item_for_dashboard(item: Dict[str, object]) -> Dict[str, object]:
+    row = dict(item)
+    if "hotspot" not in row and isinstance(row.get("hotspot_context"), dict):
+        row["hotspot"] = row.get("hotspot_context")
+    if "commands" not in row:
+        row["commands"] = portfolio_item_commands(row.get("symbol"))
+    return row
 
 
 def agent_next_focus_chain(pool: str, digest: Dict[str, object], handoff: Dict[str, object]) -> List[Dict[str, object]]:
@@ -7182,9 +7258,13 @@ def security_card_item(
         + list(workbench.get("questions", []) if isinstance(workbench.get("questions"), list) else [])
         + [item.get("check_question") for item in watch_items if isinstance(item, dict)]
     )[:5]
+    primary_commands = [
+        holding.get("primary_json_command") or holding.get("primary_command"),
+        "market-intel pool explain %s --runtime --json" % symbol if symbol else None,
+    ]
     commands = dedupe_queue_texts(
-        handoff_commands
-        + [holding.get("primary_json_command") or holding.get("primary_command")]
+        primary_commands
+        + handoff_commands
         + [step.get("json_command") for step in research_workflow if isinstance(step, dict)]
         + list(workbench.get("commands", []) if isinstance(workbench.get("commands"), list) else [])
         + [item.get("json_command") for item in evidence_items if isinstance(item, dict)]

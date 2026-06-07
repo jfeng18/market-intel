@@ -25,6 +25,24 @@ def import_runtime_examples(monkeypatch, tmp_path):
     handle_import_holdings("examples/holdings.csv.example", use_runtime=True)
 
 
+def import_runtime_with_many_holdings(monkeypatch, tmp_path):
+    monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(tmp_path / "runtime"))
+    handle_import_quotes("examples/quotes.csv.example", use_runtime=True)
+    holdings_path = tmp_path / "many_holdings.csv"
+    holdings_path.write_text(
+        "证券代码,证券名称,持仓数量\n"
+        "002261,拓维信息,100\n"
+        "002281,光迅科技,100\n"
+        "300308,中际旭创,100\n"
+        "300604,长川科技,100\n"
+        "002837,英维克,100\n"
+        "300499,高澜股份,100\n"
+        "301018,申菱环境,100\n",
+        encoding="utf-8",
+    )
+    return handle_import_holdings(str(holdings_path), use_runtime=True)
+
+
 def write_changed_quotes(tmp_path):
     path = tmp_path / "quotes.changed.csv"
     path.write_text(
@@ -193,6 +211,28 @@ def test_agent_plan_all_a_ready_after_universe_import(monkeypatch, tmp_path):
     assert data["runtime"]["universe"]["state"] == "ready"
     assert data["state"] == "ready_needs_archive"
     assert all(step["id"] != "import_universe" for step in data["steps"])
+
+
+def test_agent_next_focuses_holding_outside_default_cards(monkeypatch, tmp_path):
+    imported = import_runtime_with_many_holdings(monkeypatch, tmp_path)
+
+    payload = handle_agent_next("ai-energy", max_quote_age_days=9999, max_steps=5, symbol="301018")
+    data = payload["data"]
+    card = data["security_cards"]["cards"][0]
+    focus_commands = [item["json_command"] for item in data["focus_chain"]]
+
+    assert imported["data"]["record_count"] == 7
+    assert payload["ok"] is True
+    assert data["state"] == "continue_reading"
+    assert data["symbol"] == "301018"
+    assert len(data["security_cards"]["cards"]) == 1
+    assert card["symbol"] == "301018"
+    assert card["next_json_command"] == "market-intel portfolio explain 301018 --runtime --json"
+    assert "market-intel pool explain 301018 --runtime --json" in card["commands"]
+    assert focus_commands[:2] == [
+        "market-intel portfolio explain 301018 --runtime --json --pool ai-energy",
+        "market-intel pool explain 301018 --runtime --json --pool ai-energy",
+    ]
 
 
 def test_agent_briefing_ready_without_journal(monkeypatch, tmp_path):
