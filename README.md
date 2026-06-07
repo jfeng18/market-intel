@@ -300,7 +300,7 @@ market-intel holdings impact --runtime --json
 
 `data.universe.enrichment_queue` 会把 A 股基础清单缺失的行业、概念、指数成分字段转成补数队列。每项包含 `field`、`missing_count`、样本标的、dry-run 导入命令和 `done_when`，适合按 rank 逐项补齐全 A 覆盖底座。
 
-`import universe --dry-run --json` 会返回 `data.coverage_delta`，在写入前按正式导入后的目标文件预估这份 CSV 对 A 股基础清单字段覆盖的影响：导入前后记录数、行业/概念/指数成分覆盖率、缺字段数量、`improved_fields`、缺口变化、`removed_symbol_count` 和 `recommendation.requires_import`。若 dry-run 确认改善且不会移除已有标的，`data.next_commands` 会给出正式 `import universe --runtime --json`、`pool coverage --runtime --json` 和 `dashboard --text` 的接力命令；若没有改善或会缩小现有清单，warnings 会说明原因并把下一步停在补数复核或完整 CSV dry-run。配合 `universe.enrichment_queue` 可以先判断 CSV 是否真的减少全 A 补数任务，再正式导入。
+`import universe --dry-run --json` 会返回 `data.coverage_delta`，在写入前按正式导入后的目标文件预估这份 CSV 对 A 股基础清单字段覆盖的影响：导入前后记录数、行业/概念/指数成分覆盖率、缺字段数量、`write_mode`、`improved_fields`、缺口变化、`removed_symbol_count` 和 `recommendation.requires_import`。若 dry-run 确认改善且不会移除已有标的，`data.next_commands` 会给出正式 `import universe --runtime --json`、`pool coverage --runtime --json` 和 `dashboard --text` 的接力命令；若没有改善或会缩小现有清单，warnings 会说明原因并把下一步停在补数复核或完整 CSV dry-run。配合 `universe.enrichment_queue` 可以先判断 CSV 是否真的减少全 A 补数任务，再正式导入。默认导入按完整清单覆盖写入；局部补行业/概念/指数成分时使用 `--merge`，会保留已有标的和已有有效字段，只写入 CSV 中明确提供的有效补数字段。
 
 可以先用 A 股基础清单扩展 `all-a` 的底座覆盖。CSV 支持 `symbol/name/industry/concepts/index_membership/listing_status`，也支持常见中文列名如 `证券代码/证券名称/行业/概念/指数成分/上市状态`。基础清单只代表“代码、名称、行业、概念、指数成分”的覆盖，不等于研究证据完成；匹配到基础清单的持仓会进入待复核覆盖队列。
 

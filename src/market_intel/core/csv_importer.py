@@ -144,6 +144,7 @@ def import_universe_csv(
     output_path: Optional[Path],
     dry_run: bool = False,
     runtime: bool = False,
+    merge: bool = False,
 ) -> Dict[str, object]:
     rows, read_errors = read_csv_rows(csv_path)
     warnings: List[Dict[str, object]] = []
@@ -160,12 +161,17 @@ def import_universe_csv(
     if not errors and not records:
         errors.append(issue("NO_UNIVERSE_RECORDS", "CSV 中没有可导入的 A 股基础清单记录。", {"path": command_path(csv_path)}))
 
-    coverage_delta = universe_coverage_delta(output_path, records) if not errors else empty_universe_coverage_delta(output_path)
+    target_records = universe_target_records(output_path, records, merge) if not errors else []
+    coverage_delta = (
+        universe_coverage_delta(output_path, records, target_records, merge)
+        if not errors
+        else empty_universe_coverage_delta(output_path, merge)
+    )
     if not errors and dry_run:
         warnings.extend(universe_dry_run_warnings(coverage_delta))
     written = False
     if not errors and not dry_run and output_path is not None:
-        write_universe_csv(output_path, records)
+        write_universe_csv(output_path, target_records)
         written = True
 
     return {
@@ -174,12 +180,14 @@ def import_universe_csv(
         "output": command_path(output_path) if output_path else None,
         "record_key": "universe",
         "record_count": len(records),
+        "target_record_count": len(target_records),
+        "write_mode": "merge" if merge else "replace",
         "dry_run": dry_run,
         "written": written,
         "preview": records[:5],
         "canonical_schema": universe_schema(),
         "coverage_delta": coverage_delta,
-        "next_commands": universe_next_commands(csv_path, written, dry_run, runtime, output_path, coverage_delta),
+        "next_commands": universe_next_commands(csv_path, written, dry_run, runtime, output_path, coverage_delta, merge),
         "warnings": warnings,
         "errors": errors,
     }
@@ -282,6 +290,7 @@ def import_schema() -> Dict[str, object]:
                 "market-intel import universe examples/a_share_universe.csv.example --runtime --json",
                 "market-intel import universe a_share_universe.csv --output data/runtime/a_share_universe.csv --json",
                 "market-intel import universe a_share_universe.csv --dry-run --json",
+                "market-intel import universe a_share_universe_patch.csv --runtime --merge --dry-run --json",
             ],
         },
         "research": {
@@ -306,14 +315,18 @@ def import_schema() -> Dict[str, object]:
             "errors": "errors 非空时不会写入输出文件",
             "stable_fields": [
                 "data.record_count",
+                "data.target_record_count",
+                "data.write_mode",
                 "data.preview",
                 "data.canonical_schema",
                 "data.next_commands",
             ],
             "universe_stable_fields": [
                 "data.coverage_delta",
+                "data.coverage_delta.write_mode",
                 "data.coverage_delta.before",
                 "data.coverage_delta.after",
+                "data.coverage_delta.changed_symbol_count",
                 "data.coverage_delta.removed_symbol_count",
                 "data.coverage_delta.improvement",
                 "data.coverage_delta.improvement.improved_fields",
@@ -569,44 +582,125 @@ UNIVERSE_PLACEHOLDERS = {
 }
 
 
-def universe_coverage_delta(output_path: Optional[Path], records: List[Dict[str, object]]) -> Dict[str, object]:
+def universe_target_records(
+    output_path: Optional[Path],
+    records: List[Dict[str, object]],
+    merge: bool,
+) -> List[Dict[str, object]]:
+    existing_records = read_existing_universe_records(output_path)
+    if not merge:
+        return records
+    merged_by_symbol = {str(record.get("symbol") or ""): dict(record) for record in existing_records if record.get("symbol")}
+    order = [str(record.get("symbol") or "") for record in existing_records if record.get("symbol")]
+    for record in records:
+        symbol = str(record.get("symbol") or "")
+        if not symbol:
+            continue
+        if symbol not in merged_by_symbol:
+            merged_by_symbol[symbol] = dict(record)
+            order.append(symbol)
+            continue
+        merged_by_symbol[symbol] = merge_universe_record(merged_by_symbol[symbol], record)
+    return [merged_by_symbol[symbol] for symbol in order]
+
+
+def merge_universe_record(existing: Dict[str, object], incoming: Dict[str, object]) -> Dict[str, object]:
+    merged = dict(existing)
+    merged["symbol"] = incoming.get("symbol") or existing.get("symbol")
+    changed = False
+    for field in ("industry", "concepts", "index_membership"):
+        value = incoming.get(field)
+        if universe_field_present(value, field):
+            changed = changed or merged.get(field) != value
+            merged[field] = value
+    name = incoming.get("name")
+    if universe_merge_name_present(name, incoming.get("symbol"), existing):
+        changed = changed or merged.get("name") != name
+        merged["name"] = name
+    listing_status = incoming.get("listing_status")
+    if universe_merge_listing_status_present(listing_status, existing):
+        changed = changed or merged.get("listing_status") != listing_status
+        merged["listing_status"] = listing_status
+    if changed and not is_empty(incoming.get("source")):
+        merged["source"] = incoming.get("source")
+    return merged
+
+
+def universe_merge_name_present(value: object, symbol: object, existing: Dict[str, object]) -> bool:
+    if is_empty(value):
+        return False
+    text = str(value).strip()
+    symbol_text = str(symbol or "").strip()
+    existing_name = str(existing.get("name") or "").strip()
+    if symbol_text and text == symbol_text and existing_name and existing_name != text:
+        return False
+    return True
+
+
+def universe_merge_listing_status_present(value: object, existing: Dict[str, object]) -> bool:
+    if is_empty(value):
+        return False
+    text = str(value).strip()
+    if text == "listed" and not is_empty(existing.get("listing_status")):
+        return False
+    return not is_empty(value)
+
+
+def universe_coverage_delta(
+    output_path: Optional[Path],
+    records: List[Dict[str, object]],
+    target_records: List[Dict[str, object]],
+    merge: bool,
+) -> Dict[str, object]:
     existing_records = read_existing_universe_records(output_path)
     existing_by_symbol = {str(record.get("symbol") or ""): record for record in existing_records if record.get("symbol")}
     incoming_by_symbol = {str(record.get("symbol") or ""): record for record in records if record.get("symbol")}
+    target_by_symbol = {str(record.get("symbol") or ""): record for record in target_records if record.get("symbol")}
     existing_symbols = set(existing_by_symbol)
     incoming_symbols = set(incoming_by_symbol)
-    removed_symbols = sorted(existing_symbols - incoming_symbols)
+    target_symbols = set(target_by_symbol)
+    removed_symbols = sorted(existing_symbols - target_symbols)
     before = universe_field_coverage_summary(list(existing_by_symbol.values()))
-    after = universe_field_coverage_summary(records)
+    after = universe_field_coverage_summary(target_records)
     improvement = universe_coverage_improvement(before, after)
+    changed_samples = universe_changed_samples(existing_by_symbol, target_by_symbol)
+    changed_field_count = sum(len(sample["changed_fields"]) for sample in changed_samples)
     removed_samples = [universe_removed_symbol_sample(existing_by_symbol[symbol]) for symbol in removed_symbols[:5]]
     return {
         "available": bool(records),
         "target": command_path(output_path) if output_path else None,
+        "write_mode": "merge" if merge else "replace",
         "existing_record_count": len(existing_by_symbol),
         "incoming_record_count": len(records),
-        "after_record_count": len(records),
+        "after_record_count": len(target_records),
         "new_symbol_count": len(incoming_symbols - existing_symbols),
         "updated_symbol_count": len(incoming_symbols & existing_symbols),
+        "changed_symbol_count": len(changed_samples),
+        "changed_field_count": changed_field_count,
+        "changed_samples": changed_samples[:5],
         "removed_symbol_count": len(removed_symbols),
         "removed_samples": removed_samples,
         "before": before,
         "after": after,
         "improvement": improvement,
-        "recommendation": universe_delta_recommendation(improvement, after, len(removed_symbols)),
+        "recommendation": universe_delta_recommendation(improvement, after, len(removed_symbols), len(changed_samples)),
         "done_when": "dry-run 预估显示目标字段缺口减少；正式导入后运行 market-intel pool coverage --runtime --json 复验 universe.enrichment_queue。",
     }
 
 
-def empty_universe_coverage_delta(output_path: Optional[Path]) -> Dict[str, object]:
+def empty_universe_coverage_delta(output_path: Optional[Path], merge: bool = False) -> Dict[str, object]:
     return {
         "available": False,
         "target": command_path(output_path) if output_path else None,
+        "write_mode": "merge" if merge else "replace",
         "existing_record_count": 0,
         "incoming_record_count": 0,
         "after_record_count": 0,
         "new_symbol_count": 0,
         "updated_symbol_count": 0,
+        "changed_symbol_count": 0,
+        "changed_field_count": 0,
+        "changed_samples": [],
         "removed_symbol_count": 0,
         "removed_samples": [],
         "before": universe_field_coverage_summary([]),
@@ -699,10 +793,40 @@ def universe_removed_symbol_sample(record: Dict[str, object]) -> Dict[str, objec
     }
 
 
+def universe_changed_samples(
+    existing_by_symbol: Dict[str, Dict[str, object]],
+    target_by_symbol: Dict[str, Dict[str, object]],
+) -> List[Dict[str, object]]:
+    samples = []
+    fields = ("name", "industry", "concepts", "index_membership", "listing_status")
+    for symbol in sorted(set(existing_by_symbol) & set(target_by_symbol)):
+        existing = existing_by_symbol[symbol]
+        target = target_by_symbol[symbol]
+        changed_fields = [
+            field
+            for field in fields
+            if normalize_universe_compare_value(existing.get(field)) != normalize_universe_compare_value(target.get(field))
+        ]
+        if changed_fields:
+            samples.append(
+                {
+                    "symbol": symbol,
+                    "name": target.get("name") or existing.get("name"),
+                    "changed_fields": changed_fields,
+                }
+            )
+    return samples
+
+
+def normalize_universe_compare_value(value: object) -> str:
+    return str(value or "").strip()
+
+
 def universe_delta_recommendation(
     improvement: Dict[str, object],
     after: Dict[str, object],
     removed_symbol_count: int,
+    changed_symbol_count: int = 0,
 ) -> Dict[str, object]:
     after_missing = after.get("missing_count", {}) if isinstance(after.get("missing_count"), dict) else {}
     remaining_missing = sum(int(after_missing.get(field, 0)) for field in ("industry", "concepts", "index_membership"))
@@ -713,6 +837,12 @@ def universe_delta_recommendation(
             "requires_import": False,
         }
     if improvement.get("state") != "improved":
+        if changed_symbol_count:
+            return {
+                "action": "import_value_updates",
+                "reason": "dry-run 不减少字段缺口，但会更新 %s 个已有标的的基础字段；建议导入后复验。" % changed_symbol_count,
+                "requires_import": True,
+            }
         if not remaining_missing:
             return {
                 "action": "skip_import",
@@ -924,6 +1054,7 @@ def universe_next_commands(
     runtime: bool,
     output_path: Optional[Path],
     coverage_delta: Dict[str, object],
+    merge: bool = False,
 ) -> List[str]:
     if written:
         return next_commands("universe", written, runtime, output_path)
@@ -934,22 +1065,33 @@ def universe_next_commands(
     if recommendation.get("action") == "review_removed_symbols_before_import":
         if runtime:
             return [
-                "market-intel import universe <full_a_share_universe.csv> --runtime --dry-run --json",
+                "market-intel import universe <full_a_share_universe.csv> --runtime --dry-run --json"
+                if not merge
+                else "market-intel import universe %s --runtime --merge --dry-run --json" % command_path(csv_path),
                 "market-intel pool coverage --runtime --json",
             ]
         if output_path:
             return [
-                "market-intel import universe <full_a_share_universe.csv> --output %s --dry-run --json" % command_path(output_path),
+                "market-intel import universe <full_a_share_universe.csv> --output %s --dry-run --json" % command_path(output_path)
+                if not merge
+                else "market-intel import universe %s --output %s --merge --dry-run --json"
+                % (command_path(csv_path), command_path(output_path)),
                 "MARKET_INTEL_A_SHARE_UNIVERSE_PATHS=%s market-intel pool coverage --text" % command_path(output_path),
             ]
         return [
-            "market-intel import universe <full_a_share_universe.csv> --dry-run --json",
+            "market-intel import universe <full_a_share_universe.csv> --dry-run --json"
+            if not merge
+            else "market-intel import universe %s --merge --dry-run --json" % command_path(csv_path),
             "market-intel pool coverage --json",
         ]
-    if improvement.get("state") == "improved" and recommendation.get("requires_import") is True:
+    if recommendation.get("requires_import") is True:
         import_command = "market-intel import universe %s --json" % command_path(csv_path)
+        if merge:
+            import_command = "market-intel import universe %s --merge --json" % command_path(csv_path)
         if runtime:
             import_command = "market-intel import universe %s --runtime --json" % command_path(csv_path)
+            if merge:
+                import_command = "market-intel import universe %s --runtime --merge --json" % command_path(csv_path)
             return [
                 import_command,
                 "market-intel pool coverage --runtime --json",
@@ -961,7 +1103,9 @@ def universe_next_commands(
                 "MARKET_INTEL_A_SHARE_UNIVERSE_PATHS=%s market-intel pool coverage --text" % command_path(output_path),
             ]
         return [
-            "market-intel import universe %s --runtime --json" % command_path(csv_path),
+            "market-intel import universe %s --runtime --merge --json" % command_path(csv_path)
+            if merge
+            else "market-intel import universe %s --runtime --json" % command_path(csv_path),
             "market-intel pool coverage --runtime --json",
         ]
     return [

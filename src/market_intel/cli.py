@@ -254,6 +254,7 @@ def build_parser() -> argparse.ArgumentParser:
     import_universe_parser.add_argument("--runtime", action="store_true")
     import_universe_parser.add_argument("--output")
     import_universe_parser.add_argument("--dry-run", action="store_true")
+    import_universe_parser.add_argument("--merge", action="store_true")
     import_universe_parser.add_argument("--json", action="store_true", dest="as_json")
 
     import_research_parser = import_subparsers.add_parser("research")
@@ -538,6 +539,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                 args.runtime,
                 args.output,
                 args.dry_run,
+                args.merge,
             )
         elif args.resource == "import" and args.action == "research":
             result = handle_import_research(
@@ -1605,6 +1607,7 @@ def handle_import_universe(
     use_runtime: bool = False,
     output: Optional[str] = None,
     dry_run: bool = False,
+    merge: bool = False,
 ) -> Dict[str, Any]:
     target = resolve_import_output("universe", use_runtime, output, dry_run)
     if target.get("error"):
@@ -1614,6 +1617,7 @@ def handle_import_universe(
         target["path"],
         dry_run=dry_run,
         runtime=use_runtime,
+        merge=merge,
     )
     return import_envelope("import.universe", data)
 

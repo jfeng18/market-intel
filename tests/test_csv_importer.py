@@ -24,6 +24,8 @@ def test_import_schema_is_agent_friendly():
     assert payload["data"]["universe"]["accepted_columns"]["symbol"]
     assert payload["data"]["universe"]["canonical_schema"]
     assert "data.coverage_delta" in payload["data"]["agent_contract"]["universe_stable_fields"]
+    assert "data.coverage_delta.write_mode" in payload["data"]["agent_contract"]["universe_stable_fields"]
+    assert "data.coverage_delta.changed_symbol_count" in payload["data"]["agent_contract"]["universe_stable_fields"]
     assert "data.coverage_delta.removed_symbol_count" in payload["data"]["agent_contract"]["universe_stable_fields"]
     assert "data.coverage_delta.recommendation.requires_import" in payload["data"]["agent_contract"]["universe_stable_fields"]
 
@@ -201,6 +203,88 @@ def test_import_universe_dry_run_warns_before_removing_existing_symbols(monkeypa
     assert not any("a_share_universe_subset.csv --runtime --json" in command for command in payload["data"]["next_commands"])
     assert str(runtime) not in json.dumps(payload, ensure_ascii=False)
     assert str(csv_path) not in json.dumps(payload, ensure_ascii=False)
+
+
+def test_import_universe_merge_updates_partial_fields_without_removing_symbols(monkeypatch, tmp_path):
+    runtime = tmp_path / "runtime"
+    monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(runtime))
+    runtime.mkdir()
+    target = runtime / "a_share_universe.csv"
+    target.write_text(
+        "symbol,name,industry,concepts,index_membership,listing_status,source\n"
+        "000001,平安银行,银行,,沪深300,listed,existing\n"
+        "600519,贵州茅台,食品饮料,白酒;消费,上证50,listed,existing\n",
+        encoding="utf-8",
+    )
+    csv_path = tmp_path / "a_share_universe_patch.csv"
+    csv_path.write_text(
+        "证券代码,概念\n"
+        "000001,股份行;金融科技\n",
+        encoding="utf-8",
+    )
+
+    dry_run_payload = handle_import_universe(str(csv_path), use_runtime=True, dry_run=True, merge=True)
+    delta = dry_run_payload["data"]["coverage_delta"]
+
+    assert dry_run_payload["ok"] is True
+    assert dry_run_payload["data"]["write_mode"] == "merge"
+    assert dry_run_payload["data"]["record_count"] == 1
+    assert dry_run_payload["data"]["target_record_count"] == 2
+    assert delta["write_mode"] == "merge"
+    assert delta["after_record_count"] == 2
+    assert delta["removed_symbol_count"] == 0
+    assert delta["after"]["missing_count"] == {"industry": 0, "concepts": 0, "index_membership": 0}
+    assert delta["recommendation"]["requires_import"] is True
+    assert dry_run_payload["data"]["next_commands"] == [
+        "market-intel import universe a_share_universe_patch.csv --runtime --merge --json",
+        "market-intel pool coverage --runtime --json",
+        "market-intel dashboard --text",
+    ]
+
+    import_payload = handle_import_universe(str(csv_path), use_runtime=True, merge=True)
+    rows = target.read_text(encoding="utf-8").splitlines()
+
+    assert import_payload["ok"] is True
+    assert import_payload["data"]["written"] is True
+    assert import_payload["data"]["target_record_count"] == 2
+    assert "000001,平安银行,银行,股份行;金融科技,沪深300,listed,csv:a_share_universe_patch.csv" in rows
+    assert "600519,贵州茅台,食品饮料,白酒;消费,上证50,listed,existing" in rows
+    assert str(runtime) not in json.dumps(dry_run_payload, ensure_ascii=False)
+    assert str(csv_path) not in json.dumps(dry_run_payload, ensure_ascii=False)
+
+
+def test_import_universe_merge_recommends_existing_value_updates(monkeypatch, tmp_path):
+    runtime = tmp_path / "runtime"
+    monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(runtime))
+    runtime.mkdir()
+    (runtime / "a_share_universe.csv").write_text(
+        "symbol,name,industry,concepts,index_membership,listing_status,source\n"
+        "000001,平安银行,银行,股份行;金融科技,沪深300,listed,existing\n",
+        encoding="utf-8",
+    )
+    csv_path = tmp_path / "a_share_universe_fix.csv"
+    csv_path.write_text(
+        "证券代码,证券名称,行业,概念,指数成分\n"
+        "000001,平安银行,非银金融,股份行;金融科技,沪深300\n",
+        encoding="utf-8",
+    )
+
+    payload = handle_import_universe(str(csv_path), use_runtime=True, dry_run=True, merge=True)
+    delta = payload["data"]["coverage_delta"]
+
+    assert payload["ok"] is True
+    assert delta["improvement"]["state"] == "unchanged"
+    assert delta["changed_symbol_count"] == 1
+    assert delta["changed_field_count"] == 1
+    assert delta["changed_samples"] == [{"symbol": "000001", "name": "平安银行", "changed_fields": ["industry"]}]
+    assert delta["recommendation"]["action"] == "import_value_updates"
+    assert delta["recommendation"]["requires_import"] is True
+    assert payload["data"]["next_commands"] == [
+        "market-intel import universe a_share_universe_fix.csv --runtime --merge --json",
+        "market-intel pool coverage --runtime --json",
+        "market-intel dashboard --text",
+    ]
+    assert not any(warning["code"] == "UNIVERSE_DRY_RUN_NO_COVERAGE_IMPROVEMENT" for warning in payload["warnings"])
 
 
 def test_import_universe_rejects_non_a_share_symbol(tmp_path):
