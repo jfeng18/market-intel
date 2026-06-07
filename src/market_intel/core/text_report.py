@@ -95,7 +95,32 @@ LABELS = {
     "reference": "参考",
     "medium": "中",
     "high": "高",
+    "low": "低",
     "blocked": "阻塞",
+    "unknown": "未知",
+    "demo": "演示",
+    "demo_ready": "演示可用",
+    "ready": "可留档",
+    "ready_for_note": "可留档",
+    "ready_needs_archive": "待留档",
+    "ready_needs_second_archive": "待第二次留档",
+    "ready_with_compare": "可对比",
+    "needs_review": "待复核",
+    "needs_read": "待读",
+    "needs_manual": "需人工",
+    "blocked_review": "复核阻塞",
+    "continue_reading": "继续待读",
+    "seed": "种子覆盖",
+    "all_a_seed": "全 A 种子覆盖",
+    "covered": "已覆盖",
+    "needs_more_context": "上下文待补",
+    "blocked_by_data": "数据阻塞",
+    "runtime_setup": "准备正式数据",
+    "mock_to_runtime": "切换正式复盘",
+    "mock_handoff": "mock 交接",
+    "review_now": "优先复核",
+    "deprioritized": "降权观察",
+    "data_first": "先补数据",
     "pending": "待读",
     "manual_required": "需人工",
     "done": "已完成",
@@ -1993,7 +2018,7 @@ def render_dashboard_text(payload: Dict[str, object]) -> str:
         "market-intel dashboard",
         "",
         "状态",
-        "- %s | %s" % (data.get("state"), dashboard_short_text(data.get("summary") or "暂无摘要。", 80)),
+        "- %s | %s" % (label(data.get("state")), dashboard_short_text(data.get("summary") or "暂无摘要。", 80)),
     ]
     action_summary = data.get("action_summary", {}) if isinstance(data.get("action_summary"), dict) else {}
     has_action_summary = bool(action_summary.get("available"))
@@ -2081,7 +2106,7 @@ def render_dashboard_action_summary(value: Dict[str, object]) -> List[str]:
     if value.get("journal_state"):
         lines.append(
             "  留档: %s | %s"
-            % (value.get("journal_state"), "可记录" if value.get("journal_ready") else value.get("journal_next_step") or "未就绪")
+            % (label(value.get("journal_state")), "可记录" if value.get("journal_ready") else value.get("journal_next_step") or "未就绪")
         )
     record = value.get("record_template", {}) if isinstance(value.get("record_template"), dict) else {}
     if record.get("prefilled_note_command"):
@@ -2141,7 +2166,7 @@ def render_dashboard_compact_coverage(value: Dict[str, object]) -> List[str]:
     lines = []
     lines.append(
         "- %s | %s | 缺口 %s"
-        % (value.get("pool") or "-", value.get("status") or value.get("coverage_status") or "-", value.get("gap_count", 0))
+        % (value.get("pool") or "-", label(value.get("status") or value.get("coverage_status") or "-"), value.get("gap_count", 0))
     )
     universe = value.get("universe", {}) if isinstance(value.get("universe"), dict) else {}
     if universe:
@@ -2193,12 +2218,12 @@ def render_dashboard_compact_coverage(value: Dict[str, object]) -> List[str]:
         first = quality[0]
         lines.append(
             "  质量: #%s %s | %s | 影响 %s"
-            % (first.get("rank"), first.get("flag"), first.get("severity"), first.get("affected_count", 0))
+            % (first.get("rank"), label(first.get("flag")), label(first.get("severity")), first.get("affected_count", 0))
         )
     gaps = value.get("top_gaps", []) if isinstance(value.get("top_gaps"), list) else []
     if gaps and isinstance(gaps[0], dict):
         first_gap = gaps[0]
-        lines.append("  首要缺口: %s | %s" % (first_gap.get("severity"), first_gap.get("id")))
+        lines.append("  首要缺口: %s | %s" % (label(first_gap.get("severity")), label(first_gap.get("id"))))
     holdings = value.get("holdings_coverage", {}) if isinstance(value.get("holdings_coverage"), dict) else {}
     if holdings:
         lines.append(
@@ -2380,7 +2405,7 @@ def render_dashboard_pressure_groups(groups: List[object]) -> str:
 
 
 def render_dashboard_compact_evidence(value: Dict[str, object]) -> List[str]:
-    lines = ["- %s" % dashboard_short_text(value.get("summary") or "暂无证据缺口。", 80)]
+    lines = ["- %s" % dashboard_evidence_summary_text(value.get("summary") or "暂无证据缺口。")]
     repair = value.get("data_repair", {}) if isinstance(value.get("data_repair"), dict) else {}
     if repair.get("available"):
         lines.append("  数据修复: %s" % dashboard_short_text(repair.get("summary") or "需处理数据问题。", 72))
@@ -2394,7 +2419,7 @@ def render_dashboard_compact_evidence(value: Dict[str, object]) -> List[str]:
                     % (
                         item.get("rank"),
                         item.get("title"),
-                        item.get("coverage_label") or label(item.get("coverage_status")),
+                        label(item.get("coverage_label") or item.get("coverage_status")),
                     )
                 )
         if rendered:
@@ -2405,12 +2430,23 @@ def render_dashboard_compact_evidence(value: Dict[str, object]) -> List[str]:
     return lines
 
 
+def dashboard_evidence_summary_text(value: object) -> str:
+    text = dashboard_short_text(value, 80)
+    return (
+        text.replace("coverage_state 不是 confirmed", "覆盖状态未确认")
+        .replace("coverage_state", "覆盖状态")
+        .replace("confirmed", label("confirmed"))
+        .replace("foundation", label("foundation"))
+        .replace("draft", label("draft"))
+    )
+
+
 def render_dashboard_evidence_first_detail(value: object) -> str:
     item = value if isinstance(value, dict) else {}
     if not item:
         return ""
     missing = item.get("missing_evidence", []) if isinstance(item.get("missing_evidence"), list) else []
-    missing_text = "、".join(str(row) for row in missing[:3] if row)
+    missing_text = "、".join(label(row) for row in missing[:3] if row)
     done_when = dashboard_short_text(item.get("done_when") or "", 52)
     command = str(item.get("json_command") or "").strip()
     parts = [str(item.get("title") or "").strip()]
@@ -2447,7 +2483,7 @@ def render_dashboard_compact_next_steps(value: Dict[str, object], compact: bool 
     if gate:
         lines.append(
             "- 留档门槛: %s | %s"
-            % (gate.get("state") or "unknown", dashboard_short_text(gate.get("next_step") or "", 64))
+            % (label(gate.get("state") or "unknown"), dashboard_short_text(gate.get("next_step") or "", 64))
         )
         if gate.get("json_command") and not compact:
             lines.append("  命令: %s" % gate.get("json_command"))

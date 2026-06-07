@@ -20,7 +20,7 @@ from market_intel.cli import (
     run_agent_read_command,
 )
 from market_intel.core.agent import build_agent_plan
-from market_intel.core.text_report import render_agent_briefing_text, render_agent_next_text, render_agent_plan_text, render_agent_run_text, render_dashboard_text
+from market_intel.core.text_report import label, render_agent_briefing_text, render_agent_next_text, render_agent_plan_text, render_agent_run_text, render_dashboard_text
 
 
 def import_runtime_examples(monkeypatch, tmp_path):
@@ -1406,7 +1406,7 @@ def test_dashboard_returns_one_screen_workbench(monkeypatch, tmp_path):
     assert "定位" in text
     assert "个人复盘操作系统" in text
     assert "覆盖底座" in text
-    assert "all-a | %s |" % data["coverage_context"]["status"] in text
+    assert "all-a | %s |" % label(data["coverage_context"]["status"]) in text
     assert "全 A: 已接入 | 记录 16" in text
     assert "持仓覆盖:" in text
     assert "质量:" in text
@@ -1526,7 +1526,7 @@ def test_dashboard_mock_returns_demo_workbench_without_runtime(monkeypatch, tmp_
     assert "下一步" in text
     assert "留档门槛" in text
     assert "覆盖底座" in text
-    assert "all-a | seed |" in text
+    assert "all-a | 种子覆盖 |" in text
     assert "全 A: 未接入" in text
     assert "持仓覆盖: 5/5" in text
     assert "market-intel dashboard" in text
