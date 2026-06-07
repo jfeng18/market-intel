@@ -1175,7 +1175,9 @@ def test_agent_next_mock_returns_demo_handoff_without_runtime(monkeypatch, tmp_p
     assert data["review_handoff"]["command_chain"][0]["json_command"] == "market-intel import schema --json"
     assert data["action_summary"]["next_command"] == "market-intel import schema --json"
     assert data["action_summary"]["command_queue"][0]["json_command"] == "market-intel import schema --json"
-    assert data["action_summary"]["command_queue"][1]["json_command"] == "market-intel pool quality invalid_symbol --json"
+    assert data["action_summary"]["command_queue"][1]["json_command"] == (
+        "market-intel pool quality column_shift_suspected --json"
+    )
     assert data["action_summary"]["completion_checklist"][0]["json_command"] == "market-intel import schema --json"
     assert data["action_summary"]["record_template"]["available"] is False
     assert data["review_completion"]["checks"]
@@ -1329,13 +1331,16 @@ def test_dashboard_returns_one_screen_workbench(monkeypatch, tmp_path):
     assert data["review_plan"]["items"]
     assert data["review_plan"]["items"][0]["item_type"] == "market_scan"
     assert any(
-        item["item_type"] == "coverage_review" and item["json_command"] == "market-intel pool quality invalid_symbol --json"
+        item["item_type"] == "coverage_review"
+        and item["json_command"] == "market-intel pool quality column_shift_suspected --json"
         for item in data["review_plan"]["items"]
     )
     assert any(item["item_type"] == "candidate_queue" for item in data["review_plan"]["items"])
     assert data["review_plan"]["items"][0]["done_when"]
     assert data["action_lane"]["items"][0]["item_type"] == "coverage_review"
-    assert data["action_lane"]["items"][0]["json_command"] == "market-intel pool quality invalid_symbol --json"
+    assert data["action_lane"]["items"][0]["json_command"] == (
+        "market-intel pool quality column_shift_suspected --json"
+    )
     assert data["handoff"]["next_read"]
     gate = data["handoff"]["journal_gate"]
     assert gate["state"] in {"needs_read", "needs_manual", "blocked", "ready"}
@@ -1440,7 +1445,9 @@ def test_dashboard_mock_returns_demo_workbench_without_runtime(monkeypatch, tmp_
     assert data["action_summary"]["next_command"] == "market-intel import schema --json"
     assert data["action_summary"]["journal_state"] == data["handoff"]["journal_gate"]["state"]
     assert data["action_summary"]["command_queue"][0]["json_command"] == "market-intel import schema --json"
-    assert data["action_summary"]["command_queue"][1]["json_command"] == "market-intel pool quality invalid_symbol --json"
+    assert data["action_summary"]["command_queue"][1]["json_command"] == (
+        "market-intel pool quality column_shift_suspected --json"
+    )
     assert data["action_summary"]["completion_checklist"] == data["handoff"]["completion_checklist"][:3]
     assert data["action_summary"]["completion_checklist"][0]["check_id"] == "runtime_setup"
     assert data["action_summary"]["completion_checklist"][0]["status"] == "pending"
@@ -1514,7 +1521,7 @@ def test_dashboard_mock_returns_demo_workbench_without_runtime(monkeypatch, tmp_
     assert coverage_payload["ok"] is True
     assert coverage_payload["command"] == "pool.quality"
     assert coverage_payload["data"]["pool"] == "all-a"
-    assert coverage_payload["data"]["flag"] == "invalid_symbol"
+    assert coverage_payload["data"]["flag"] == "column_shift_suspected"
 
 
 def test_dashboard_action_summary_selects_record_template_by_focus_source():
@@ -1667,7 +1674,7 @@ def test_dashboard_mock_preserves_non_default_pool(monkeypatch, tmp_path):
     assert coverage_payload["ok"] is True
     assert coverage_payload["command"] == "pool.quality"
     assert coverage_payload["data"]["pool"] == "ai-energy"
-    assert coverage_payload["data"]["flag"] == "invalid_symbol"
+    assert coverage_payload["data"]["flag"] == "column_shift_suspected"
 
 
 def test_agent_next_can_focus_symbol(monkeypatch, tmp_path):
@@ -2039,7 +2046,9 @@ def test_dashboard_mock_cli_smoke(monkeypatch, tmp_path, cli_cmd):
     assert data["data"]["state"] == "demo_ready"
     assert data["data"]["run_limits"]["mode"] == "mock"
     assert data["data"]["review_plan"]["items"][0]["json_command"] == "market-intel import schema --json"
-    assert data["data"]["review_plan"]["items"][1]["json_command"] == "market-intel pool quality invalid_symbol --json"
+    assert data["data"]["review_plan"]["items"][1]["json_command"] == (
+        "market-intel pool quality column_shift_suspected --json"
+    )
     assert data["data"]["review_plan"]["items"][2]["json_command"] == "market-intel scan --mock --json"
     assert "mock 示例" in text_result.stdout
     assert "准备正式 runtime 数据" in text_result.stdout

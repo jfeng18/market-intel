@@ -94,7 +94,8 @@ def build_data_quality_detail(pool: str, items: List[PoolItem], flag: str, limit
     data_quality = data_quality_summary(items)
     queue = build_data_quality_queue(pool, items, data_quality)
     queue_item = next((item for item in queue if item.get("flag") == clean_flag), None)
-    if not queue_item:
+    flagged_items = [item for item in items if clean_flag in item.data_quality_flags]
+    if not queue_item and not flagged_items:
         meta = data_quality_flag_meta(clean_flag)
         return {
             "pool": pool,
@@ -113,24 +114,21 @@ def build_data_quality_detail(pool: str, items: List[PoolItem], flag: str, limit
             "agent_contract": data_quality_detail_contract(),
             "write_policy": "只读复核数据质量样本；不自动修改 pool CSV 或 runtime 文件。",
         }
-    flagged_items = [item for item in items if clean_flag in item.data_quality_flags]
+    meta = queue_item if queue_item else data_quality_flag_meta(clean_flag)
     limited_samples = data_quality_detail_samples(pool, clean_flag, flagged_items, max(0, int(limit or 0)))
     return {
         "pool": pool,
         "flag": clean_flag,
         "found": True,
-        "rank": queue_item.get("rank"),
-        "summary": "%s 数据质量复核：影响 %s 个条目，优先级 %s。" % (
-            clean_flag,
-            queue_item.get("affected_count", 0),
-            queue_item.get("severity"),
-        ),
-        "severity": queue_item.get("severity"),
-        "category": queue_item.get("category"),
-        "reason": queue_item.get("reason"),
-        "suggested_action": queue_item.get("suggested_action"),
-        "done_when": queue_item.get("done_when"),
-        "affected_count": queue_item.get("affected_count", 0),
+        "queue_state": "queued" if queue_item else "tracked",
+        "rank": queue_item.get("rank") if queue_item else None,
+        "summary": data_quality_detail_summary(clean_flag, len(flagged_items), meta, bool(queue_item)),
+        "severity": meta.get("severity"),
+        "category": meta.get("category"),
+        "reason": meta.get("reason"),
+        "suggested_action": meta.get("suggested_action"),
+        "done_when": meta.get("done_when"),
+        "affected_count": len(flagged_items),
         "sample_count": len(limited_samples),
         "samples": limited_samples,
         "next_commands": [
@@ -141,6 +139,23 @@ def build_data_quality_detail(pool: str, items: List[PoolItem], flag: str, limit
         "agent_contract": data_quality_detail_contract(),
         "write_policy": "只读复核数据质量样本；不自动修改 pool CSV 或 runtime 文件。",
     }
+
+
+def data_quality_detail_summary(
+    flag: str,
+    affected_count: int,
+    meta: Dict[str, object],
+    queued: bool,
+) -> str:
+    if queued:
+        return "%s 数据质量复核：影响 %s 个条目，优先级 %s。" % (
+            flag,
+            affected_count,
+            meta.get("severity"),
+        )
+    if flag == "invalid_symbol":
+        return "%s 数据质量追踪：影响 %s 个条目；当前样本已由更具体标记分流。" % (flag, affected_count)
+    return "%s 数据质量追踪：影响 %s 个条目。" % (flag, affected_count)
 
 
 def data_quality_detail_samples(pool: str, flag: str, items: List[PoolItem], limit: int) -> List[Dict[str, object]]:
@@ -1222,6 +1237,8 @@ def build_data_quality_queue(
             by_flag.setdefault(flag, []).append(item)
     rows = []
     for flag, flagged_items in by_flag.items():
+        if flag == "invalid_symbol" and not has_unresolved_invalid_symbol(items):
+            continue
         meta = data_quality_flag_meta(flag)
         rows.append(
             {
@@ -1247,6 +1264,17 @@ def build_data_quality_queue(
     for index, row in enumerate(rows, start=1):
         row["rank"] = index
     return rows
+
+
+def has_unresolved_invalid_symbol(items: List[PoolItem]) -> bool:
+    for item in items:
+        if "invalid_symbol" not in item.data_quality_flags:
+            continue
+        for source in data_quality_flag_sources(item, "invalid_symbol"):
+            resolution = data_quality_resolution("", "invalid_symbol", item, source)
+            if isinstance(resolution, dict) and resolution.get("path") == "lookup_symbol":
+                return True
+    return False
 
 
 def data_quality_flag_meta(flag: str) -> Dict[str, str]:
@@ -1840,6 +1868,7 @@ def data_quality_detail_contract() -> Dict[str, object]:
             "data.pool",
             "data.flag",
             "data.found",
+            "data.queue_state",
             "data.severity",
             "data.category",
             "data.affected_count",
