@@ -65,6 +65,9 @@ def test_pool_coverage_all_a_reports_seed_boundaries():
     assert data["next_actions"][0]["id"] == "clean_data_quality_queue"
     assert data["next_actions"][0]["command"].startswith("market-intel pool quality ")
     assert data["next_actions"][1]["id"] == "expand_all_a_sources"
+    assert data["next_actions"][1]["command"] == "market-intel import universe examples/a_share_universe.csv.example --runtime --dry-run --json"
+    assert data["next_actions"][2]["id"] == "import_all_a_sources"
+    assert data["next_actions"][2]["command"] == "market-intel import universe examples/a_share_universe.csv.example --runtime --json"
     assert any(action["id"] == "inspect_coverage" for action in data["next_actions"])
     assert data["holdings_source"] == {"provided": False}
     assert data["expansion_queue"] == []

@@ -289,6 +289,7 @@ def import_schema() -> Dict[str, object]:
                 "source": "csv:<filename>",
             },
             "example_commands": [
+                "market-intel import universe examples/a_share_universe.csv.example --runtime --dry-run --json",
                 "market-intel import universe examples/a_share_universe.csv.example --runtime --json",
                 "market-intel import universe a_share_universe.csv --output data/runtime/a_share_universe.csv --json",
                 "market-intel import universe a_share_universe.csv --dry-run --json",

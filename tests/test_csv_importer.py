@@ -24,6 +24,9 @@ def test_import_schema_is_agent_friendly():
     assert payload["data"]["holdings"]["canonical_schema"]
     assert payload["data"]["universe"]["accepted_columns"]["symbol"]
     assert payload["data"]["universe"]["canonical_schema"]
+    universe_commands = payload["data"]["universe"]["example_commands"]
+    assert universe_commands[0] == "market-intel import universe examples/a_share_universe.csv.example --runtime --dry-run --json"
+    assert universe_commands[1] == "market-intel import universe examples/a_share_universe.csv.example --runtime --json"
     assert "data.coverage_delta" in payload["data"]["agent_contract"]["universe_stable_fields"]
     assert "data.coverage_delta.write_mode" in payload["data"]["agent_contract"]["universe_stable_fields"]
     assert "data.coverage_delta.changed_symbol_count" in payload["data"]["agent_contract"]["universe_stable_fields"]

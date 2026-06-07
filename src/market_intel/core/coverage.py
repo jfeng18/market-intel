@@ -1461,8 +1461,16 @@ def coverage_next_actions(
             {
                 "rank": 2,
                 "id": "expand_all_a_sources",
+                "command": "market-intel import universe examples/a_share_universe.csv.example --runtime --dry-run --json",
+                "done_when": "已用 dry-run 校验 A 股基础清单 CSV 字段、覆盖变化和 warnings。",
+            }
+        )
+        actions.append(
+            {
+                "rank": 3,
+                "id": "import_all_a_sources",
                 "command": "market-intel import universe examples/a_share_universe.csv.example --runtime --json",
-                "done_when": "已导入 A 股基础清单 CSV，并确认 coverage 的 universe.available=true。",
+                "done_when": "dry-run 通过后写入 A 股基础清单，并确认 coverage 的 universe.available=true。",
             }
         )
     elif scope == "all_a_seed" and universe.get("available"):
@@ -1611,9 +1619,10 @@ def action_priority(action_id: str) -> int:
     priorities = {
         "clean_data_quality_queue": 0,
         "expand_all_a_sources": 10,
-        "export_a_share_universe_patch": 11,
-        "merge_a_share_universe_patch": 12,
-        "review_a_share_universe": 13,
+        "import_all_a_sources": 11,
+        "export_a_share_universe_patch": 12,
+        "merge_a_share_universe_patch": 13,
+        "review_a_share_universe": 14,
         "review_expansion_queue": 20,
         "export_research_queue": 21,
         "review_foundation_holdings": 22,
