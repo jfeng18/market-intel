@@ -1885,10 +1885,10 @@ def render_dashboard_text(payload: Dict[str, object]) -> str:
     plan = data.get("review_plan", {}) if isinstance(data.get("review_plan"), dict) else {}
     if plan:
         lines.extend(["", "复盘计划"])
-        lines.extend(render_dashboard_compact_review_plan(plan))
+        lines.extend(render_dashboard_compact_review_plan(plan, compact=bool(action_summary.get("available"))))
     if handoff:
         lines.extend(["", "下一步"])
-        lines.extend(render_dashboard_compact_next_steps(handoff))
+        lines.extend(render_dashboard_compact_next_steps(handoff, compact=bool(action_summary.get("available"))))
     guardrails = data.get("guardrails", []) if isinstance(data.get("guardrails"), list) else []
     if guardrails:
         lines.extend(["", "边界"])
@@ -1959,10 +1959,13 @@ def render_dashboard_today_focus(value: Dict[str, object], compact: bool = False
         lines.append("  完成: %s" % dashboard_short_text(value.get("done_when"), 72))
     chain = value.get("focus_chain", []) if isinstance(value.get("focus_chain"), list) else []
     if chain:
-        lines.append("  接力:")
-        for item in chain[:3]:
-            if isinstance(item, dict):
-                lines.append("    #%s %s | %s" % (item.get("rank"), item.get("title"), item.get("json_command")))
+        if compact:
+            lines.append("  接力: %s 项，详见操作摘要和 JSON data.today_focus.focus_chain。" % len(chain))
+        else:
+            lines.append("  接力:")
+            for item in chain[:3]:
+                if isinstance(item, dict):
+                    lines.append("    #%s %s | %s" % (item.get("rank"), item.get("title"), item.get("json_command")))
     return lines
 
 
@@ -2189,7 +2192,7 @@ def render_dashboard_compact_evidence(value: Dict[str, object]) -> List[str]:
     return lines
 
 
-def render_dashboard_compact_review_plan(value: Dict[str, object]) -> List[str]:
+def render_dashboard_compact_review_plan(value: Dict[str, object], compact: bool = False) -> List[str]:
     lines = ["- %s" % dashboard_short_text(value.get("summary") or "暂无复盘计划。", 80)]
     items = value.get("items", []) if isinstance(value.get("items"), list) else []
     for item in items[:3]:
@@ -2200,12 +2203,14 @@ def render_dashboard_compact_review_plan(value: Dict[str, object]) -> List[str]:
             "  #%s %s | %s | %s"
             % (item.get("rank"), item.get("title"), label(item.get("item_type")), state)
         )
-        if item.get("json_command"):
+        if item.get("json_command") and not compact:
             lines.append("     命令: %s" % item.get("json_command"))
+    if compact and len(items) > 3:
+        lines.append("  其余: %s 项保留在 JSON data.review_plan.items。" % (len(items) - 3))
     return lines
 
 
-def render_dashboard_compact_next_steps(value: Dict[str, object]) -> List[str]:
+def render_dashboard_compact_next_steps(value: Dict[str, object], compact: bool = False) -> List[str]:
     lines = []
     gate = value.get("journal_gate", {}) if isinstance(value.get("journal_gate"), dict) else {}
     if gate:
@@ -2213,16 +2218,19 @@ def render_dashboard_compact_next_steps(value: Dict[str, object]) -> List[str]:
             "- 留档门槛: %s | %s"
             % (gate.get("state") or "unknown", dashboard_short_text(gate.get("next_step") or "", 64))
         )
-        if gate.get("json_command"):
+        if gate.get("json_command") and not compact:
             lines.append("  命令: %s" % gate.get("json_command"))
     next_read = value.get("next_read", []) if isinstance(value.get("next_read"), list) else []
     if next_read:
-        for item in next_read[:3]:
-            if isinstance(item, dict):
-                lines.append(
-                    "- 读: #%s %s | %s"
-                    % (item.get("rank"), item.get("title"), item.get("json_command"))
-                )
+        if compact:
+            lines.append("- 读: %s 项，下一条见操作摘要。" % len(next_read))
+        else:
+            for item in next_read[:3]:
+                if isinstance(item, dict):
+                    lines.append(
+                        "- 读: #%s %s | %s"
+                        % (item.get("rank"), item.get("title"), item.get("json_command"))
+                    )
     manual = value.get("manual_items", []) if isinstance(value.get("manual_items"), list) else []
     if manual and isinstance(manual[0], dict):
         item = manual[0]

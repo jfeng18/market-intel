@@ -1365,6 +1365,8 @@ def test_dashboard_returns_one_screen_workbench(monkeypatch, tmp_path):
     assert "今日焦点" in text
     assert "为什么:" in text
     assert "接力:" in text
+    assert "保留在 JSON data.review_plan.items" in text
+    assert "下一条见操作摘要" in text
     assert "定位" in text
     assert "个人复盘操作系统" in text
     assert "覆盖底座" in text
@@ -1470,6 +1472,9 @@ def test_dashboard_mock_returns_demo_workbench_without_runtime(monkeypatch, tmp_
     assert "记录: market-intel journal note --section" not in text
     assert "今日焦点" in text
     assert "接力:" in text
+    assert text.count("market-intel import schema --json") == 1
+    assert "其余: 5 项保留在 JSON data.review_plan.items。" in text
+    assert "读: 4 项，下一条见操作摘要。" in text
     assert "定位" in text
     assert "个人复盘操作系统" in text
     assert "候选:" in text
