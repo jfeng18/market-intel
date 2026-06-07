@@ -11,6 +11,7 @@ from market_intel.cli import (
     handle_pool_coverage,
 )
 from market_intel.core.fixtures import load_holdings_file, load_quotes_file
+from market_intel.core.text_report import render_import_universe_text
 
 
 def test_import_schema_is_agent_friendly():
@@ -134,6 +135,38 @@ def test_import_universe_dry_run_estimates_runtime_coverage_delta(monkeypatch, t
     ]
     assert str(runtime) not in json.dumps(payload, ensure_ascii=False)
     assert str(csv_path) not in json.dumps(payload, ensure_ascii=False)
+
+
+def test_import_universe_text_renders_coverage_delta(monkeypatch, tmp_path):
+    runtime = tmp_path / "runtime"
+    monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(runtime))
+    runtime.mkdir()
+    (runtime / "a_share_universe.csv").write_text(
+        "symbol,name,industry,concepts,index_membership,listing_status,source\n"
+        "000001,平安银行,银行,,沪深300,listed,existing\n"
+        "600519,贵州茅台,行业待补,白酒;消费,,listed,existing\n",
+        encoding="utf-8",
+    )
+    csv_path = tmp_path / "a_share_universe_update.csv"
+    csv_path.write_text(
+        "证券代码,证券名称,行业,概念,指数成分\n"
+        "000001,平安银行,银行,股份行;金融科技,沪深300\n"
+        "600519,贵州茅台,食品饮料,白酒;消费,上证50;沪深300\n",
+        encoding="utf-8",
+    )
+
+    text = render_import_universe_text(handle_import_universe(str(csv_path), use_runtime=True, dry_run=True))
+
+    assert "market-intel import universe" in text
+    assert "mode replace | dry_run True | written False" in text
+    assert "导入前: 记录 2 | 行业 50.0% 缺 1 | 概念 50.0% 缺 1 | 指数 50.0% 缺 1" in text
+    assert "导入后: 记录 2 | 行业 100.0% 缺 0 | 概念 100.0% 缺 0 | 指数 100.0% 缺 0" in text
+    assert "缺口变化: 行业 -1 | 概念 -1 | 指数 -1" in text
+    assert "import_and_verify | requires_import True" in text
+    assert "更新 000001 平安银行" in text
+    assert "market-intel import universe a_share_universe_update.csv --runtime --json" in text
+    assert str(runtime) not in text
+    assert str(csv_path) not in text
 
 
 def test_import_universe_dry_run_warns_when_no_coverage_improvement(monkeypatch, tmp_path):
@@ -467,20 +500,23 @@ def test_import_universe_cli_smoke(tmp_path, cli_cmd):
     csv_path = tmp_path / "a_share_universe.csv"
     csv_path.write_text("证券代码,证券名称,行业\n000001,平安银行,银行\n", encoding="utf-8")
 
-    result = subprocess.run(
-        cli_cmd(
-            "import",
-            "universe",
-            str(csv_path),
-            "--dry-run",
-            "--json",
-        ),
+    text_result = subprocess.run(
+        cli_cmd("import", "universe", str(csv_path), "--dry-run", "--text"),
         check=True,
         text=True,
         capture_output=True,
     )
-    payload = json.loads(result.stdout)
+    json_result = subprocess.run(
+        cli_cmd("import", "universe", str(csv_path), "--dry-run", "--json"),
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    payload = json.loads(json_result.stdout)
 
     assert payload["ok"] is True
     assert payload["command"] == "import.universe"
     assert payload["data"]["preview"][0]["symbol"] == "000001"
+    assert "market-intel import universe" in text_result.stdout
+    assert "导入后" in text_result.stdout
+    assert "requires_import" in text_result.stdout

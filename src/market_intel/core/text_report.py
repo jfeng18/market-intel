@@ -421,6 +421,57 @@ def render_pool_universe_text(payload: Dict[str, object]) -> str:
     return "\n".join(lines)
 
 
+def render_import_universe_text(payload: Dict[str, object]) -> str:
+    data = payload.get("data", {})
+    if not isinstance(data, dict):
+        return "market-intel import universe\n\n无数据。"
+
+    delta = data.get("coverage_delta", {}) if isinstance(data.get("coverage_delta"), dict) else {}
+    recommendation = delta.get("recommendation", {}) if isinstance(delta.get("recommendation"), dict) else {}
+    improvement = delta.get("improvement", {}) if isinstance(delta.get("improvement"), dict) else {}
+    lines = [
+        "market-intel import universe",
+        "",
+        "状态",
+        "- input %s | output %s | mode %s | dry_run %s | written %s"
+        % (
+            data.get("input") or "-",
+            data.get("output") or "-",
+            data.get("write_mode") or "-",
+            data.get("dry_run"),
+            data.get("written"),
+        ),
+        "- records %s -> target %s | changed %s | removed %s"
+        % (
+            data.get("record_count", 0),
+            data.get("target_record_count", 0),
+            delta.get("changed_symbol_count", 0),
+            delta.get("removed_symbol_count", 0),
+        ),
+        "",
+        "覆盖变化",
+    ]
+    lines.extend(render_universe_delta_summary(delta))
+    lines.extend(["", "建议"])
+    lines.append(
+        "- %s | requires_import %s"
+        % (
+            recommendation.get("action") or "-",
+            recommendation.get("requires_import"),
+        )
+    )
+    if recommendation.get("reason"):
+        lines.append("  原因: %s" % recommendation.get("reason"))
+    if improvement.get("summary"):
+        lines.append("  变化: %s" % improvement.get("summary"))
+    lines.extend(["", "变更样本"])
+    lines.extend(render_universe_delta_samples(delta))
+    lines.extend(["", "下一步"])
+    lines.extend(render_command_list(data.get("next_commands", [])))
+    lines.extend(["", "边界", "- dry-run 只预估覆盖变化，不写入 runtime。", "- 正式导入后必须重新运行 pool coverage 复验 universe.enrichment_queue。"])
+    return "\n".join(lines)
+
+
 def render_universe_summary(value: object) -> List[str]:
     data = value if isinstance(value, dict) else {}
     if not data.get("available"):
@@ -610,6 +661,84 @@ def render_universe_patch_rows(value: object) -> List[str]:
 def split_semicolon_values(value: object) -> List[str]:
     text = str(value or "")
     return [part.strip() for part in text.replace("；", ";").split(";") if part.strip()]
+
+
+def render_universe_delta_summary(value: object) -> List[str]:
+    delta = value if isinstance(value, dict) else {}
+    before = delta.get("before", {}) if isinstance(delta.get("before"), dict) else {}
+    after = delta.get("after", {}) if isinstance(delta.get("after"), dict) else {}
+    improvement = delta.get("improvement", {}) if isinstance(delta.get("improvement"), dict) else {}
+    if not delta.get("available") and not before and not after:
+        return ["- 暂无覆盖变化。"]
+    lines = [
+        "- 记录 %s -> %s | 新增 %s | 更新 %s | 删除 %s"
+        % (
+            delta.get("existing_record_count", 0),
+            delta.get("after_record_count", 0),
+            delta.get("new_symbol_count", 0),
+            delta.get("updated_symbol_count", 0),
+            delta.get("removed_symbol_count", 0),
+        )
+    ]
+    lines.append("  导入前: %s" % render_universe_field_coverage(before))
+    lines.append("  导入后: %s" % render_universe_field_coverage(after))
+    lines.append("  缺口变化: %s" % render_universe_missing_delta(improvement.get("missing_count_delta", {})))
+    return lines
+
+
+def render_universe_field_coverage(value: object) -> str:
+    data = value if isinstance(value, dict) else {}
+    missing = data.get("missing_count", {}) if isinstance(data.get("missing_count"), dict) else {}
+    ratios = data.get("coverage_ratio", {}) if isinstance(data.get("coverage_ratio"), dict) else {}
+    return (
+        "记录 %s | 行业 %s 缺 %s | 概念 %s 缺 %s | 指数 %s 缺 %s"
+        % (
+            data.get("record_count", 0),
+            render_ratio_percent(ratios.get("industry")),
+            missing.get("industry", 0),
+            render_ratio_percent(ratios.get("concepts")),
+            missing.get("concepts", 0),
+            render_ratio_percent(ratios.get("index_membership")),
+            missing.get("index_membership", 0),
+        )
+    )
+
+
+def render_universe_missing_delta(value: object) -> str:
+    data = value if isinstance(value, dict) else {}
+    return "行业 %+d | 概念 %+d | 指数 %+d" % (
+        int_or_default(data.get("industry"), 0),
+        int_or_default(data.get("concepts"), 0),
+        int_or_default(data.get("index_membership"), 0),
+    )
+
+
+def render_universe_delta_samples(value: object) -> List[str]:
+    delta = value if isinstance(value, dict) else {}
+    lines = []
+    changed = delta.get("changed_samples", []) if isinstance(delta.get("changed_samples"), list) else []
+    removed = delta.get("removed_samples", []) if isinstance(delta.get("removed_samples"), list) else []
+    for sample in changed[:5]:
+        if not isinstance(sample, dict):
+            continue
+        fields = sample.get("changed_fields", []) if isinstance(sample.get("changed_fields"), list) else []
+        lines.append(
+            "- 更新 %s %s | %s"
+            % (
+                sample.get("symbol") or "-",
+                sample.get("name") or "-",
+                ",".join(str(field) for field in fields) or "-",
+            )
+        )
+    for sample in removed[:5]:
+        if not isinstance(sample, dict):
+            continue
+        lines.append("- 删除 %s %s" % (sample.get("symbol") or "-", sample.get("name") or "-"))
+    return lines or ["- 暂无变更样本。"]
+
+
+def render_ratio_percent(value: object) -> str:
+    return "%.1f%%" % (float_or_default(value, 0.0) * 100)
 
 
 def render_scan_mode(value: object) -> str:

@@ -50,6 +50,7 @@ from .core.text_report import (
     render_agent_run_text,
     render_daily_report_text,
     render_focus_text,
+    render_import_universe_text,
     render_market_map_text,
     render_pool_coverage_text,
     render_pool_expansion_text,
@@ -275,6 +276,7 @@ def build_parser() -> argparse.ArgumentParser:
     import_universe_parser.add_argument("--dry-run", action="store_true")
     import_universe_parser.add_argument("--merge", action="store_true")
     import_universe_parser.add_argument("--json", action="store_true", dest="as_json")
+    import_universe_parser.add_argument("--text", action="store_true")
 
     import_research_parser = import_subparsers.add_parser("research")
     import_research_parser.add_argument("csv_path")
@@ -573,6 +575,9 @@ def main(argv: Optional[List[str]] = None) -> int:
                 args.dry_run,
                 args.merge,
             )
+            if args.text:
+                print(render_import_universe_text(result))
+                return 0 if result["ok"] else 1
         elif args.resource == "import" and args.action == "research":
             result = handle_import_research(
                 args.csv_path,
