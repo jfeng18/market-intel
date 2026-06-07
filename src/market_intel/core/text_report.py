@@ -2080,6 +2080,10 @@ def dashboard_short_text(value: object, limit: int = 80) -> str:
 
 
 def render_dashboard_action_summary(value: Dict[str, object]) -> List[str]:
+    decision_card = value.get("decision_card", {}) if isinstance(value.get("decision_card"), dict) else {}
+    if decision_card.get("available"):
+        return render_dashboard_decision_card(decision_card, value)
+
     lines = ["- %s" % (value.get("headline") or "暂无今日焦点。")]
     if value.get("why"):
         lines.append("  为什么: %s" % dashboard_short_text(value.get("why"), 72))
@@ -2109,6 +2113,50 @@ def render_dashboard_action_summary(value: Dict[str, object]) -> List[str]:
             % (label(value.get("journal_state")), "可记录" if value.get("journal_ready") else value.get("journal_next_step") or "未就绪")
         )
     record = value.get("record_template", {}) if isinstance(value.get("record_template"), dict) else {}
+    if record.get("prefilled_note_command"):
+        if record.get("runnable"):
+            lines.append("  记录: %s" % record.get("prefilled_note_command"))
+            if record.get("run_after"):
+                lines.append("  记录前置: %s" % record.get("run_after"))
+        else:
+            lines.append("  记录前置: %s" % (record.get("blocked_reason") or "先完成待读和人工确认项。"))
+            if record.get("prerequisite_command"):
+                lines.append("  前置命令: %s" % record.get("prerequisite_command"))
+            if record.get("prerequisite_done_when"):
+                lines.append("  前置完成: %s" % record.get("prerequisite_done_when"))
+    return lines
+
+
+def render_dashboard_decision_card(value: Dict[str, object], action_summary: Dict[str, object]) -> List[str]:
+    title = value.get("title") or action_summary.get("headline") or "暂无今日焦点。"
+    lines = ["- 先看: %s" % title]
+    if value.get("why"):
+        lines.append("  判断: %s" % dashboard_short_text(value.get("why"), 72))
+    if value.get("json_command"):
+        lines.append("  命令: %s" % value.get("json_command"))
+    if value.get("done_when"):
+        lines.append("  完成: %s" % dashboard_short_text(value.get("done_when"), 72))
+    if value.get("next_json_command"):
+        lines.append("  接力: %s | %s" % (value.get("next_title") or "下一项", value.get("next_json_command")))
+    check_title = value.get("check_title") or "收尾检查"
+    if value.get("check_status") or value.get("check_done_when"):
+        lines.append(
+            "  门槛: %s | %s | %s"
+            % (
+                check_title,
+                label(value.get("check_status") or ""),
+                dashboard_short_text(value.get("check_done_when") or "", 64),
+            )
+        )
+    if value.get("journal_state"):
+        lines.append(
+            "  留档: %s | %s"
+            % (
+                label(value.get("journal_state")),
+                "可记录" if value.get("journal_ready") else value.get("journal_next_step") or "未就绪",
+            )
+        )
+    record = action_summary.get("record_template", {}) if isinstance(action_summary.get("record_template"), dict) else {}
     if record.get("prefilled_note_command"):
         if record.get("runnable"):
             lines.append("  记录: %s" % record.get("prefilled_note_command"))

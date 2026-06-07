@@ -4299,6 +4299,42 @@ def dashboard_action_summary(today_focus: Dict[str, object], handoff: Dict[str, 
     journal_state = str(gate.get("state") or "unknown")
     next_step = str(gate.get("next_step") or "")
     command_queue = dashboard_action_command_queue(today_focus, checklist, chain)
+    completion_checklist = [
+        {
+            "rank": item.get("rank"),
+            "check_id": item.get("check_id"),
+            "title": item.get("title"),
+            "status": item.get("status"),
+            "reason": item.get("reason"),
+            "json_command": item.get("json_command"),
+            "done_when": item.get("done_when"),
+            "runnable": bool(item.get("runnable")),
+        }
+        for item in checklist[:3]
+        if isinstance(item, dict)
+    ]
+    record_template = {
+        "available": bool(first_record),
+        "runnable": bool(first_record) and bool(gate.get("ready_for_journal_note")),
+        "blocked_reason": "" if gate.get("ready_for_journal_note") else next_step,
+        "prerequisite_command": "" if gate.get("ready_for_journal_note") else str(gate.get("json_command") or command),
+        "prerequisite_done_when": "" if gate.get("ready_for_journal_note") else str(today_focus.get("done_when") or next_step),
+        "section": first_record.get("section"),
+        "title": first_record.get("title"),
+        "prefilled_note_command": first_record.get("prefilled_note_command"),
+        "run_after": first_record.get("run_after"),
+    }
+    blockers = list(gate.get("blockers", []))[:3] if isinstance(gate.get("blockers"), list) else []
+    next_chain = [
+        {
+            "rank": item.get("rank"),
+            "title": item.get("title"),
+            "json_command": item.get("json_command"),
+            "done_when": item.get("done_when"),
+        }
+        for item in chain[:3]
+        if isinstance(item, dict)
+    ]
     return {
         "available": bool(today_focus.get("available") or command),
         "headline": "先看：%s" % title if title else "暂无今日焦点。",
@@ -4309,43 +4345,58 @@ def dashboard_action_summary(today_focus: Dict[str, object], handoff: Dict[str, 
         "journal_ready": bool(gate.get("ready_for_journal_note")),
         "journal_next_step": next_step,
         "command_queue": command_queue,
-        "completion_checklist": [
-            {
-                "rank": item.get("rank"),
-                "check_id": item.get("check_id"),
-                "title": item.get("title"),
-                "status": item.get("status"),
-                "reason": item.get("reason"),
-                "json_command": item.get("json_command"),
-                "done_when": item.get("done_when"),
-                "runnable": bool(item.get("runnable")),
-            }
-            for item in checklist[:3]
-            if isinstance(item, dict)
-        ],
-        "record_template": {
-            "available": bool(first_record),
-            "runnable": bool(first_record) and bool(gate.get("ready_for_journal_note")),
-            "blocked_reason": "" if gate.get("ready_for_journal_note") else next_step,
-            "prerequisite_command": "" if gate.get("ready_for_journal_note") else str(gate.get("json_command") or command),
-            "prerequisite_done_when": "" if gate.get("ready_for_journal_note") else str(today_focus.get("done_when") or next_step),
-            "section": first_record.get("section"),
-            "title": first_record.get("title"),
-            "prefilled_note_command": first_record.get("prefilled_note_command"),
-            "run_after": first_record.get("run_after"),
-        },
-        "blockers": list(gate.get("blockers", []))[:3] if isinstance(gate.get("blockers"), list) else [],
-        "next_chain": [
-            {
-                "rank": item.get("rank"),
-                "title": item.get("title"),
-                "json_command": item.get("json_command"),
-                "done_when": item.get("done_when"),
-            }
-            for item in chain[:3]
-            if isinstance(item, dict)
-        ],
+        "completion_checklist": completion_checklist,
+        "record_template": record_template,
+        "blockers": blockers,
+        "next_chain": next_chain,
+        "decision_card": dashboard_decision_card(
+            source=str(today_focus.get("source") or ""),
+            title=title,
+            why=str(today_focus.get("reason") or next_step or "按复盘队列继续。"),
+            json_command=command,
+            done_when=str(today_focus.get("done_when") or ""),
+            journal_state=journal_state,
+            journal_ready=bool(gate.get("ready_for_journal_note")),
+            journal_next_step=next_step,
+            command_queue=command_queue,
+            completion_checklist=completion_checklist,
+            blockers=blockers,
+        ),
         "source": str(today_focus.get("source") or ""),
+    }
+
+
+def dashboard_decision_card(
+    source: str,
+    title: str,
+    why: str,
+    json_command: str,
+    done_when: str,
+    journal_state: str,
+    journal_ready: bool,
+    journal_next_step: str,
+    command_queue: List[object],
+    completion_checklist: List[object],
+    blockers: List[object],
+) -> Dict[str, object]:
+    next_item = next((item for item in command_queue[1:] if isinstance(item, dict) and item.get("json_command")), {})
+    first_check = next((item for item in completion_checklist if isinstance(item, dict)), {})
+    return {
+        "available": bool(title or json_command or journal_next_step),
+        "source": source,
+        "title": title,
+        "why": why,
+        "json_command": json_command,
+        "done_when": done_when,
+        "next_title": str(next_item.get("title") or ""),
+        "next_json_command": str(next_item.get("json_command") or ""),
+        "journal_state": journal_state,
+        "journal_ready": journal_ready,
+        "journal_next_step": journal_next_step,
+        "check_title": str(first_check.get("title") or first_check.get("check_id") or ""),
+        "check_status": str(first_check.get("status") or ""),
+        "check_done_when": str(first_check.get("done_when") or first_check.get("reason") or ""),
+        "blockers": dedupe_queue_texts(blockers)[:3],
     }
 
 
@@ -4926,6 +4977,15 @@ def dashboard_contract() -> Dict[str, object]:
             "data.summary",
             "data.tiles",
             "data.action_summary",
+            "data.action_summary.decision_card",
+            "data.action_summary.decision_card.title",
+            "data.action_summary.decision_card.why",
+            "data.action_summary.decision_card.json_command",
+            "data.action_summary.decision_card.done_when",
+            "data.action_summary.decision_card.next_json_command",
+            "data.action_summary.decision_card.journal_state",
+            "data.action_summary.decision_card.check_status",
+            "data.action_summary.decision_card.check_done_when",
             "data.action_summary.headline",
             "data.action_summary.next_command",
             "data.action_summary.journal_state",

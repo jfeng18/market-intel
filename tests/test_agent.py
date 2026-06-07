@@ -1286,6 +1286,13 @@ def test_dashboard_returns_one_screen_workbench(monkeypatch, tmp_path):
     assert data["action_summary"]["headline"].startswith("先看：")
     assert data["action_summary"]["next_command"] == data["today_focus"]["json_command"]
     assert data["action_summary"]["journal_state"] == data["handoff"]["journal_gate"]["state"]
+    decision_card = data["action_summary"]["decision_card"]
+    assert decision_card["available"] is True
+    assert decision_card["title"] == data["today_focus"]["title"]
+    assert decision_card["json_command"] == data["action_summary"]["next_command"]
+    assert decision_card["done_when"] == data["today_focus"]["done_when"]
+    assert decision_card["journal_state"] == data["handoff"]["journal_gate"]["state"]
+    assert decision_card["next_json_command"]
     assert data["action_summary"]["next_chain"][0]["json_command"] == data["today_focus"]["focus_chain"][0]["json_command"]
     action_queue = data["action_summary"]["command_queue"]
     assert action_queue
@@ -1313,6 +1320,14 @@ def test_dashboard_returns_one_screen_workbench(monkeypatch, tmp_path):
     assert data["positioning"]["differentiators"][0]["agent_path"] == "data.coverage_context"
     assert "data.today_focus" in data["agent_contract"]["stable_fields"]
     assert "data.action_summary" in data["agent_contract"]["stable_fields"]
+    assert "data.action_summary.decision_card" in data["agent_contract"]["stable_fields"]
+    assert "data.action_summary.decision_card.title" in data["agent_contract"]["stable_fields"]
+    assert "data.action_summary.decision_card.why" in data["agent_contract"]["stable_fields"]
+    assert "data.action_summary.decision_card.json_command" in data["agent_contract"]["stable_fields"]
+    assert "data.action_summary.decision_card.done_when" in data["agent_contract"]["stable_fields"]
+    assert "data.action_summary.decision_card.next_json_command" in data["agent_contract"]["stable_fields"]
+    assert "data.action_summary.decision_card.check_status" in data["agent_contract"]["stable_fields"]
+    assert "data.action_summary.decision_card.check_done_when" in data["agent_contract"]["stable_fields"]
     assert "data.action_summary.next_command" in data["agent_contract"]["stable_fields"]
     assert "data.action_summary.command_queue[].json_command" in data["agent_contract"]["stable_fields"]
     assert "data.action_summary.command_queue[].done_when" in data["agent_contract"]["stable_fields"]
@@ -1393,12 +1408,13 @@ def test_dashboard_returns_one_screen_workbench(monkeypatch, tmp_path):
     assert len(text.splitlines()) <= 65
     assert dashboard_text_max_non_command_line_length(text) <= 110
     assert "操作摘要" in text
-    assert "接力命令:" in text
     assert "门槛:" in text
     assert "记录前置:" in text
     assert "前置命令:" in text
     assert "前置完成:" in text
-    assert "为什么:" in text
+    assert "判断:" in text
+    assert "完成:" in text
+    assert "接力:" in text
     assert "今日焦点" not in text
     assert "\n概览\n" not in text
     assert "保留在 JSON data.review_plan.items" in text
@@ -1462,6 +1478,11 @@ def test_dashboard_mock_returns_demo_workbench_without_runtime(monkeypatch, tmp_
     assert data["today_focus"]["json_command"] == data["action_lane"]["items"][0]["json_command"]
     assert data["action_summary"]["next_command"] == "market-intel import schema --json"
     assert data["action_summary"]["journal_state"] == data["handoff"]["journal_gate"]["state"]
+    assert data["action_summary"]["decision_card"]["json_command"] == "market-intel import schema --json"
+    assert data["action_summary"]["decision_card"]["next_json_command"] == (
+        "market-intel pool quality column_shift_suspected --dry-run --json"
+    )
+    assert data["action_summary"]["decision_card"]["check_status"] == "pending"
     assert data["action_summary"]["command_queue"][0]["json_command"] == "market-intel import schema --json"
     assert data["action_summary"]["command_queue"][1]["json_command"] == (
         "market-intel pool quality column_shift_suspected --dry-run --json"
@@ -1507,7 +1528,9 @@ def test_dashboard_mock_returns_demo_workbench_without_runtime(monkeypatch, tmp_
     assert len(text.splitlines()) <= 65
     assert dashboard_text_max_non_command_line_length(text) <= 110
     assert "操作摘要" in text
-    assert "接力命令:" in text
+    assert "判断:" in text
+    assert "完成:" in text
+    assert "接力:" in text
     assert "门槛:" in text
     assert "记录: market-intel journal note --section" not in text
     assert "今日焦点" not in text
@@ -1576,6 +1599,9 @@ def test_dashboard_action_summary_selects_record_template_by_focus_source():
     assert summary["record_template"]["runnable"] is False
     assert summary["record_template"]["blocked_reason"] == "先读候选。"
     assert "security_review" in summary["record_template"]["prefilled_note_command"]
+    assert summary["decision_card"]["source"] == "candidate_queue"
+    assert summary["decision_card"]["json_command"] == "market-intel pool explain 300308 --runtime --json"
+    assert summary["decision_card"]["journal_state"] == "needs_read"
 
 
 def test_dashboard_blocked_handoff_does_not_duplicate_next_read(monkeypatch, tmp_path):
