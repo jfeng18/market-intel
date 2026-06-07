@@ -2263,6 +2263,7 @@ def mock_dashboard_candidate(pool: str, item: Dict[str, object]) -> Dict[str, ob
         "name": item.get("name"),
         "review_score": item.get("review_score"),
         "coverage_state": item.get("coverage_state"),
+        "universe_context": compact_dashboard_universe_context(item.get("universe_context", {})),
         "review_focus": review_focus,
         "why_now": item.get("why_now"),
         "json_command": json_command,
@@ -2896,12 +2897,39 @@ def dashboard_scan_candidates(scan: Dict[str, object]) -> List[Dict[str, object]
                 "name": item.get("name"),
                 "review_score": item.get("review_score"),
                 "coverage_state": item.get("coverage_state"),
+                "universe_context": compact_dashboard_universe_context(item.get("universe_context", {})),
                 "review_focus": review_focus,
                 "why_now": item.get("why_now"),
                 "json_command": json_command,
             }
         )
     return rows[:5]
+
+
+def compact_dashboard_universe_context(value: object) -> Dict[str, object]:
+    context = value if isinstance(value, dict) else {}
+    top_contexts = context.get("top_contexts", []) if isinstance(context.get("top_contexts"), list) else []
+    return {
+        "available": bool(context.get("available")),
+        "dimensions": list(context.get("dimensions", []))[:3] if isinstance(context.get("dimensions"), list) else [],
+        "dimension_count": context.get("dimension_count", 0),
+        "industry": context.get("industry"),
+        "concept_count": context.get("concept_count", 0),
+        "index_membership_count": context.get("index_membership_count", 0),
+        "context_count": context.get("context_count", 0),
+        "top_contexts": [
+            {
+                "group_type": item.get("group_type"),
+                "name": item.get("name"),
+                "score": item.get("score"),
+                "rank": item.get("rank"),
+            }
+            for item in top_contexts[:3]
+            if isinstance(item, dict)
+        ],
+        "score_bonus": context.get("score_bonus", 0),
+        "explain": context.get("explain"),
+    }
 
 
 def compact_scan_review_focus_with_next(value: object, next_command: object) -> Dict[str, object]:
@@ -3392,6 +3420,7 @@ def dashboard_contract() -> Dict[str, object]:
             "data.market_pulse",
             "data.market_pulse.top_groups",
             "data.market_pulse.candidates",
+            "data.market_pulse.candidates[].universe_context",
             "data.portfolio_pulse",
             "data.portfolio_pulse.top_holdings",
             "data.portfolio_pulse.pressure_groups",
@@ -3851,6 +3880,7 @@ def agent_run_digest_market_scan(briefing_data: Dict[str, object], results: List
                 "name": item.get("name"),
                 "review_score": item.get("review_score"),
                 "coverage_state": item.get("coverage_state"),
+                "universe_context": item.get("universe_context", {}),
                 "review_focus": compact_scan_review_focus_with_next(
                     item.get("review_focus", {}),
                     (item.get("commands", []) if isinstance(item.get("commands"), list) else [None])[0],
@@ -7344,6 +7374,7 @@ def agent_run_contract() -> Dict[str, object]:
             "data.review_digest.market_scan",
             "data.review_digest.market_scan.top_groups",
             "data.review_digest.market_scan.top_candidates",
+            "data.review_digest.market_scan.top_candidates[].universe_context",
             "data.review_digest.data_repair_plan",
             "data.review_digest.data_repair_plan.items",
             "data.review_digest.data_repair_plan.groups",
@@ -7482,6 +7513,7 @@ def agent_next_contract() -> Dict[str, object]:
             "data.market_scan",
             "data.market_scan.top_groups",
             "data.market_scan.top_candidates",
+            "data.market_scan.top_candidates[].universe_context",
             "data.review_handoff",
             "data.review_handoff.handoff_state",
             "data.review_handoff.resume_prompt",

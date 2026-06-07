@@ -248,10 +248,13 @@ def compact_scan_candidate(item: Dict[str, object]) -> Dict[str, object]:
                 "name": context.get("name"),
                 "score": context.get("score"),
                 "rank": context.get("rank"),
+                "member_count": context.get("member_count", 0),
+                "active_member_count": context.get("active_member_count", 0),
             }
             for context in (item.get("sector_contexts", []) if isinstance(item.get("sector_contexts"), list) else [])[:3]
             if isinstance(context, dict)
         ],
+        "universe_context": compact_scan_universe_context(item.get("universe_context", {})),
         "risk_flags": list(item.get("risk_flags", []))[:8] if isinstance(item.get("risk_flags"), list) else [],
         "review_focus": compact_scan_review_focus(item.get("review_focus", {})),
         "why_now": item.get("why_now"),
@@ -292,11 +295,38 @@ def compact_scan_review_focus(value: object) -> Dict[str, object]:
             if isinstance(coverage.get("missing_research_fields"), list)
             else [],
         },
+        "universe_context": compact_scan_universe_context(focus.get("universe_context", {})),
         "signal_drivers": list(focus.get("signal_drivers", []))[:5] if isinstance(focus.get("signal_drivers"), list) else [],
         "risk_flags": list(focus.get("risk_flags", []))[:6] if isinstance(focus.get("risk_flags"), list) else [],
         "first_check": focus.get("first_check"),
         "next_command": focus.get("next_command"),
         "done_when": focus.get("done_when"),
+    }
+
+
+def compact_scan_universe_context(value: object) -> Dict[str, object]:
+    context = value if isinstance(value, dict) else {}
+    top_contexts = context.get("top_contexts", []) if isinstance(context.get("top_contexts"), list) else []
+    return {
+        "available": bool(context.get("available")),
+        "dimensions": list(context.get("dimensions", []))[:3] if isinstance(context.get("dimensions"), list) else [],
+        "dimension_count": context.get("dimension_count", 0),
+        "industry": context.get("industry"),
+        "concept_count": context.get("concept_count", 0),
+        "index_membership_count": context.get("index_membership_count", 0),
+        "context_count": context.get("context_count", 0),
+        "top_contexts": [
+            {
+                "group_type": item.get("group_type"),
+                "name": item.get("name"),
+                "score": item.get("score"),
+                "rank": item.get("rank"),
+            }
+            for item in top_contexts[:3]
+            if isinstance(item, dict)
+        ],
+        "score_bonus": context.get("score_bonus", 0),
+        "explain": context.get("explain"),
     }
 
 
@@ -1329,6 +1359,7 @@ def agent_briefing_contract(max_quote_age_days: int) -> Dict[str, object]:
             "data.market_scan",
             "data.market_scan.sector_groups",
             "data.market_scan.candidate_securities",
+            "data.market_scan.candidate_securities[].universe_context",
             "data.market_scan.candidate_securities[].why_now",
             "data.market_scan.candidate_securities[].checklist",
             "data.daily.available",

@@ -101,6 +101,11 @@ def test_scan_uses_a_share_universe_groups(monkeypatch, tmp_path):
     assert first["symbol"] == "000001"
     assert first["coverage_state"] == "foundation"
     assert "foundation_pool_match" in first["risk_flags"]
+    assert first["universe_context"]["available"] is True
+    assert first["universe_context"]["dimension_count"] == 3
+    assert first["universe_context"]["context_count"] == 5
+    assert first["universe_context"]["score_bonus"] > 0
+    assert first["review_focus"]["universe_context"]["score_bonus"] == first["universe_context"]["score_bonus"]
     assert first["research_status"]["status"] == "missing"
     assert first["review_focus"]["classification"]["industry"] == "银行"
     assert "股份行" in first["review_focus"]["classification"]["concepts"]
@@ -108,10 +113,59 @@ def test_scan_uses_a_share_universe_groups(monkeypatch, tmp_path):
     assert first["review_focus"]["coverage"]["missing_research_fields"] == ["thesis", "evidence", "invalidation"]
     assert first["review_focus"]["next_command"] == first["commands"][0]
     assert first["commands"][1] == "market-intel pool research --runtime --dry-run --json"
+    assert "data.candidate_securities[].universe_context" in data["agent_contract"]["stable_fields"]
+    assert "全 A 归属" in first["why_now"]
+    assert "全 A:" in text
     assert "全 A 基础清单" in text
     assert "行业银行" in text
     assert str(universe_file) not in json.dumps(payload, ensure_ascii=False)
     assert str(quotes_file) not in json.dumps(payload, ensure_ascii=False)
+
+
+def test_scan_keeps_universe_context_for_non_leader_members(monkeypatch, tmp_path):
+    universe_file = tmp_path / "a_share_universe.csv"
+    universe_file.write_text(
+        "证券代码,证券名称,行业,概念,指数成分,上市状态\n"
+        "000001,标的一,电子,半导体;国产替代,沪深300,listed\n"
+        "000002,标的二,电子,半导体;国产替代,沪深300,listed\n"
+        "000003,标的三,电子,半导体;国产替代,沪深300,listed\n"
+        "000004,标的四,电子,半导体;国产替代,沪深300,listed\n"
+        "000005,标的五,电子,半导体;国产替代,沪深300,listed\n"
+        "000006,标的六,电子,半导体;国产替代,沪深300,listed\n",
+        encoding="utf-8",
+    )
+    quotes = []
+    for index, symbol in enumerate(["000001", "000002", "000003", "000004", "000005", "000006"], start=1):
+        quotes.append(
+            {
+                "symbol": symbol,
+                "trade_date": "2026-06-06",
+                "last_price": 10 + index,
+                "change_pct": 7 - index * 0.5,
+                "amount": 100000000 * index,
+                "amount_ratio": 1.8,
+                "turnover_rate": 2.0,
+                "amplitude_pct": 4.0,
+                "is_limit_up": False,
+                "is_stage_high": symbol == "000006",
+                "intraday_fade_pct": 0.3,
+                "source": "test",
+            }
+        )
+    quotes_file = tmp_path / "quotes.json"
+    quotes_file.write_text(json.dumps({"quotes": quotes}, ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setenv("MARKET_INTEL_A_SHARE_UNIVERSE_PATHS", str(universe_file))
+
+    payload = handle_scan("all-a", use_mock=False, quotes_file=str(quotes_file), top=5, candidate_top=6)
+    data = payload["data"]
+    by_symbol = {item["symbol"]: item for item in data["candidate_securities"]}
+    sixth = by_symbol["000006"]
+
+    assert payload["ok"] is True
+    assert sixth["universe_context"]["industry"] == "电子"
+    assert sixth["universe_context"]["context_count"] == 4
+    assert sixth["sector_contexts"][0]["member_count"] == 6
+    assert "全 A 归属" in sixth["why_now"]
 
 
 def test_scan_requires_quote_source_has_text_guidance():

@@ -820,6 +820,9 @@ def render_scan_candidates(value: object) -> List[str]:
         )
         if row.get("why_now"):
             lines.append("   为何现在看: %s" % row.get("why_now"))
+        universe_context = row.get("universe_context", {}) if isinstance(row.get("universe_context"), dict) else {}
+        if universe_context.get("available"):
+            lines.append("   全 A: %s" % render_universe_context_line(universe_context))
         focus = row.get("review_focus", {}) if isinstance(row.get("review_focus"), dict) else {}
         if focus.get("headline"):
             lines.append("   复核焦点: %s" % focus.get("headline"))
@@ -862,6 +865,21 @@ def render_scan_leaders(value: object) -> str:
             )
         )
     return "；".join(parts) if parts else "无"
+
+
+def render_universe_context_line(value: Dict[str, object]) -> str:
+    parts = []
+    if value.get("industry"):
+        parts.append("行业 %s" % value.get("industry"))
+    if value.get("concept_count"):
+        parts.append("概念 %s" % value.get("concept_count"))
+    if value.get("index_membership_count"):
+        parts.append("指数 %s" % value.get("index_membership_count"))
+    if value.get("context_count"):
+        parts.append("共振 %s" % value.get("context_count"))
+    if value.get("score_bonus"):
+        parts.append("加成 %.0f" % float(value.get("score_bonus") or 0))
+    return " | ".join(parts) if parts else str(value.get("explain") or "已接入")
 
 
 def render_scan_actions(value: object) -> List[str]:
@@ -1858,13 +1876,16 @@ def render_dashboard_compact_market(value: Dict[str, object]) -> List[str]:
         rendered_candidates = []
         for item in candidates[:3]:
             if isinstance(item, dict):
+                universe = item.get("universe_context", {}) if isinstance(item.get("universe_context"), dict) else {}
+                suffix = "+%.0f" % float(universe.get("score_bonus") or 0) if universe.get("score_bonus") else ""
                 rendered_candidates.append(
-                    "#%s %s %s(%s)"
+                    "#%s %s %s(%s%s)"
                     % (
                         item.get("rank"),
                         item.get("symbol"),
                         item.get("name"),
                         label(item.get("coverage_state")),
+                        suffix,
                     )
                 )
         if rendered_candidates:

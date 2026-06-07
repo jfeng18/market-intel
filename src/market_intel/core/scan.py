@@ -26,7 +26,7 @@ def build_market_scan(
     ]
 
     groups = build_scan_groups(quoted_items)
-    symbol_context = build_symbol_context(groups)
+    symbol_context = build_symbol_context(quoted_items, groups)
     candidates = build_scan_candidates(quoted_items, holding_symbols, symbol_context, limit=candidate_top, pool=pool)
     scan_mode = "all_a_universe" if any(has_universe_context(item) for item, _ in quoted_items) else "pool_chain_seed"
 
@@ -189,31 +189,43 @@ def group_risks(member_count: int, active_count: int, avg_fade: float) -> List[s
     return risks
 
 
-def build_symbol_context(groups: List[Dict[str, object]]) -> Dict[str, List[Dict[str, object]]]:
+def build_symbol_context(
+    quoted_items: List[Tuple[PoolItem, Quote]],
+    groups: List[Dict[str, object]],
+) -> Dict[str, List[Dict[str, object]]]:
+    group_by_key = {str(group.get("key")): group for group in groups if isinstance(group, dict)}
     by_symbol: Dict[str, List[Dict[str, object]]] = defaultdict(list)
-    for group in groups:
-        leaders = group.get("leaders", []) if isinstance(group.get("leaders"), list) else []
-        for leader in leaders:
-            if not isinstance(leader, dict):
+    for item, _ in quoted_items:
+        if not item.symbol:
+            continue
+        seen = set()
+        for key in scan_group_keys(item):
+            group_key = "%s:%s" % (key[0], key[1])
+            if group_key in seen:
                 continue
-            symbol = str(leader.get("symbol") or "")
-            if not symbol:
+            seen.add(group_key)
+            group = group_by_key.get(group_key)
+            if not group:
                 continue
-            by_symbol[symbol].append(
-                {
-                    "key": group.get("key"),
-                    "group_type": group.get("group_type"),
-                    "layer": group.get("layer"),
-                    "name": group.get("name"),
-                    "score": group.get("score"),
-                    "rank": group.get("rank"),
-                    "signals": group.get("signals", []),
-                    "risks": group.get("risks", []),
-                }
-            )
+            by_symbol[item.symbol].append(scan_context_row(group))
     for contexts in by_symbol.values():
         contexts.sort(key=lambda row: (-float(row.get("score") or 0), int(row.get("rank") or 9999)))
     return by_symbol
+
+
+def scan_context_row(group: Dict[str, object]) -> Dict[str, object]:
+    return {
+        "key": group.get("key"),
+        "group_type": group.get("group_type"),
+        "layer": group.get("layer"),
+        "name": group.get("name"),
+        "score": group.get("score"),
+        "rank": group.get("rank"),
+        "member_count": group.get("member_count", 0),
+        "active_member_count": group.get("active_member_count", 0),
+        "signals": group.get("signals", []),
+        "risks": group.get("risks", []),
+    }
 
 
 def build_scan_candidates(
@@ -231,7 +243,16 @@ def build_scan_candidates(
         state = matched_coverage_state(item)
         research = research_status(item)
         risk_flags = candidate_risk_flags(item, quote, contexts, state["state"])
-        review_score = candidate_review_score(item, quote, contexts, item.symbol in holding_symbols, risk_flags, research)
+        universe_context = candidate_universe_context(item, contexts)
+        review_score = candidate_review_score(
+            item,
+            quote,
+            contexts,
+            item.symbol in holding_symbols,
+            risk_flags,
+            research,
+            universe_context,
+        )
         checklist = candidate_checklist(quote, contexts, state["state"], research, risk_flags)
         commands = candidate_commands(item.symbol, state["state"], pool)
         done_when = candidate_done_when(state["state"])
@@ -248,14 +269,33 @@ def build_scan_candidates(
                 "primary_sub_sector": item.primary_sub_sector,
                 "quote": quote.to_dict(),
                 "sector_contexts": contexts[:4],
+                "universe_context": universe_context,
                 "coverage_state": state["state"],
                 "coverage_state_reasons": state["reasons"],
                 "research_status": research,
                 "risk_flags": risk_flags,
                 "review_score": review_score,
                 "priority": priority_label(review_score),
-                "why_now": candidate_why_now(item, quote, contexts, state["state"], item.symbol in holding_symbols),
-                "review_focus": candidate_review_focus(item, quote, contexts, state, research, risk_flags, checklist, commands, done_when),
+                "why_now": candidate_why_now(
+                    item,
+                    quote,
+                    contexts,
+                    state["state"],
+                    item.symbol in holding_symbols,
+                    universe_context,
+                ),
+                "review_focus": candidate_review_focus(
+                    item,
+                    quote,
+                    contexts,
+                    state,
+                    research,
+                    risk_flags,
+                    checklist,
+                    commands,
+                    done_when,
+                    universe_context,
+                ),
                 "checklist": checklist,
                 "commands": commands,
                 "done_when": done_when,
@@ -300,11 +340,13 @@ def candidate_review_score(
     is_holding: bool,
     risk_flags: List[str],
     research: Dict[str, object],
+    universe_context: Dict[str, object],
 ) -> float:
     best_context_score = max([float(context.get("score") or 0) for context in contexts] or [0])
     score = min(max(quote.change_pct, 0) * 2.2, 22)
     score += min(quote.amount_ratio * 6, 18)
     score += min(best_context_score / 2, 40)
+    score += float(universe_context.get("score_bonus") or 0)
     if quote.is_stage_high:
         score += 8
     if is_holding:
@@ -324,6 +366,7 @@ def candidate_why_now(
     contexts: List[Dict[str, object]],
     coverage_state: str,
     is_holding: bool,
+    universe_context: Dict[str, object],
 ) -> str:
     parts = [
         "涨幅 %+s%%，成交放大 %.2f" % (quote.change_pct, quote.amount_ratio),
@@ -337,6 +380,8 @@ def candidate_why_now(
         parts.append("阶段新高")
     if is_holding:
         parts.append("当前持仓")
+    if universe_context.get("available") and universe_context.get("explain"):
+        parts.append(str(universe_context.get("explain")))
     if coverage_state != "confirmed":
         parts.append("覆盖状态 %s 需复核" % coverage_state)
     return "；".join(parts)
@@ -381,6 +426,7 @@ def candidate_review_focus(
     checklist: List[str],
     commands: List[str],
     done_when: str,
+    universe_context: Dict[str, object],
 ) -> Dict[str, object]:
     state = str(coverage_state.get("state") or "")
     return {
@@ -393,11 +439,109 @@ def candidate_review_focus(
             "research_confirmed": bool(research.get("confirmed")),
             "missing_research_fields": list(research.get("missing_fields", [])) if isinstance(research.get("missing_fields"), list) else [],
         },
+        "universe_context": compact_universe_context(universe_context),
         "signal_drivers": candidate_signal_drivers(quote, contexts),
         "risk_flags": risk_flags[:8],
         "first_check": checklist[0] if checklist else "",
         "next_command": commands[0] if commands else "",
         "done_when": done_when,
+    }
+
+
+def candidate_universe_context(item: PoolItem, contexts: List[Dict[str, object]]) -> Dict[str, object]:
+    industry = str(item.raw.get("universe_industry") or "").strip()
+    concepts = split_universe_values(item.raw.get("universe_concepts"))
+    indexes = split_universe_values(item.raw.get("universe_index_membership"))
+    dimensions = []
+    if industry:
+        dimensions.append("industry")
+    if concepts:
+        dimensions.append("concept")
+    if indexes:
+        dimensions.append("index")
+    universe_contexts = [
+        context
+        for context in contexts
+        if str(context.get("group_type")) in {"industry", "concept", "index"}
+    ]
+    score_bonus = universe_score_bonus(dimensions, universe_contexts)
+    return {
+        "available": bool(dimensions or has_universe_context(item)),
+        "dimensions": dimensions,
+        "dimension_count": len(dimensions),
+        "industry": industry or None,
+        "concept_count": len(concepts),
+        "index_membership_count": len(indexes),
+        "context_count": len(universe_contexts),
+        "top_contexts": [compact_scan_context(context) for context in universe_contexts[:4]],
+        "score_bonus": score_bonus,
+        "explain": universe_context_explain(industry, concepts, indexes, universe_contexts, score_bonus),
+    }
+
+
+def universe_score_bonus(dimensions: List[str], contexts: List[Dict[str, object]]) -> float:
+    if not dimensions:
+        return 0.0
+    bonus = min(len(dimensions) * 3, 8)
+    if len(contexts) >= 2:
+        bonus += 3
+    if len(contexts) >= 4:
+        bonus += 2
+    if any(float(context.get("score") or 0) >= 70 for context in contexts):
+        bonus += 3
+    return round(min(bonus, 16), 2)
+
+
+def universe_context_explain(
+    industry: str,
+    concepts: List[str],
+    indexes: List[str],
+    contexts: List[Dict[str, object]],
+    score_bonus: float,
+) -> str:
+    parts = []
+    if industry:
+        parts.append("行业=%s" % industry)
+    if concepts:
+        parts.append("概念=%s" % "/".join(concepts[:2]))
+    if indexes:
+        parts.append("指数=%s" % "/".join(indexes[:2]))
+    if not parts:
+        return ""
+    best = contexts[0] if contexts else {}
+    suffix = ""
+    if best:
+        suffix = "，最强%s%s %s" % (
+            group_type_label(best.get("group_type")),
+            best.get("name"),
+            best.get("score"),
+        )
+    return "全 A 归属 %s%s，评分加成 %.0f" % ("；".join(parts), suffix, score_bonus)
+
+
+def compact_universe_context(value: Dict[str, object]) -> Dict[str, object]:
+    return {
+        "available": bool(value.get("available")),
+        "dimensions": list(value.get("dimensions", []))[:3] if isinstance(value.get("dimensions"), list) else [],
+        "dimension_count": value.get("dimension_count", 0),
+        "industry": value.get("industry"),
+        "concept_count": value.get("concept_count", 0),
+        "index_membership_count": value.get("index_membership_count", 0),
+        "context_count": value.get("context_count", 0),
+        "top_contexts": list(value.get("top_contexts", []))[:3] if isinstance(value.get("top_contexts"), list) else [],
+        "score_bonus": value.get("score_bonus", 0),
+        "explain": value.get("explain"),
+    }
+
+
+def compact_scan_context(value: Dict[str, object]) -> Dict[str, object]:
+    return {
+        "group_type": value.get("group_type"),
+        "name": value.get("name"),
+        "score": value.get("score"),
+        "rank": value.get("rank"),
+        "member_count": value.get("member_count", 0),
+        "active_member_count": value.get("active_member_count", 0),
     }
 
 
@@ -569,11 +713,13 @@ def scan_contract() -> Dict[str, object]:
             "data.sector_groups[].leaders",
             "data.candidate_securities",
             "data.candidate_securities[].review_score",
+            "data.candidate_securities[].universe_context",
             "data.candidate_securities[].coverage_state",
             "data.candidate_securities[].research_status",
             "data.candidate_securities[].review_focus",
             "data.candidate_securities[].review_focus.classification",
             "data.candidate_securities[].review_focus.coverage",
+            "data.candidate_securities[].review_focus.universe_context",
             "data.candidate_securities[].review_focus.next_command",
             "data.candidate_securities[].why_now",
             "data.candidate_securities[].checklist",

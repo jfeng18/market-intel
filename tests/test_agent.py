@@ -971,6 +971,7 @@ def test_agent_next_returns_compact_handoff(monkeypatch, tmp_path):
     assert data["market_scan"]["top_candidates"][0]["review_focus"]["headline"]
     assert data["market_scan"]["top_candidates"][0]["review_focus"]["next_command"]
     assert data["market_scan"]["top_candidates"][0]["review_focus"]["next_command"] == data["market_scan"]["top_candidates"][0]["commands"][0]
+    assert "universe_context" in data["market_scan"]["top_candidates"][0]
     assert data["review_handoff"]["command_chain"]
     assert data["review_handoff"]["command_chain"][0]["json_command"].endswith("--json")
     assert data["security_cards"]["cards"]
@@ -981,6 +982,7 @@ def test_agent_next_returns_compact_handoff(monkeypatch, tmp_path):
     assert "data.market_scan" in data["agent_contract"]["stable_fields"]
     assert "data.market_scan.top_groups" in data["agent_contract"]["stable_fields"]
     assert "data.market_scan.top_candidates" in data["agent_contract"]["stable_fields"]
+    assert "data.market_scan.top_candidates[].universe_context" in data["agent_contract"]["stable_fields"]
     assert "data.review_handoff.command_chain[].json_command" in data["agent_contract"]["stable_fields"]
     assert "market-intel agent next" in text
     assert "覆盖底座" in text
@@ -1022,6 +1024,7 @@ def test_dashboard_returns_one_screen_workbench(monkeypatch, tmp_path):
     assert data["market_pulse"]["available"] is True
     assert data["market_pulse"]["top_groups"]
     assert data["market_pulse"]["candidates"]
+    assert "universe_context" in data["market_pulse"]["candidates"][0]
     assert data["market_pulse"]["candidates"][0]["review_focus"]["headline"]
     assert data["market_pulse"]["candidates"][0]["review_focus"]["next_command"] == data["market_pulse"]["candidates"][0]["json_command"]
     assert data["market_pulse"]["candidates"][0]["json_command"].endswith("--json")
@@ -1045,6 +1048,7 @@ def test_dashboard_returns_one_screen_workbench(monkeypatch, tmp_path):
     assert "data.coverage_context.top_gaps" in data["agent_contract"]["stable_fields"]
     assert "data.coverage_context.top_data_quality_queue" in data["agent_contract"]["stable_fields"]
     assert "data.market_pulse.candidates" in data["agent_contract"]["stable_fields"]
+    assert "data.market_pulse.candidates[].universe_context" in data["agent_contract"]["stable_fields"]
     assert "data.portfolio_pulse.top_holdings" in data["agent_contract"]["stable_fields"]
     assert "data.action_lane.items" in data["agent_contract"]["stable_fields"]
     assert "data.review_plan.items[].json_command" in data["agent_contract"]["stable_fields"]
