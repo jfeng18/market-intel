@@ -5,6 +5,7 @@ from typing import Dict, List, Optional
 
 from .models import PoolItem
 from .normalize import merge_pool_items, normalize_row
+from .symbols import normalize_symbol_text
 
 
 ALL_A_POOL = "all-a"
@@ -133,7 +134,7 @@ def apply_research_notes(items: List[PoolItem], paths: List[Path]) -> None:
     for item in items:
         if not item.symbol:
             continue
-        note = notes.get(item.symbol.upper())
+        note = notes.get(normalize_symbol_text(item.symbol))
         if not note:
             continue
         item.raw["research_note"] = note
@@ -153,11 +154,11 @@ def read_research_notes(paths: List[Path]) -> Dict[str, Dict[str, object]]:
         with path.open(newline="", encoding="utf-8-sig") as handle:
             reader = csv.DictReader(handle)
             for row in reader:
-                symbol = first_value(row, ["symbol", "code", "证券代码", "股票代码", "代码"])
+                symbol = normalize_symbol_text(first_value(row, ["symbol", "code", "证券代码", "股票代码", "代码"]))
                 if not symbol:
                     continue
                 note = {
-                    "symbol": symbol.strip().upper(),
+                    "symbol": symbol,
                     "name": first_value(row, ["name", "company", "证券名称", "股票名称", "名称"]),
                     "status": normalize_research_status(first_value(row, ["status", "review_status", "研究状态", "状态"])),
                     "thesis": first_value(row, ["thesis", "logic", "核心逻辑", "研究结论", "逻辑"]),

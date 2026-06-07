@@ -118,6 +118,25 @@ def test_a_share_universe_metadata_survives_existing_seed_merge(monkeypatch, tmp
     assert "universe:a_share_universe.csv" in item.raw["merged_pool_sources"]
 
 
+def test_research_notes_accept_common_a_share_symbol_formats(monkeypatch, tmp_path):
+    research_file = tmp_path / "research_notes.csv"
+    research_file.write_text(
+        "symbol,name,status,thesis,evidence,invalidation,updated_at,source\n"
+        "300308.SZ,中际旭创,reviewed,光模块龙头,订单和业绩验证,海外资本开支下修,2026-06-07,test\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("MARKET_INTEL_RESEARCH_NOTES_PATHS", str(research_file))
+
+    items = load_pool("all-a")
+    item = find_pool_item(items, "300308")
+
+    assert item is not None
+    assert item.raw["research_schema"] == "research_notes_v1"
+    assert item.raw["research_status"] == "reviewed"
+    assert item.raw["research_note"]["symbol"] == "300308"
+    assert item.raw["research_thesis"] == "光模块龙头"
+
+
 def test_unknown_pool_lists_supported_pools():
     with pytest.raises(ValueError) as exc:
         load_pool("unknown")
