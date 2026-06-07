@@ -41,15 +41,15 @@ market-intel portfolio review --mock --text
 market-intel init runtime --json
 market-intel status runtime --text
 market-intel dashboard --text
-market-intel agent briefing --text
+market-intel scan --runtime --text
 ```
 
-补数据和留痕：
+补数先 dry-run，确认后再写入：
 
 ```bash
 market-intel pool coverage --runtime --text
-market-intel pool universe --runtime --output data/runtime/a_share_universe_patch.csv --text
-market-intel pool research --runtime --output data/runtime/research_notes.todo.csv --text
+market-intel pool universe --runtime --dry-run --text
+market-intel pool research --runtime --dry-run --text
 market-intel import universe data/runtime/a_share_universe_patch.csv --runtime --merge --dry-run --text
 market-intel import research data/runtime/research_notes.todo.csv --dry-run --json
 market-intel journal save --runtime --json
