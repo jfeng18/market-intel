@@ -2180,11 +2180,30 @@ def render_dashboard_compact_portfolio(value: Dict[str, object]) -> List[str]:
                 rendered.append("#%s %s %s" % (item.get("rank"), item.get("symbol"), item.get("name")))
         if rendered:
             lines.append("  先看: %s" % "；".join(rendered))
+        first_reason = render_dashboard_holding_reason(holdings[0])
+        if first_reason:
+            lines.append("  原因: %s" % first_reason)
     groups = value.get("pressure_groups", []) if isinstance(value.get("pressure_groups"), list) else []
     pressure_line = render_dashboard_pressure_groups(groups)
     if pressure_line:
         lines.append("  压力: %s" % pressure_line)
     return lines
+
+
+def render_dashboard_holding_reason(value: object) -> str:
+    item = value if isinstance(value, dict) else {}
+    if not item:
+        return ""
+    title = "%s %s" % (item.get("symbol"), item.get("name") or "")
+    question = dashboard_short_text(item.get("primary_question") or "", 46)
+    risks = item.get("risk_flags", []) if isinstance(item.get("risk_flags"), list) else []
+    risk_text = "、".join(label(risk) for risk in risks[:3])
+    parts = [title.strip()]
+    if question:
+        parts.append(question)
+    if risk_text:
+        parts.append("风险 %s" % risk_text)
+    return " | ".join(parts)
 
 
 def render_dashboard_pressure_groups(groups: List[object]) -> str:

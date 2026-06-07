@@ -1484,6 +1484,7 @@ def test_dashboard_mock_returns_demo_workbench_without_runtime(monkeypatch, tmp_
     assert "个人复盘操作系统" in text
     assert "候选:" in text
     assert "先看:" in text
+    assert "原因: 300308 中际旭创 | 复核多链路或主题重叠是否导致同涨同跌暴露。 | 风险 追高风险、多链路暴露、主题重叠" in text
     assert "压力: 链路 运力/CPO / 硅光 | 持仓 2；主题 光通信 | 持仓 2" in text
     assert "下一步" in text
     assert "留档门槛" in text
