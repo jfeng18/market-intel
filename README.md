@@ -1,15 +1,15 @@
 # market-intel
 
-面向全 A 的本地复盘工作台。它把行情、持仓、覆盖边界、研究证据和 journal 留痕串成一条可复跑流程。
+面向全 A 的本地复盘工作台：把行情、持仓、覆盖边界、研究证据和 journal 串成可复跑流程。
 
-它不是行情 App、交易入口或荐股工具；不输出买卖指令、目标价或仓位建议。
+不是行情 App、交易入口或荐股工具；不输出买卖指令、目标价或仓位建议。
 
 ## 竞争力
 
-- 覆盖边界清楚：区分 `confirmed/foundation/draft/missing/blocked`。
-- 持仓优先：先看自己的票缺什么、重叠在哪里、风险暴露是否集中。
-- 证据闭环：基础清单、研究备注、dry-run 导入、coverage 复验、journal 留痕连起来。
-- agent 友好：稳定 JSON、`next_commands`、`done_when` 和接力路径。
+- 状态清楚：区分 `confirmed/foundation/draft/missing/blocked`。
+- 持仓优先：先看缺行情、缺覆盖、主题重叠和集中暴露。
+- 证据闭环：基础清单、研究备注、dry-run、coverage、journal 连起来。
+- Agent 友好：稳定 JSON、下一条命令、完成标准和接力路径。
 - 本地私有：runtime 数据不提交，公开文档不写个人信息。
 
 ## 安装
@@ -57,8 +57,8 @@ market-intel journal save --runtime --json
 
 ## 文档
 
-- `docs/product.md`：定位、边界、路线。
-- `docs/design.md`：架构和流程。
+- `docs/product.md`：定位、差异化、路线。
+- `docs/design.md`：架构、流程、约束。
 - `docs/data-model.md`：稳定 JSON 口径。
 - `docs/review.md`：验收清单。
 
