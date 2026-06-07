@@ -154,7 +154,7 @@ def data_quality_detail_samples(flag: str, items: List[PoolItem], limit: int) ->
 
 
 def data_quality_detail_sample(flag: str, item: PoolItem, source: Dict[str, object]) -> Dict[str, object]:
-    return {
+    sample = {
         "symbol": item.symbol,
         "name": item.name,
         "instrument_type": item.instrument_type,
@@ -170,6 +170,10 @@ def data_quality_detail_sample(flag: str, item: PoolItem, source: Dict[str, obje
         "flags": data_quality_source_flags(source, item),
         "fix_hint": data_quality_fix_hint(flag, item),
     }
+    suggested_row = data_quality_suggested_row(flag, item, source)
+    if suggested_row:
+        sample["suggested_row"] = suggested_row
+    return sample
 
 
 def data_quality_flag_sources(item: PoolItem, flag: str) -> List[Dict[str, object]]:
@@ -225,6 +229,42 @@ def data_quality_fix_hint(flag: str, item: PoolItem) -> str:
             return "核对同一 symbol 的多行暴露是否都应保留；若是重复描述，合并 CSV 行。关联 raw_row=%s。" % ",".join(str(row) for row in rows)
         return "核对同一 symbol 的多链路暴露是否真实；保留合理暴露，合并重复行。"
     return data_quality_flag_meta(flag)["suggested_action"]
+
+
+def data_quality_suggested_row(flag: str, item: PoolItem, source: Dict[str, object]) -> Optional[Dict[str, object]]:
+    if flag != "column_shift_suspected":
+        return None
+    code = str(item.symbol or "").strip()
+    company = str(item.name or source.get("raw_code") or "").strip()
+    desc = column_shift_suggested_desc(item, source)
+    return {
+        "status": "pending",
+        "priority": item.priority,
+        "section": source.get("raw_section") or "",
+        "level": column_shift_suggested_level(item, source),
+        "company": company,
+        "code": code,
+        "desc": desc,
+        "notes": "fixes_column_shift; source_row=%s" % (source.get("raw_row") or ""),
+    }
+
+
+def column_shift_suggested_level(item: PoolItem, source: Dict[str, object]) -> str:
+    raw_company = str(source.get("raw_company") or "").strip()
+    raw_level = str(source.get("raw_level") or "").strip()
+    if raw_level:
+        return raw_level
+    if raw_company and raw_company != item.name:
+        return raw_company
+    return str(item.primary_role or "")
+
+
+def column_shift_suggested_desc(item: PoolItem, source: Dict[str, object]) -> str:
+    raw_desc = str(source.get("raw_desc") or "").strip()
+    symbol = str(item.symbol or "").strip()
+    if symbol and raw_desc.startswith(symbol):
+        raw_desc = raw_desc[len(symbol) :].strip(" |")
+    return raw_desc or str(item.logic or "")
 
 
 def export_expansion_queue_csv(
@@ -1638,6 +1678,7 @@ def data_quality_detail_contract() -> Dict[str, object]:
             "data.samples[].raw_company",
             "data.samples[].raw_desc",
             "data.samples[].fix_hint",
+            "data.samples[].suggested_row",
             "data.suggested_action",
             "data.done_when",
             "data.next_commands",

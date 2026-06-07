@@ -346,6 +346,17 @@ def render_pool_quality_text(payload: Dict[str, object]) -> str:
                 "  原始: company=%s | desc=%s"
                 % (sample.get("raw_company") or "", sample.get("raw_desc") or "")
             )
+        suggested = sample.get("suggested_row")
+        if isinstance(suggested, dict):
+            lines.append(
+                "  建议: company=%s | code=%s | level=%s | desc=%s"
+                % (
+                    suggested.get("company") or "",
+                    suggested.get("code") or "",
+                    suggested.get("level") or "",
+                    suggested.get("desc") or "",
+                )
+            )
         if sample.get("fix_hint"):
             lines.append("  修复提示: %s" % sample.get("fix_hint"))
     lines.extend(["", "下一步"])

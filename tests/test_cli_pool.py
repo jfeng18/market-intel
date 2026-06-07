@@ -857,6 +857,29 @@ def test_pool_quality_uses_flag_source_rows_for_merged_items():
     assert not any(sample["symbol"] == "002156" and sample["raw_row"] == 33 for sample in samples)
 
 
+def test_pool_quality_column_shift_suggests_corrected_pool_row():
+    payload = handle_pool_quality("all-a", "column_shift_suspected", limit=1)
+    data = payload["data"]
+    sample = data["samples"][0]
+    suggested = sample["suggested_row"]
+    text = render_pool_quality_text(payload)
+
+    assert sample["raw_row"] == 238
+    assert sample["raw_code"] == "通富微电"
+    assert suggested == {
+        "status": "pending",
+        "priority": "P1",
+        "section": "3.3 HBM（史诗级紧缺）",
+        "level": "🇨🇳 中国封装",
+        "company": "通富微电",
+        "code": "002156",
+        "desc": "HBM3e 堆叠封装龙头",
+        "notes": "fixes_column_shift; source_row=238",
+    }
+    assert "data.samples[].suggested_row" in data["agent_contract"]["stable_fields"]
+    assert "建议: company=通富微电 | code=002156" in text
+
+
 def test_pool_quality_unknown_flag_returns_structured_error():
     payload = handle_pool_quality("all-a", "not_a_flag")
     data = payload["data"]
