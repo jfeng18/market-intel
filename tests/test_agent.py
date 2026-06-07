@@ -1328,6 +1328,8 @@ def test_dashboard_init_runtime_prioritizes_market_over_seed_quality(monkeypatch
     payload = handle_dashboard("all-a", max_quote_age_days=9999, max_steps=5)
     data = payload["data"]
     item_types = [item["item_type"] for item in data["review_plan"]["items"]]
+    candidates = {item["symbol"]: item for item in data["market_pulse"]["candidates"]}
+    holdings = {item["symbol"]: item for item in data["portfolio_pulse"]["top_holdings"]}
 
     assert payload["ok"] is True
     assert data["state"] in {"needs_review", "ready_for_note", "blocked_review"}
@@ -1336,6 +1338,16 @@ def test_dashboard_init_runtime_prioritizes_market_over_seed_quality(monkeypatch
     assert item_types[0] == "market_scan"
     assert "coverage_review" in item_types
     assert data["coverage_context"]["top_gaps"][0]["id"] == "data_quality_flags"
+    assert {
+        symbol: candidates[symbol]["review_focus"]["coverage"]["research_status"]
+        for symbol in ["300308", "002281", "002837"]
+    } == {"300308": "reviewed", "002281": "reviewed", "002837": "reviewed"}
+    assert candidates["300308"]["coverage_state"] == "confirmed"
+    assert candidates["002281"]["coverage_state"] == "confirmed"
+    assert candidates["002837"]["coverage_state"] == "draft"
+    assert holdings["300308"]["primary_question"].startswith("研究证据已复核")
+    assert holdings["002281"]["primary_question"].startswith("研究证据已复核")
+    assert holdings["002837"]["primary_question"].startswith("先确认候选补池行")
 
 
 def test_dashboard_surfaces_universe_enrichment_queue(monkeypatch, tmp_path):
