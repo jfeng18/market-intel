@@ -387,6 +387,40 @@ def render_pool_research_text(payload: Dict[str, object]) -> str:
     return "\n".join(lines)
 
 
+def render_pool_universe_text(payload: Dict[str, object]) -> str:
+    data = payload.get("data", {})
+    if not isinstance(data, dict):
+        return "market-intel pool universe\n\n无数据。"
+
+    lines = [
+        "market-intel pool universe",
+        "",
+        "状态",
+        "- export | 行 %s | written %s | dry_run %s | output %s"
+        % (
+            data.get("record_count", 0),
+            data.get("written"),
+            data.get("dry_run"),
+            data.get("output"),
+        ),
+        "- pool %s | mode %s | limit %s"
+        % (
+            data.get("pool") or "-",
+            data.get("mode") or "-",
+            data.get("limit") if data.get("limit") is not None else "none",
+        ),
+        "",
+        "待补字段",
+    ]
+    lines.extend(render_universe_patch_field_counts(data.get("rows", [])))
+    lines.extend(["", "补数样本"])
+    lines.extend(render_universe_patch_rows(data.get("rows", [])))
+    lines.extend(["", "下一步"])
+    lines.extend(render_command_list(data.get("next_commands", [])))
+    lines.extend(["", "边界", "- 只导出 A 股基础清单补数字段草稿，不自动写入 runtime。", "- 合并写入必须走 import universe --merge，并先 dry-run。"])
+    return "\n".join(lines)
+
+
 def render_universe_summary(value: object) -> List[str]:
     data = value if isinstance(value, dict) else {}
     if not data.get("available"):
@@ -520,6 +554,62 @@ def render_expansion_ready_rows(value: object) -> List[str]:
             )
         )
     return lines
+
+
+def render_universe_patch_field_counts(value: object) -> List[str]:
+    rows = value if isinstance(value, list) else []
+    if not rows:
+        return ["- 暂无待补字段。"]
+    counts = {"industry": 0, "concepts": 0, "index_membership": 0}
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        for field in split_semicolon_values(row.get("missing_fields")):
+            if field in counts:
+                counts[field] += 1
+    return [
+        "- 行业 %s | 概念 %s | 指数 %s"
+        % (
+            counts["industry"],
+            counts["concepts"],
+            counts["index_membership"],
+        )
+    ]
+
+
+def render_universe_patch_rows(value: object) -> List[str]:
+    rows = value if isinstance(value, list) else []
+    if not rows:
+        return ["- 暂无 universe 补数字段草稿。"]
+    lines = []
+    for row in rows[:10]:
+        if not isinstance(row, dict):
+            continue
+        lines.append(
+            "- %s %s | 缺字段: %s | %s"
+            % (
+                row.get("symbol") or "-",
+                row.get("name") or "-",
+                row.get("missing_fields") or "-",
+                row.get("fill_hint") or "补齐缺失字段",
+            )
+        )
+        lines.append(
+            "   现值: 行业=%s | 概念=%s | 指数=%s"
+            % (
+                row.get("industry") or "待补",
+                row.get("concepts") or "待补",
+                row.get("index_membership") or "待补",
+            )
+        )
+    if len(rows) > 10:
+        lines.append("- 还有 %s 行未展示，可用 --limit 分批导出。" % (len(rows) - 10))
+    return lines
+
+
+def split_semicolon_values(value: object) -> List[str]:
+    text = str(value or "")
+    return [part.strip() for part in text.replace("；", ";").split(";") if part.strip()]
 
 
 def render_scan_mode(value: object) -> str:

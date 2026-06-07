@@ -56,6 +56,7 @@ from .core.text_report import (
     render_pool_explain_text,
     render_pool_quality_text,
     render_pool_research_text,
+    render_pool_universe_text,
     render_journal_entry_text,
     render_journal_compare_text,
     render_journal_list_text,
@@ -127,6 +128,7 @@ def build_parser() -> argparse.ArgumentParser:
     universe_parser.add_argument("--dry-run", action="store_true")
     universe_parser.add_argument("--limit", type=int)
     universe_parser.add_argument("--json", action="store_true", dest="as_json")
+    universe_parser.add_argument("--text", action="store_true")
 
     explain_parser = pool_subparsers.add_parser("explain")
     explain_parser.add_argument("symbol")
@@ -430,6 +432,9 @@ def main(argv: Optional[List[str]] = None) -> int:
                 args.dry_run,
                 args.limit,
             )
+            if args.text:
+                print(render_pool_universe_text(result))
+                return 0 if result["ok"] else 1
         elif args.resource == "pool" and args.action == "explain":
             result = handle_pool_explain(args.pool, args.symbol, args.runtime)
             if args.text and result["ok"]:

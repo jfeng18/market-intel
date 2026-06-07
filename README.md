@@ -83,6 +83,7 @@ PYTHONPATH=src python3 -m market_intel.cli pool list --pool all-a --json
 PYTHONPATH=src python3 -m market_intel.cli pool coverage --text
 PYTHONPATH=src python3 -m market_intel.cli pool coverage --mock --text
 PYTHONPATH=src python3 -m market_intel.cli pool quality invalid_symbol --text
+PYTHONPATH=src python3 -m market_intel.cli pool universe --dry-run --text
 PYTHONPATH=src python3 -m market_intel.cli pool coverage --pool ai-energy --json
 PYTHONPATH=src python3 -m market_intel.cli pool list --pool ai-energy --json
 PYTHONPATH=src python3 -m market_intel.cli pool explain 002837 --json
@@ -110,6 +111,7 @@ market-intel pool explain 002837 --text
 market-intel pool coverage --text
 market-intel pool coverage --runtime --text
 market-intel pool quality invalid_symbol --text
+market-intel pool universe --dry-run --text
 market-intel hotspots --mock --json
 market-intel holdings impact --mock --json
 market-intel portfolio review --mock --text
@@ -300,7 +302,7 @@ market-intel holdings impact --runtime --json
 
 `data.universe.enrichment_queue` 会把 A 股基础清单缺失的行业、概念、指数成分字段转成补数队列。每项包含 `field`、`missing_count`、样本标的、`--merge --dry-run` 导入命令和 `done_when`，适合按 rank 逐项补齐全 A 覆盖底座。
 
-`pool universe --dry-run --json` 会导出 A 股基础清单补数 CSV 模板。模板按 `symbol/name/industry/concepts/index_membership/listing_status/source` 输出，默认覆盖当前所有缺行业、概念或指数成分的标的；可用 `--limit` 先抽样。导出的 `missing_fields` 和 `fill_hint` 是给人和 agent 看的辅助列，`import universe` 会忽略它们；填好后用 `import universe <patch.csv> --runtime --merge --dry-run --json` 复验，再正式 `--merge` 写入 runtime。
+`pool universe --dry-run --text` 会把 A 股基础清单补数字段渲染成人能直接复核的报告：待补行数、行业/概念/指数缺字段计数、样本标的、当前字段值、填充提示和下一步命令。`pool universe --dry-run --json` 是同一份补数 CSV 模板的 agent 合同输出，模板按 `symbol/name/industry/concepts/index_membership/listing_status/source` 输出，默认覆盖当前所有缺行业、概念或指数成分的标的；可用 `--limit` 先抽样。导出的 `missing_fields` 和 `fill_hint` 是给人和 agent 看的辅助列，`import universe` 会忽略它们；填好后用 `import universe <patch.csv> --runtime --merge --dry-run --json` 复验，再正式 `--merge` 写入 runtime。
 
 `import universe --dry-run --json` 会返回 `data.coverage_delta`，在写入前按正式导入后的目标文件预估这份 CSV 对 A 股基础清单字段覆盖的影响：导入前后记录数、行业/概念/指数成分覆盖率、缺字段数量、`write_mode`、`improved_fields`、缺口变化、`removed_symbol_count` 和 `recommendation.requires_import`。若 dry-run 确认改善且不会移除已有标的，`data.next_commands` 会给出正式 `import universe --runtime --json`、`pool coverage --runtime --json` 和 `dashboard --text` 的接力命令；若没有改善或会缩小现有清单，warnings 会说明原因并把下一步停在补数复核或完整 CSV dry-run。配合 `universe.enrichment_queue` 可以先判断 CSV 是否真的减少全 A 补数任务，再正式导入。默认导入按完整清单覆盖写入；局部补行业/概念/指数成分时使用 `--merge`，会保留已有标的和已有有效字段，只写入 CSV 中明确提供的有效补数字段。
 

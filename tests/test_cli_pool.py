@@ -13,7 +13,14 @@ from market_intel.cli import (
     handle_pool_research,
     handle_pool_universe,
 )
-from market_intel.core.text_report import render_pool_coverage_text, render_pool_expansion_text, render_pool_explain_text, render_pool_quality_text, render_pool_research_text
+from market_intel.core.text_report import (
+    render_pool_coverage_text,
+    render_pool_expansion_text,
+    render_pool_explain_text,
+    render_pool_quality_text,
+    render_pool_research_text,
+    render_pool_universe_text,
+)
 
 
 def test_pool_list_returns_json_envelope():
@@ -378,6 +385,29 @@ def test_pool_universe_runtime_does_not_require_runtime_holdings(monkeypatch, tm
     assert payload["data"]["rows"][0]["symbol"] == "000001"
     assert payload["data"]["rows"][0]["concepts"] == ""
     assert str(runtime) not in json.dumps(payload, ensure_ascii=False)
+
+
+def test_pool_universe_text_renders_patch_guidance(monkeypatch, tmp_path):
+    universe_file = tmp_path / "a_share_universe.csv"
+    universe_file.write_text(
+        "证券代码,证券名称,行业,概念,指数成分,上市状态\n"
+        "000001,平安银行,银行,,沪深300,listed\n"
+        "600519,贵州茅台,,白酒;消费,,listed\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("MARKET_INTEL_A_SHARE_UNIVERSE_PATHS", str(universe_file))
+
+    text = render_pool_universe_text(handle_pool_universe("all-a", dry_run=True))
+
+    assert "market-intel pool universe" in text
+    assert "行 2" in text
+    assert "行业 1 | 概念 1 | 指数 1" in text
+    assert "000001 平安银行 | 缺字段: concepts" in text
+    assert "600519 贵州茅台 | 缺字段: industry;index_membership" in text
+    assert "补概念" in text
+    assert "补指数成分" in text
+    assert "market-intel pool universe --runtime --output data/runtime/a_share_universe_patch.csv --json" in text
+    assert "import universe --merge" in text
 
 
 def test_pool_research_exports_foundation_research_draft(monkeypatch, tmp_path):
@@ -927,19 +957,20 @@ def test_pool_universe_cli_smoke(monkeypatch, tmp_path, cli_cmd):
     )
     monkeypatch.setenv("MARKET_INTEL_A_SHARE_UNIVERSE_PATHS", str(universe_file))
 
-    result = subprocess.run(
-        cli_cmd(
-            "pool",
-            "universe",
-            "--dry-run",
-            "--json",
-        ),
+    text_result = subprocess.run(
+        cli_cmd("pool", "universe", "--dry-run", "--text"),
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    json_result = subprocess.run(
+        cli_cmd("pool", "universe", "--dry-run", "--json"),
         check=True,
         text=True,
         capture_output=True,
     )
 
-    payload = json.loads(result.stdout)
+    payload = json.loads(json_result.stdout)
     assert payload["command"] == "pool.universe"
     assert payload["data"]["rows"][0]["symbol"] == "000001"
     assert payload["data"]["fields"] == [
@@ -953,6 +984,9 @@ def test_pool_universe_cli_smoke(monkeypatch, tmp_path, cli_cmd):
         "missing_fields",
         "fill_hint",
     ]
+    assert "market-intel pool universe" in text_result.stdout
+    assert "000001 平安银行" in text_result.stdout
+    assert "补概念" in text_result.stdout
 
 
 def test_pool_expansion_review_cli_smoke(tmp_path, cli_cmd):
