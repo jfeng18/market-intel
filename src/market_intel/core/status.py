@@ -313,6 +313,7 @@ def build_next_actions(
                 "init_runtime",
                 "market-intel init runtime --json",
                 "runtime 文件缺失，先生成模板或导入 CSV。",
+                "runtime 目录存在，quotes、holdings 和全 A 基础清单模板已生成或已准备导入。",
                 runnable=True,
             )
         )
@@ -322,6 +323,7 @@ def build_next_actions(
                 "inspect_import_schema",
                 "market-intel import schema --json",
                 "查看 CSV 导入字段合同。",
+                "已确认 quotes、holdings、a_share_universe 和 research_notes 可接受字段。",
                 runnable=True,
             )
         )
@@ -335,6 +337,7 @@ def build_next_actions(
                 "fix_runtime_errors",
                 "market-intel validate runtime --json",
                 "修复 validation.errors 后再生成日报。",
+                "validate runtime 返回 errors=[]，再重新运行 status runtime。",
                 runnable=False,
             )
         )
@@ -347,6 +350,7 @@ def build_next_actions(
                 "refresh_quotes",
                 "market-intel import quotes <quotes.csv> --runtime --json",
                 "行情日期过旧或缺失，先刷新 quotes.json。",
+                "quotes.json 已更新到可接受交易日，freshness.errors 清空且 is_stale=false。",
                 runnable=False,
             )
         )
@@ -357,6 +361,7 @@ def build_next_actions(
                 "review_warnings",
                 "market-intel validate runtime --json",
                 "复核数据告警，必要时补齐行情或持仓。",
+                "已确认 warnings 是否可接受，或导入修正后的 runtime 数据。",
                 runnable=True,
             )
         )
@@ -367,6 +372,7 @@ def build_next_actions(
                 "export_a_share_universe_patch",
                 "market-intel pool universe --runtime --dry-run --json",
                 "先导出 A 股基础清单补丁草稿，减少种子覆盖偏差。",
+                "dry-run 已生成可检查的 A 股基础清单补丁，并确认下一步导入来源。",
                 runnable=True,
             )
         )
@@ -376,6 +382,7 @@ def build_next_actions(
             "run_daily_report",
             "market-intel daily --runtime --text",
             "生成日常复盘报告。",
+            "已阅读文本日报并确认风险、证据缺口和下一步命令。",
             runnable=bool(readiness.get("can_run_daily")),
         )
     )
@@ -385,17 +392,19 @@ def build_next_actions(
             "run_daily_json",
             "market-intel daily --runtime --json",
             "给 agent 读取完整结构化日报。",
+            "agent 已读取 JSON 日报，并记录 review_path、risk_register 和 command_queue。",
             runnable=bool(readiness.get("can_run_daily")),
         )
     )
     return sorted(actions, key=lambda item: int(item.get("priority", 999)))
 
 
-def action(priority: int, action_id: str, command: str, reason: str, runnable: bool) -> Dict[str, object]:
+def action(priority: int, action_id: str, command: str, reason: str, done_when: str, runnable: bool) -> Dict[str, object]:
     return {
         "priority": priority,
         "id": action_id,
         "command": command,
         "reason": reason,
+        "done_when": done_when,
         "runnable": runnable,
     }

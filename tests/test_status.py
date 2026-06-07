@@ -21,6 +21,8 @@ def test_status_runtime_missing_files(monkeypatch, tmp_path):
     assert data["readiness"]["can_run_daily"] is False
     assert data["next_actions"][0]["command"] == "market-intel init runtime --json"
     assert data["next_actions"][0]["runnable"] is True
+    assert data["next_actions"][0]["done_when"]
+    assert data["next_actions"][1]["done_when"]
 
 
 def test_status_runtime_all_a_degraded_without_universe(monkeypatch, tmp_path):
@@ -41,6 +43,7 @@ def test_status_runtime_all_a_degraded_without_universe(monkeypatch, tmp_path):
     action = next(item for item in data["next_actions"] if item["id"] == "export_a_share_universe_patch")
     assert action["command"] == "market-intel pool universe --runtime --dry-run --json"
     assert action["runnable"] is True
+    assert "dry-run" in action["done_when"]
 
 
 def test_status_runtime_ready_after_universe_import(monkeypatch, tmp_path):
@@ -58,6 +61,7 @@ def test_status_runtime_ready_after_universe_import(monkeypatch, tmp_path):
     assert data["universe"]["state"] == "ready"
     assert data["universe"]["record_count"] == 16
     assert data["next_actions"][0]["id"] == "run_daily_report"
+    assert data["next_actions"][0]["done_when"]
 
 
 def test_status_runtime_ready_after_init_runtime(monkeypatch, tmp_path):
@@ -130,6 +134,7 @@ def test_status_runtime_degraded_when_quotes_are_stale(monkeypatch, tmp_path):
     assert status["freshness"]["warnings"][0]["code"] == "QUOTE_DATA_STALE"
     assert status["next_actions"][0]["id"] == "refresh_quotes"
     assert status["next_actions"][0]["runnable"] is False
+    assert status["next_actions"][0]["done_when"]
 
 
 def test_status_runtime_blocked_when_freshness_has_errors(monkeypatch, tmp_path):
@@ -226,6 +231,7 @@ def test_status_runtime_text_renderer(monkeypatch, tmp_path):
     assert "A_SHARE_UNIVERSE_MISSING" in text
     assert "下一步" in text
     assert "pool universe" in text
+    assert "完成:" in text
     assert "buy" not in text.lower()
     assert "sell" not in text.lower()
 

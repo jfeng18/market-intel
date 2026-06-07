@@ -4449,6 +4449,8 @@ def render_next_actions(value: object) -> List[str]:
             "- P%s %s | %s | %s"
             % (item.get("priority"), item.get("command"), runnable, item.get("reason"))
         )
+        if item.get("done_when"):
+            lines.append("   完成: %s" % item.get("done_when"))
     return lines or ["- 暂无动作。"]
 
 
