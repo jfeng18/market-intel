@@ -1372,7 +1372,7 @@ def test_dashboard_returns_one_screen_workbench(monkeypatch, tmp_path):
     assert "data.handoff.journal_gate.state" in data["agent_contract"]["stable_fields"]
     assert "data.handoff.completion_checklist[].status" in data["agent_contract"]["stable_fields"]
     assert "market-intel dashboard" in text
-    assert len(text.splitlines()) <= 80
+    assert len(text.splitlines()) <= 65
     assert dashboard_text_max_non_command_line_length(text) <= 110
     assert "操作摘要" in text
     assert "接力命令:" in text
@@ -1380,9 +1380,9 @@ def test_dashboard_returns_one_screen_workbench(monkeypatch, tmp_path):
     assert "记录前置:" in text
     assert "前置命令:" in text
     assert "前置完成:" in text
-    assert "今日焦点" in text
     assert "为什么:" in text
-    assert "接力:" in text
+    assert "今日焦点" not in text
+    assert "\n概览\n" not in text
     assert "保留在 JSON data.review_plan.items" in text
     assert "下一条见操作摘要" in text
     assert "定位" in text
@@ -1486,14 +1486,14 @@ def test_dashboard_mock_returns_demo_workbench_without_runtime(monkeypatch, tmp_
     assert data["handoff"]["journal_gate"]["json_command"] == "market-intel import schema --json"
     assert any("mock" in item for item in data["guardrails"])
     assert "mock 示例" in text
-    assert len(text.splitlines()) <= 80
+    assert len(text.splitlines()) <= 65
     assert dashboard_text_max_non_command_line_length(text) <= 110
     assert "操作摘要" in text
     assert "接力命令:" in text
     assert "门槛:" in text
     assert "记录: market-intel journal note --section" not in text
-    assert "今日焦点" in text
-    assert "接力:" in text
+    assert "今日焦点" not in text
+    assert "\n概览\n" not in text
     assert text.count("market-intel import schema --json") == 1
     assert "其余: 5 项保留在 JSON data.review_plan.items。" in text
     assert "读: 4 项，下一条见操作摘要。" in text

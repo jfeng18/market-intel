@@ -1983,15 +1983,16 @@ def render_dashboard_text(payload: Dict[str, object]) -> str:
         "- %s | %s" % (data.get("state"), dashboard_short_text(data.get("summary") or "暂无摘要。", 80)),
     ]
     action_summary = data.get("action_summary", {}) if isinstance(data.get("action_summary"), dict) else {}
+    has_action_summary = bool(action_summary.get("available"))
     if action_summary.get("available"):
         lines.extend(["", "操作摘要"])
         lines.extend(render_dashboard_action_summary(action_summary))
     today_focus = data.get("today_focus", {}) if isinstance(data.get("today_focus"), dict) else {}
-    if today_focus.get("available"):
+    if today_focus.get("available") and not has_action_summary:
         lines.extend(["", "今日焦点"])
-        lines.extend(render_dashboard_today_focus(today_focus, compact=bool(action_summary.get("available"))))
+        lines.extend(render_dashboard_today_focus(today_focus, compact=False))
     tiles = data.get("tiles", []) if isinstance(data.get("tiles"), list) else []
-    if tiles:
+    if tiles and not has_action_summary:
         lines.extend(["", "概览"])
         for item in tiles:
             if isinstance(item, dict):
@@ -2022,10 +2023,10 @@ def render_dashboard_text(payload: Dict[str, object]) -> str:
     plan = data.get("review_plan", {}) if isinstance(data.get("review_plan"), dict) else {}
     if plan:
         lines.extend(["", "复盘计划"])
-        lines.extend(render_dashboard_compact_review_plan(plan, compact=bool(action_summary.get("available"))))
+        lines.extend(render_dashboard_compact_review_plan(plan, compact=has_action_summary))
     if handoff:
         lines.extend(["", "下一步"])
-        lines.extend(render_dashboard_compact_next_steps(handoff, compact=bool(action_summary.get("available"))))
+        lines.extend(render_dashboard_compact_next_steps(handoff, compact=has_action_summary))
     guardrails = data.get("guardrails", []) if isinstance(data.get("guardrails"), list) else []
     if guardrails:
         lines.extend(["", "边界"])
