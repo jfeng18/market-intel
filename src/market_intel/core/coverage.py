@@ -162,11 +162,14 @@ def data_quality_detail_sample(flag: str, item: PoolItem, source: Dict[str, obje
         "raw_row": source.get("raw_row"),
         "source_file": source.get("source_file"),
         "source": source.get("source"),
+        "raw_status": source.get("raw_status"),
+        "raw_priority": source.get("raw_priority"),
         "raw_company": source.get("raw_company"),
         "raw_code": source.get("raw_code"),
         "raw_desc": source.get("raw_desc"),
         "raw_section": source.get("raw_section"),
         "raw_level": source.get("raw_level"),
+        "raw_notes": source.get("raw_notes"),
         "flags": data_quality_source_flags(source, item),
         "fix_hint": data_quality_fix_hint(flag, item),
     }
@@ -193,11 +196,14 @@ def data_quality_item_source(item: PoolItem) -> Dict[str, object]:
         "raw_row": raw.get("raw_row"),
         "source_file": raw.get("pool_source_file"),
         "source": raw.get("pool_source"),
+        "raw_status": raw.get("raw_status"),
+        "raw_priority": raw.get("raw_priority"),
         "raw_company": raw.get("raw_company"),
         "raw_code": raw.get("raw_code"),
         "raw_desc": raw.get("raw_desc"),
         "raw_section": raw.get("raw_section"),
         "raw_level": raw.get("raw_level"),
+        "raw_notes": raw.get("raw_notes"),
         "flags": sorted(set(item.data_quality_flags)),
     }
 
@@ -232,8 +238,14 @@ def data_quality_fix_hint(flag: str, item: PoolItem) -> str:
 
 
 def data_quality_suggested_row(flag: str, item: PoolItem, source: Dict[str, object]) -> Optional[Dict[str, object]]:
-    if flag != "column_shift_suspected":
-        return None
+    if flag == "column_shift_suspected":
+        return column_shift_suggested_row(item, source)
+    if flag == "missing_role":
+        return missing_role_suggested_row(item, source)
+    return None
+
+
+def column_shift_suggested_row(item: PoolItem, source: Dict[str, object]) -> Dict[str, object]:
     code = str(item.symbol or "").strip()
     company = str(item.name or source.get("raw_code") or "").strip()
     desc = column_shift_suggested_desc(item, source)
@@ -247,6 +259,50 @@ def data_quality_suggested_row(flag: str, item: PoolItem, source: Dict[str, obje
         "desc": desc,
         "notes": "fixes_column_shift; source_row=%s" % (source.get("raw_row") or ""),
     }
+
+
+def missing_role_suggested_row(item: PoolItem, source: Dict[str, object]) -> Optional[Dict[str, object]]:
+    source_flags = set(data_quality_source_flags(source, item))
+    if not item.tradable or item.instrument_type != "security" or not item.symbol:
+        return None
+    blocking_flags = {
+        "invalid_symbol",
+        "column_shift_suspected",
+        "non_security_row",
+        "pending_listing",
+    }
+    if source_flags.intersection(blocking_flags):
+        return None
+    desc = str(source.get("raw_desc") or item.logic or "").strip()
+    fix_note = "fixes_missing_role; source_row=%s; manual_role_review_required=true" % (
+        source.get("raw_row") or ""
+    )
+    return {
+        "status": str(source.get("raw_status") or item.raw.get("raw_status") or "pending"),
+        "priority": str(source.get("raw_priority") or item.priority or "UNKNOWN"),
+        "section": source.get("raw_section") or "",
+        "level": missing_role_pending_level(source),
+        "company": str(source.get("raw_company") or item.name or "").strip(),
+        "code": str(item.symbol or "").strip(),
+        "desc": desc or "待确认 / 补一句话公司逻辑",
+        "notes": append_fix_note(source.get("raw_notes"), fix_note),
+    }
+
+
+def missing_role_pending_level(source: Dict[str, object]) -> str:
+    section = str(source.get("raw_section") or "").strip()
+    if not section:
+        return "待确认 / 角色"
+    return "待确认 / 角色：%s" % section
+
+
+def append_fix_note(existing: object, note: str) -> str:
+    text = str(existing or "").strip()
+    if not text:
+        return note
+    if note in text:
+        return text
+    return "%s; %s" % (text, note)
 
 
 def column_shift_suggested_level(item: PoolItem, source: Dict[str, object]) -> str:

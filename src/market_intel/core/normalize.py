@@ -168,11 +168,14 @@ def quality_source_snapshot(raw: Dict[str, object], flags: List[str]) -> Dict[st
         "raw_row": raw.get("raw_row"),
         "source_file": raw.get("pool_source_file"),
         "source": raw.get("pool_source"),
+        "raw_status": raw.get("raw_status"),
+        "raw_priority": raw.get("raw_priority"),
         "raw_company": raw.get("raw_company"),
         "raw_code": raw.get("raw_code"),
         "raw_desc": raw.get("raw_desc"),
         "raw_section": raw.get("raw_section"),
         "raw_level": raw.get("raw_level"),
+        "raw_notes": raw.get("raw_notes"),
         "flags": sorted(set(flags)),
     }
 
@@ -414,6 +417,8 @@ def infer_role(level: str, shifted_role: str, desc: str) -> Optional[str]:
 def strip_role_marker(value: str) -> Optional[str]:
     value = (value or "").strip()
     if not value:
+        return None
+    if value in {"待确认", "待确认 / 持仓补充"} or value.startswith("待确认 /"):
         return None
     value = value.replace("🇨🇳", "").replace("🌍", "").strip()
     value = re.sub(r"\s+", " ", value)

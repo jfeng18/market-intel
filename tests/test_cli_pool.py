@@ -894,7 +894,32 @@ def test_pool_quality_dry_run_exports_suggested_rows():
     assert data["rows"][0]["code"] == "002156"
     assert data["rows"][0]["notes"] == "fixes_column_shift; source_row=238"
     assert "data.rows" in data["agent_contract"]["stable_fields"]
-    assert data["next_commands"][0] == "market-intel pool quality column_shift_suspected --output data/runtime/pool_quality_column_shift_suspected.csv --json"
+    assert data["next_commands"][0] == (
+        "market-intel pool quality column_shift_suspected "
+        "--output data/runtime/pool_quality_column_shift_suspected.csv --json"
+    )
+
+
+def test_pool_quality_missing_role_exports_review_draft():
+    payload = handle_pool_quality("all-a", "missing_role", limit=2, dry_run=True)
+    data = payload["data"]
+
+    assert payload["ok"] is True
+    assert payload["warnings"] == []
+    assert data["flag"] == "missing_role"
+    assert data["dry_run"] is True
+    assert data["written"] is False
+    assert data["record_count"] == 2
+    assert data["rows"][0]["code"] == "688041"
+    assert data["rows"][0]["company"] == "海光信息"
+    assert data["rows"][0]["level"].startswith("待确认 / 角色")
+    assert data["rows"][0]["notes"] == (
+        "fixes_missing_role; source_row=328; manual_role_review_required=true"
+    )
+    assert data["next_commands"][0] == (
+        "market-intel pool quality missing_role "
+        "--output data/runtime/pool_quality_missing_role.csv --json"
+    )
 
 
 def test_pool_quality_writes_suggested_rows(tmp_path):
@@ -922,6 +947,7 @@ def test_pool_quality_fix_draft_reviews_as_expansion_csv(tmp_path):
     data = review_payload["data"]
 
     assert review_payload["ok"] is True
+    assert review_payload["errors"] == []
     assert data["review_state"] == "ready"
     assert data["ready_count"] == 1
     assert data["ready_rows"][0]["symbol"] == "002156"
@@ -930,12 +956,21 @@ def test_pool_quality_fix_draft_reviews_as_expansion_csv(tmp_path):
     assert str(output_file) not in json.dumps(review_payload, ensure_ascii=False)
 
 
-def test_pool_quality_export_warns_without_suggested_rows():
-    payload = handle_pool_quality("all-a", "missing_role", limit=2, dry_run=True)
+def test_pool_quality_missing_role_fix_draft_still_requires_manual_role_review(tmp_path):
+    output_file = tmp_path / "pool_quality_missing_role.csv"
+    handle_pool_quality("all-a", "missing_role", limit=1, output=str(output_file))
 
-    assert payload["ok"] is True
-    assert payload["data"]["record_count"] == 0
-    assert payload["warnings"][0]["code"] == "DATA_QUALITY_FIX_ROWS_UNAVAILABLE"
+    review_payload = handle_pool_expansion("all-a", review_file=str(output_file))
+    data = review_payload["data"]
+
+    assert review_payload["ok"] is False
+    assert review_payload["errors"] == data["blockers"]
+    assert data["review_state"] == "blocked"
+    assert data["blocked_count"] == 1
+    assert data["rows"][0]["normalized"]["data_quality_flags"] == ["missing_role"]
+    assert any(blocker["code"] == "POOL_EXPANSION_REQUIRED_FIELDS_PENDING" for blocker in data["blockers"])
+    assert any(blocker["code"] == "POOL_EXPANSION_DATA_QUALITY_BLOCKERS" for blocker in data["blockers"])
+    assert str(output_file) not in json.dumps(review_payload, ensure_ascii=False)
 
 
 def test_pool_quality_unknown_flag_returns_structured_error():
