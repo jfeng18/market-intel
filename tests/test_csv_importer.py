@@ -61,7 +61,43 @@ def test_import_quotes_dry_run_normalizes_chinese_csv(tmp_path):
     assert preview["name"] == "英维克"
     assert preview["trade_date"] == "2026-06-06"
     assert preview["amount"] == 1230000000.0
+    assert payload["data"]["next_commands"] == []
     assert any(warning["code"] == "QUOTE_FIELD_DEFAULTED" for warning in payload["warnings"])
+
+
+def test_import_runtime_dry_run_suggests_write_and_review(monkeypatch, tmp_path):
+    runtime = tmp_path / "runtime"
+    monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(runtime))
+    quotes_csv = tmp_path / "quotes.csv"
+    holdings_csv = tmp_path / "holdings.csv"
+    research_csv = tmp_path / "research_notes.csv"
+    quotes_csv.write_text("证券代码,证券名称,交易日期,涨跌幅\n002837,英维克,2026-06-06,7.2%\n", encoding="utf-8")
+    holdings_csv.write_text("证券代码,证券名称,持仓数量\n002837,英维克,300\n", encoding="utf-8")
+    research_csv.write_text(
+        "证券代码,证券名称,状态,核心逻辑,关键证据,证伪风险\n"
+        "002837,英维克,reviewed,液冷温控复核,订单和毛利率变化,需求放缓\n",
+        encoding="utf-8",
+    )
+
+    quotes_payload = handle_import_quotes(str(quotes_csv), use_runtime=True, dry_run=True)
+    holdings_payload = handle_import_holdings(str(holdings_csv), use_runtime=True, dry_run=True)
+    research_payload = handle_import_research(str(research_csv), use_runtime=True, dry_run=True)
+
+    assert quotes_payload["data"]["next_commands"] == [
+        "market-intel import quotes quotes.csv --runtime --json",
+        "market-intel status runtime --json",
+        "market-intel dashboard --text",
+    ]
+    assert holdings_payload["data"]["next_commands"] == [
+        "market-intel import holdings holdings.csv --runtime --json",
+        "market-intel status runtime --json",
+        "market-intel dashboard --text",
+    ]
+    assert research_payload["data"]["next_commands"] == [
+        "market-intel import research research_notes.csv --runtime --json",
+        "market-intel pool coverage --runtime --text",
+        "market-intel agent next --text",
+    ]
 
 
 def test_import_holdings_writes_output(tmp_path):

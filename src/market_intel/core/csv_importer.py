@@ -92,7 +92,7 @@ def import_quotes_csv(
         "written": written,
         "preview": records[:5],
         "canonical_schema": quote_schema(),
-        "next_commands": next_commands("quotes", written, runtime, output_path),
+        "next_commands": next_commands("quotes", csv_path, written, dry_run, runtime, output_path),
         "warnings": warnings,
         "errors": errors,
     }
@@ -134,7 +134,7 @@ def import_holdings_csv(
         "written": written,
         "preview": records[:5],
         "canonical_schema": holding_schema(),
-        "next_commands": next_commands("holdings", written, runtime, output_path),
+        "next_commands": next_commands("holdings", csv_path, written, dry_run, runtime, output_path),
         "warnings": warnings,
         "errors": errors,
     }
@@ -230,7 +230,7 @@ def import_research_csv(
         "written": written,
         "preview": records[:5],
         "canonical_schema": research_schema(),
-        "next_commands": next_commands("research", written, runtime, output_path),
+        "next_commands": next_commands("research", csv_path, written, dry_run, runtime, output_path),
         "warnings": warnings,
         "errors": errors,
     }
@@ -1016,7 +1016,27 @@ def research_schema() -> List[Dict[str, object]]:
     ]
 
 
-def next_commands(kind: str, written: bool, runtime: bool, output_path: Optional[Path]) -> List[str]:
+def next_commands(
+    kind: str,
+    csv_path: Path,
+    written: bool,
+    dry_run: bool,
+    runtime: bool,
+    output_path: Optional[Path],
+) -> List[str]:
+    if dry_run and runtime:
+        import_command = "market-intel import %s %s --runtime --json" % (kind, command_path(csv_path))
+        if kind == "research":
+            return [
+                import_command,
+                "market-intel pool coverage --runtime --text",
+                "market-intel agent next --text",
+            ]
+        return [
+            import_command,
+            "market-intel status runtime --json",
+            "market-intel dashboard --text",
+        ]
     if not written:
         return []
     path_text = command_path(output_path) if output_path else ""
@@ -1069,7 +1089,7 @@ def universe_next_commands(
     merge: bool = False,
 ) -> List[str]:
     if written:
-        return next_commands("universe", written, runtime, output_path)
+        return next_commands("universe", csv_path, written, dry_run, runtime, output_path)
     if not dry_run:
         return []
     improvement = coverage_delta.get("improvement", {}) if isinstance(coverage_delta.get("improvement"), dict) else {}
