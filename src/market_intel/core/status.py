@@ -388,8 +388,18 @@ def build_next_actions(
                 "export_a_share_universe_patch",
                 "market-intel pool universe --runtime --dry-run --json",
                 "先导出 A 股基础清单补丁草稿，减少种子覆盖偏差。",
-                "dry-run 已生成可检查的 A 股基础清单补丁，并确认下一步导入来源。",
+                "dry-run 已预览可检查的 A 股基础清单补丁；如果为空，先准备真实 <a_share_universe.csv>。",
                 runnable=True,
+            )
+        )
+        actions.append(
+            action(
+                16,
+                "import_a_share_universe",
+                "market-intel import universe <a_share_universe.csv> --runtime --dry-run --json",
+                "用真实 A 股基础清单 dry-run 校验字段和覆盖变化。",
+                "真实 A 股基础清单 dry-run 无 errors，确认 warnings 后再去掉 --dry-run 写入 runtime。",
+                runnable=False,
             )
         )
     actions.append(

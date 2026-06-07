@@ -133,6 +133,11 @@ def test_agent_plan_blocked_when_runtime_missing(monkeypatch, tmp_path):
     assert data["runtime"]["validation"]["errors"][0]["path"]
     assert data["execution"]["next_runnable_command"] == "market-intel status runtime --json"
     assert data["steps"][0]["id"] == "inspect_runtime_status"
+    dry_run_step = next(step for step in data["steps"] if step["id"] == "dry_run_universe")
+    load_step = next(step for step in data["steps"] if step["id"] == "load_universe")
+    assert dry_run_step["command"] == "market-intel import universe <a_share_universe.csv> --runtime --dry-run --json"
+    assert load_step["command"] == "market-intel import universe <a_share_universe.csv> --runtime --json"
+    assert dry_run_step["priority"] < load_step["priority"]
     assert "data.runtime.validation" in data["agent_contract"]["stable_fields"]
 
 
@@ -221,6 +226,9 @@ def test_agent_plan_all_a_prompts_universe_patch(monkeypatch, tmp_path):
     assert data["runtime"]["universe"]["state"] == "missing"
     assert data["execution"]["next_runnable_command"] == "market-intel pool universe --runtime --dry-run --json"
     assert any(step["id"] == "export_a_share_universe_patch" for step in data["steps"])
+    import_step = next(step for step in data["steps"] if step["id"] == "import_a_share_universe")
+    assert import_step["command"] == "market-intel import universe <a_share_universe.csv> --runtime --dry-run --json"
+    assert import_step["runnable"] is False
     assert "data.runtime.universe" in data["agent_contract"]["stable_fields"]
 
 
@@ -236,6 +244,10 @@ def test_agent_plan_universe_patch_preserves_non_default_pool():
 
     assert payload["execution"]["next_runnable_command"] == (
         "market-intel pool universe --runtime --dry-run --json --pool ai-energy"
+    )
+    import_step = next(step for step in payload["steps"] if step["id"] == "import_a_share_universe")
+    assert import_step["command"] == (
+        "market-intel import universe <a_share_universe.csv> --runtime --dry-run --json --pool ai-energy"
     )
 
 

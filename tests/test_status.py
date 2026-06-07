@@ -46,6 +46,10 @@ def test_status_runtime_all_a_degraded_without_universe(monkeypatch, tmp_path):
     assert action["command"] == "market-intel pool universe --runtime --dry-run --json"
     assert action["runnable"] is True
     assert "dry-run" in action["done_when"]
+    import_action = next(item for item in data["next_actions"] if item["id"] == "import_a_share_universe")
+    assert import_action["command"] == "market-intel import universe <a_share_universe.csv> --runtime --dry-run --json"
+    assert import_action["runnable"] is False
+    assert "dry-run" in import_action["done_when"]
 
 
 def test_status_runtime_ready_after_universe_import(monkeypatch, tmp_path):

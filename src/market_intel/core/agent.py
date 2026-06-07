@@ -2577,7 +2577,8 @@ def build_steps(
             step(30, "inspect_import_schema", "market-intel import schema --json", True, "查看 CSV 导入字段合同。"),
             step(40, "load_quotes", "market-intel import quotes <quotes.csv> --runtime --json", False, "导入当日行情。"),
             step(50, "load_holdings", "market-intel import holdings <holdings.csv> --runtime --json", False, "导入当前持仓。"),
-            step(60, "load_universe", "market-intel import universe <a_share_universe.csv> --runtime --json", False, "导入 A 股基础清单。"),
+            step(60, "dry_run_universe", "market-intel import universe <a_share_universe.csv> --runtime --dry-run --json", False, "先校验 A 股基础清单字段和覆盖变化。"),
+            step(70, "load_universe", "market-intel import universe <a_share_universe.csv> --runtime --json", False, "dry-run 无 errors 后写入 A 股基础清单。"),
         ]
 
     if freshness.get("is_stale"):
@@ -2591,7 +2592,16 @@ def build_steps(
                 "export_a_share_universe_patch",
                 "market-intel pool universe --runtime --dry-run --json%s" % pool_arg(pool),
                 True,
-                "先导出 A 股基础清单补丁草稿，减少种子覆盖偏差。",
+                "先预览 A 股基础清单补丁草稿；如果为空，准备真实 universe CSV。",
+            )
+        )
+        steps.append(
+            step(
+                16,
+                "import_a_share_universe",
+                "market-intel import universe <a_share_universe.csv> --runtime --dry-run --json%s" % pool_arg(pool),
+                False,
+                "用真实 A 股基础清单 dry-run 校验字段、覆盖变化和 warnings。",
             )
         )
 
