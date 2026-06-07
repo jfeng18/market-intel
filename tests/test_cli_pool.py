@@ -83,11 +83,16 @@ def test_pool_coverage_all_a_reports_seed_boundaries():
     assert data["data_quality_queue"][0]["samples"]
     assert data["data_quality_queue"][0]["done_when"]
     assert data["data_quality_queue"][0]["review_command"].startswith("market-intel pool quality ")
+    first_quality_sample = data["data_quality_queue"][0]["samples"][0]
+    if data["data_quality_queue"][0]["flag"] == "invalid_symbol":
+        assert first_quality_sample["resolution"]["path"] == "confirm_pending_listing"
+        assert first_quality_sample["resolution"]["command"] == "market-intel pool quality pending_listing --text"
     cleanup_action = next(action for action in data["next_actions"] if action["id"] == "clean_data_quality_queue")
     assert cleanup_action["focus"]["flag"] == data["data_quality_queue"][0]["flag"]
     assert cleanup_action["rank"] == 1
     assert "data.data_quality_queue" in data["agent_contract"]["stable_fields"]
     assert "data.data_quality_queue[].samples" in data["agent_contract"]["stable_fields"]
+    assert "data.data_quality_queue[].samples[].resolution" in data["agent_contract"]["stable_fields"]
 
 
 def test_pool_coverage_mock_holdings_reports_personal_coverage():
@@ -828,14 +833,18 @@ def test_pool_quality_focuses_data_quality_flag():
     assert data["samples"][0]["fix_hint"]
     assert all("invalid_symbol" in sample["flags"] for sample in data["samples"])
     assert all("missing_role" not in sample["flags"] for sample in data["samples"][:3])
+    assert data["samples"][0]["resolution"]["path"] == "confirm_pending_listing"
+    assert data["samples"][0]["resolution"]["command"] == "market-intel pool quality pending_listing --text"
     assert data["suggested_action"]
     assert data["done_when"]
     assert data["next_commands"][0] == "market-intel pool quality invalid_symbol --json"
     assert "data.samples[].raw_row" in data["agent_contract"]["stable_fields"]
     assert "data.samples[].source_file" in data["agent_contract"]["stable_fields"]
     assert "data.samples[].fix_hint" in data["agent_contract"]["stable_fields"]
+    assert "data.samples[].resolution" in data["agent_contract"]["stable_fields"]
     assert "market-intel pool quality" in text
     assert "invalid_symbol" in text
+    assert "处理路径" in text
     assert "完成标准" in text
     assert "row" in text
     assert "修复提示" in text
@@ -854,7 +863,24 @@ def test_pool_quality_uses_flag_source_rows_for_merged_items():
     assert tongfu_rows[0]["raw_code"] == "通富微电"
     assert "invalid_symbol" in tongfu_rows[0]["flags"]
     assert "missing_role" not in tongfu_rows[0]["flags"]
+    assert tongfu_rows[0]["resolution"]["path"] == "fix_column_shift"
+    assert tongfu_rows[0]["resolution"]["command"] == (
+        "market-intel pool quality column_shift_suspected --dry-run --text"
+    )
     assert not any(sample["symbol"] == "002156" and sample["raw_row"] == 33 for sample in samples)
+
+
+def test_pool_quality_resolution_commands_keep_pool_context():
+    payload = handle_pool_quality("ai-energy", "invalid_symbol", limit=8)
+    samples = payload["data"]["samples"]
+
+    assert samples[0]["resolution"]["command"] == (
+        "market-intel pool quality pending_listing --text --pool ai-energy"
+    )
+    column_shift = next(sample for sample in samples if sample["symbol"] == "002156")
+    assert column_shift["resolution"]["command"] == (
+        "market-intel pool quality column_shift_suspected --dry-run --text --pool ai-energy"
+    )
 
 
 def test_pool_quality_column_shift_suggests_corrected_pool_row():

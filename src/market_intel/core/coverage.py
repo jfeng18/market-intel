@@ -114,7 +114,7 @@ def build_data_quality_detail(pool: str, items: List[PoolItem], flag: str, limit
             "write_policy": "只读复核数据质量样本；不自动修改 pool CSV 或 runtime 文件。",
         }
     flagged_items = [item for item in items if clean_flag in item.data_quality_flags]
-    limited_samples = data_quality_detail_samples(clean_flag, flagged_items, max(0, int(limit or 0)))
+    limited_samples = data_quality_detail_samples(pool, clean_flag, flagged_items, max(0, int(limit or 0)))
     return {
         "pool": pool,
         "flag": clean_flag,
@@ -143,17 +143,17 @@ def build_data_quality_detail(pool: str, items: List[PoolItem], flag: str, limit
     }
 
 
-def data_quality_detail_samples(flag: str, items: List[PoolItem], limit: int) -> List[Dict[str, object]]:
+def data_quality_detail_samples(pool: str, flag: str, items: List[PoolItem], limit: int) -> List[Dict[str, object]]:
     samples = []
     for item in items:
         for source in data_quality_flag_sources(item, flag):
-            samples.append(data_quality_detail_sample(flag, item, source))
+            samples.append(data_quality_detail_sample(pool, flag, item, source))
             if len(samples) >= limit:
                 return samples
     return samples
 
 
-def data_quality_detail_sample(flag: str, item: PoolItem, source: Dict[str, object]) -> Dict[str, object]:
+def data_quality_detail_sample(pool: str, flag: str, item: PoolItem, source: Dict[str, object]) -> Dict[str, object]:
     sample = {
         "symbol": item.symbol,
         "name": item.name,
@@ -173,6 +173,9 @@ def data_quality_detail_sample(flag: str, item: PoolItem, source: Dict[str, obje
         "flags": data_quality_source_flags(source, item),
         "fix_hint": data_quality_fix_hint(flag, item),
     }
+    resolution = data_quality_resolution(pool, flag, item, source)
+    if resolution:
+        sample["resolution"] = resolution
     suggested_row = data_quality_suggested_row(flag, item, source)
     if suggested_row:
         sample["suggested_row"] = suggested_row
@@ -235,6 +238,39 @@ def data_quality_fix_hint(flag: str, item: PoolItem) -> str:
             return "核对同一 symbol 的多行暴露是否都应保留；若是重复描述，合并 CSV 行。关联 raw_row=%s。" % ",".join(str(row) for row in rows)
         return "核对同一 symbol 的多链路暴露是否真实；保留合理暴露，合并重复行。"
     return data_quality_flag_meta(flag)["suggested_action"]
+
+
+def data_quality_resolution(pool: str, flag: str, item: PoolItem, source: Dict[str, object]) -> Optional[Dict[str, object]]:
+    if flag != "invalid_symbol":
+        return None
+    flags = set(data_quality_source_flags(source, item))
+    if "column_shift_suspected" in flags and item.symbol:
+        return {
+            "path": "fix_column_shift",
+            "label": "表格错位",
+            "command": "market-intel pool quality column_shift_suspected --dry-run --text%s" % pool_arg(pool),
+            "done_when": "导出并复核 column_shift_suspected 草稿后，该行 code 回到证券代码列。",
+        }
+    if "pending_listing" in flags or item.instrument_type == "pending_listing":
+        return {
+            "path": "confirm_pending_listing",
+            "label": "待上市/未上市观察对象",
+            "command": "market-intel pool quality pending_listing --text%s" % pool_arg(pool),
+            "done_when": "确认该主体不进入 tradable；若已上市，补真实证券代码。",
+        }
+    if "non_security_row" in flags or item.instrument_type == "non_security":
+        return {
+            "path": "confirm_non_security",
+            "label": "非证券说明行",
+            "command": "market-intel pool quality non_security_row --text%s" % pool_arg(pool),
+            "done_when": "确认说明行不参与 scan、hotspots 或持仓匹配；若是个股，补真实代码。",
+        }
+    return {
+        "path": "lookup_symbol",
+        "label": "人工查代码",
+        "command": "market-intel pool quality invalid_symbol --text%s" % pool_arg(pool),
+        "done_when": "补齐有效证券代码，或改为明确的待上市/非证券说明。",
+    }
 
 
 def data_quality_suggested_row(flag: str, item: PoolItem, source: Dict[str, object]) -> Optional[Dict[str, object]]:
@@ -1198,7 +1234,7 @@ def build_data_quality_queue(
                 "suggested_action": meta["suggested_action"],
                 "done_when": meta["done_when"],
                 "review_command": "market-intel pool quality %s --json%s" % (flag, pool_arg(pool)),
-                "samples": data_quality_queue_samples(flag, flagged_items),
+                "samples": data_quality_queue_samples(pool, flag, flagged_items),
             }
         )
     rows.sort(
@@ -1226,22 +1262,28 @@ def data_quality_flag_meta(flag: str) -> Dict[str, str]:
     )
 
 
-def data_quality_queue_samples(flag: str, items: List[PoolItem]) -> List[Dict[str, object]]:
+def data_quality_queue_samples(pool: str, flag: str, items: List[PoolItem]) -> List[Dict[str, object]]:
     samples = []
     for item in items:
         for source in data_quality_flag_sources(item, flag):
-            samples.append(
-                {
-                    "symbol": item.symbol,
-                    "name": item.name,
-                    "raw_row": source.get("raw_row"),
-                    "source_file": source.get("source_file"),
-                    "raw_code": source.get("raw_code"),
-                    "raw_section": source.get("raw_section"),
-                    "raw_level": source.get("raw_level"),
-                    "flags": data_quality_source_flags(source, item),
+            sample = {
+                "symbol": item.symbol,
+                "name": item.name,
+                "raw_row": source.get("raw_row"),
+                "source_file": source.get("source_file"),
+                "raw_code": source.get("raw_code"),
+                "raw_section": source.get("raw_section"),
+                "raw_level": source.get("raw_level"),
+                "flags": data_quality_source_flags(source, item),
+            }
+            resolution = data_quality_resolution(pool, flag, item, source)
+            if resolution:
+                sample["resolution"] = {
+                    "path": resolution.get("path"),
+                    "label": resolution.get("label"),
+                    "command": resolution.get("command"),
                 }
-            )
+            samples.append(sample)
             if len(samples) >= 8:
                 return samples
     return samples
@@ -1808,6 +1850,7 @@ def data_quality_detail_contract() -> Dict[str, object]:
             "data.samples[].raw_company",
             "data.samples[].raw_desc",
             "data.samples[].fix_hint",
+            "data.samples[].resolution",
             "data.samples[].suggested_row",
             "data.suggested_action",
             "data.done_when",
@@ -1861,6 +1904,7 @@ def coverage_contract() -> Dict[str, object]:
             "data.data_quality",
             "data.data_quality_queue",
             "data.data_quality_queue[].samples",
+            "data.data_quality_queue[].samples[].resolution",
             "data.data_quality_queue[].done_when",
             "data.universe",
             "data.universe.sector_profile",

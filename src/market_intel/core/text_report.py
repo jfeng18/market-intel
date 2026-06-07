@@ -348,6 +348,12 @@ def render_pool_quality_text(payload: Dict[str, object]) -> str:
                 "  原始: company=%s | desc=%s"
                 % (sample.get("raw_company") or "", sample.get("raw_desc") or "")
             )
+        resolution = sample.get("resolution")
+        if isinstance(resolution, dict):
+            lines.append(
+                "  处理路径: %s | %s"
+                % (resolution.get("label") or resolution.get("path") or "-", resolution.get("command") or "-")
+            )
         suggested = sample.get("suggested_row")
         if isinstance(suggested, dict):
             lines.append(
