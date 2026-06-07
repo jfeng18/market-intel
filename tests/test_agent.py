@@ -1155,6 +1155,7 @@ def test_agent_next_returns_compact_handoff(monkeypatch, tmp_path):
     assert "data.focus_chain[].json_command" in data["agent_contract"]["stable_fields"]
     assert "data.review_handoff.command_chain[].json_command" in data["agent_contract"]["stable_fields"]
     assert "market-intel agent next" in text
+    assert len(text.splitlines()) <= 70
     assert "操作摘要" in text
     assert "接力链" in text
     assert "覆盖底座" in text
@@ -1163,6 +1164,8 @@ def test_agent_next_returns_compact_handoff(monkeypatch, tmp_path):
     assert "下一条:" in text
     assert "命令链" in text
     assert "单票卡片" in text
+    assert "保留在 JSON 的 data.market_scan.top_candidates" in text
+    assert "保留在 JSON 的 data.security_cards.cards" in text
     assert "buy" not in text.lower()
     assert "sell" not in text.lower()
 
@@ -1197,9 +1200,12 @@ def test_agent_next_mock_returns_demo_handoff_without_runtime(monkeypatch, tmp_p
     assert data["security_cards"]["cards"]
     assert data["security_cards"]["cards"][0]["next_json_command"].endswith("--mock --json")
     assert "market-intel agent next" in text
+    assert len(text.splitlines()) <= 70
     assert "操作摘要" in text
     assert "mock 示例" in text
     assert "单票卡片" in text
+    assert "保留在 JSON 的 data.market_scan.top_candidates" in text
+    assert "保留在 JSON 的 data.security_cards.cards" in text
     assert "复盘收尾" in text
     assert "复盘收尾: 暂无" not in text
     assert "分 None" not in text

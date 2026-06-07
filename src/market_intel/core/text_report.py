@@ -2702,7 +2702,7 @@ def render_agent_next_text(payload: Dict[str, object]) -> str:
     scan = data.get("market_scan", {}) if isinstance(data.get("market_scan"), dict) else {}
     if scan:
         lines.extend(["", "全市场扫描"])
-        lines.extend(render_agent_next_market_scan(scan))
+        lines.extend(render_agent_next_market_scan(scan, compact=bool(action_summary.get("available"))))
     handoff = data.get("review_handoff", {}) if isinstance(data.get("review_handoff"), dict) else {}
     if handoff:
         lines.extend(["", "交接"])
@@ -2710,7 +2710,7 @@ def render_agent_next_text(payload: Dict[str, object]) -> str:
     cards = data.get("security_cards", {}) if isinstance(data.get("security_cards"), dict) else {}
     if cards:
         lines.extend(["", "单票卡片"])
-        lines.extend(render_agent_next_security_cards(cards))
+        lines.extend(render_agent_next_security_cards(cards, compact=bool(action_summary.get("available"))))
     completion = data.get("review_completion", {}) if isinstance(data.get("review_completion"), dict) else {}
     if completion:
         lines.extend(["", "收尾"])
@@ -2742,12 +2742,13 @@ def render_agent_next_handoff(value: Dict[str, object], compact: bool = False) -
     return lines
 
 
-def render_agent_next_security_cards(value: Dict[str, object]) -> List[str]:
+def render_agent_next_security_cards(value: Dict[str, object], compact: bool = False) -> List[str]:
     cards = value.get("cards", []) if isinstance(value.get("cards"), list) else []
     if not cards:
         return ["- 单票卡片: 暂无。"]
     lines = ["- 单票卡片: %s" % dashboard_short_text(value.get("summary") or "暂无。", 88)]
-    for item in cards[:2]:
+    visible_cards = 1 if compact else 2
+    for item in cards[:visible_cards]:
         if not isinstance(item, dict):
             continue
         lines.append(
@@ -2782,8 +2783,8 @@ def render_agent_next_security_cards(value: Dict[str, object]) -> List[str]:
         gaps = item.get("open_gaps", []) if isinstance(item.get("open_gaps"), list) else []
         if gaps:
             lines.append("      待补: %s" % "；".join(str(row) for row in gaps[:2]))
-    if len(cards) > 2:
-        lines.append("   其余: %s 张卡片保留在 JSON 的 data.security_cards.cards。" % (len(cards) - 2))
+    if len(cards) > visible_cards:
+        lines.append("   其余: %s 张卡片保留在 JSON 的 data.security_cards.cards。" % (len(cards) - visible_cards))
     if value.get("write_policy"):
         lines.append("   策略: %s" % dashboard_short_text(value.get("write_policy"), 88))
     return lines
@@ -2817,10 +2818,11 @@ def render_agent_next_review_completion(value: Dict[str, object]) -> List[str]:
     return lines
 
 
-def render_agent_next_market_scan(value: Dict[str, object]) -> List[str]:
+def render_agent_next_market_scan(value: Dict[str, object], compact: bool = False) -> List[str]:
     lines = ["- %s" % dashboard_short_text(value.get("summary") or "暂无。", 100)]
     groups = value.get("top_groups", []) if isinstance(value.get("top_groups"), list) else []
-    for group in groups[:2]:
+    visible_groups = 1 if compact else 2
+    for group in groups[:visible_groups]:
         if isinstance(group, dict):
             lines.append(
                 "   板块: #%s %s%s | 分 %s | 活跃 %s/%s"
@@ -2834,7 +2836,8 @@ def render_agent_next_market_scan(value: Dict[str, object]) -> List[str]:
                 )
             )
     candidates = value.get("top_candidates", []) if isinstance(value.get("top_candidates"), list) else []
-    for item in candidates[:2]:
+    visible_candidates = 1 if compact else 2
+    for item in candidates[:visible_candidates]:
         if isinstance(item, dict):
             lines.append(
                 "   候选: #%s %s %s | 分 %s | 覆盖 %s"
@@ -2847,6 +2850,8 @@ def render_agent_next_market_scan(value: Dict[str, object]) -> List[str]:
                 )
             )
             lines.extend(render_compact_review_focus(item.get("review_focus", {}), indent="      "))
+    if compact and len(candidates) > visible_candidates:
+        lines.append("   其余: %s 个候选保留在 JSON 的 data.market_scan.top_candidates。" % (len(candidates) - visible_candidates))
     return lines
 
 
