@@ -1,10 +1,8 @@
 # 数据合同
 
-本文件只记录稳定读取口径。实现细节以 `src/market_intel/core/` 和测试为准。
+只记录稳定读取口径。实现细节以 `src/market_intel/core/` 和测试为准。
 
 ## JSON 外壳
-
-所有 CLI JSON 输出使用同一外壳：
 
 ```json
 {
@@ -22,11 +20,7 @@
 }
 ```
 
-失败时：
-
-- `ok=false`
-- `errors[]` 使用 `{code,message,detail}`
-- 不把 traceback 放入 `data`
+失败时 `ok=false`，`errors[]` 使用 `{code,message,detail}`，不把 traceback 放入 `data`。
 
 ## PoolItem
 
@@ -36,7 +30,6 @@
   "name": "英维克",
   "market": "CN_A",
   "instrument_type": "security",
-  "priority": "P1",
   "tradable": true,
   "primary_layer": "电力",
   "primary_sub_sector": "液冷",
@@ -48,12 +41,7 @@
 }
 ```
 
-约束：
-
-- 非证券或待上市行可 `symbol=null`。
-- 同一证券多链路不丢弃，放入 `exposures[]`。
-- 原始字段保留在 `raw`。
-- 数据问题进入 `data_quality_flags`。
+非证券或待上市行可 `symbol=null`；同一证券多链路合并到 `exposures[]`；原始字段保留在 `raw`。
 
 ## Quote
 
@@ -74,7 +62,7 @@
 }
 ```
 
-布尔字段接受常见字符串，但无效字符串必须报错，不能按 Python truthiness 处理。
+布尔字段接受常见字符串；无效字符串必须报错，不能按 Python truthiness 处理。
 
 ## Holding
 
@@ -87,56 +75,25 @@
 }
 ```
 
-持仓复核以 distinct holding 计数；单个标的内部重复 exposure 不应制造 `theme_concentration`。
+持仓复核按 distinct holding 计数，单个标的重复 exposure 不制造 `theme_concentration`。
 
-## Universe CSV
+## CSV
 
-标准字段：
+Universe:
 
 ```text
 symbol,name,industry,concepts,index_membership,listing_status,source
 ```
 
-常见中文列名也支持：
-
-```text
-证券代码,证券名称,行业,概念,指数成分,上市状态
-```
-
-导入前用：
-
-```bash
-market-intel import universe <csv> --runtime --merge --dry-run --text
-```
-
-稳定读取字段：
-
-- `data.coverage_delta.write_mode`
-- `data.coverage_delta.before`
-- `data.coverage_delta.after`
-- `data.coverage_delta.improvement`
-- `data.coverage_delta.recommendation.requires_import`
-- `data.next_commands`
-
-## Research CSV
-
-标准字段：
+Research:
 
 ```text
 symbol,name,status,thesis,evidence,invalidation,updated_at,source
 ```
 
-`status=reviewed` 时必须补齐：
+`status=reviewed` 时必须补齐 `thesis/evidence/invalidation`，foundation 标的才可升级为 confirmed。
 
-- `thesis`
-- `evidence`
-- `invalidation`
-
-只有 reviewed 且三项齐全，foundation 标的才可升级为 confirmed。
-
-## 禁止字段
-
-公开 JSON 和文本报告不得输出：
+## 禁止输出
 
 - `action=buy/sell/hold`
 - `recommendation=buy/sell/hold`

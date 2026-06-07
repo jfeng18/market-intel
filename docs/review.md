@@ -1,6 +1,4 @@
-# Review 清单
-
-每次较大改动按这份清单过一遍。
+# Review
 
 ## Correctness
 
@@ -15,13 +13,7 @@
 - 默认范围是 `all-a`。
 - AI 池只作为样例和回归底座。
 - 新功能必须强化覆盖、持仓、证据、journal 或 agent 接力。
-- 文档保持短，不把命令手册塞进 README。
-
-## Privacy
-
-- 不读、不输出 token。
-- 不提交 `data/runtime/`。
-- README/docs/examples/.github 不写本机路径、账号或真实持仓。
+- README/docs 保持短，不写个人信息。
 
 ## Verification
 
@@ -31,5 +23,3 @@ make smoke
 make privacy-scan
 git diff --check
 ```
-
-推送后确认 GitHub Actions 通过。
