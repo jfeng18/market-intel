@@ -92,7 +92,7 @@ def import_quotes_csv(
         "written": written,
         "preview": records[:5],
         "canonical_schema": quote_schema(),
-        "next_commands": next_commands("quotes", csv_path, written, dry_run, runtime, output_path),
+        "next_commands": next_commands("quotes", csv_path, written, dry_run, runtime, output_path, bool(errors)),
         "warnings": warnings,
         "errors": errors,
     }
@@ -134,7 +134,7 @@ def import_holdings_csv(
         "written": written,
         "preview": records[:5],
         "canonical_schema": holding_schema(),
-        "next_commands": next_commands("holdings", csv_path, written, dry_run, runtime, output_path),
+        "next_commands": next_commands("holdings", csv_path, written, dry_run, runtime, output_path, bool(errors)),
         "warnings": warnings,
         "errors": errors,
     }
@@ -188,7 +188,7 @@ def import_universe_csv(
         "preview": records[:5],
         "canonical_schema": universe_schema(),
         "coverage_delta": coverage_delta,
-        "next_commands": universe_next_commands(csv_path, written, dry_run, runtime, output_path, coverage_delta, merge),
+        "next_commands": universe_next_commands(csv_path, written, dry_run, runtime, output_path, coverage_delta, merge, bool(errors)),
         "warnings": warnings,
         "errors": errors,
     }
@@ -230,7 +230,7 @@ def import_research_csv(
         "written": written,
         "preview": records[:5],
         "canonical_schema": research_schema(),
-        "next_commands": next_commands("research", csv_path, written, dry_run, runtime, output_path),
+        "next_commands": next_commands("research", csv_path, written, dry_run, runtime, output_path, bool(errors)),
         "warnings": warnings,
         "errors": errors,
     }
@@ -1023,7 +1023,10 @@ def next_commands(
     dry_run: bool,
     runtime: bool,
     output_path: Optional[Path],
+    has_errors: bool = False,
 ) -> List[str]:
+    if has_errors:
+        return []
     if dry_run and runtime:
         import_command = "market-intel import %s %s --runtime --json" % (kind, command_path(csv_path))
         if kind == "research":
@@ -1087,9 +1090,12 @@ def universe_next_commands(
     output_path: Optional[Path],
     coverage_delta: Dict[str, object],
     merge: bool = False,
+    has_errors: bool = False,
 ) -> List[str]:
+    if has_errors:
+        return []
     if written:
-        return next_commands("universe", csv_path, written, dry_run, runtime, output_path)
+        return next_commands("universe", csv_path, written, dry_run, runtime, output_path, has_errors)
     if not dry_run:
         return []
     improvement = coverage_delta.get("improvement", {}) if isinstance(coverage_delta.get("improvement"), dict) else {}

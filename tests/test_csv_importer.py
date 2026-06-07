@@ -398,6 +398,7 @@ def test_import_error_does_not_write_output(tmp_path):
 
     assert payload["ok"] is False
     assert any(error["code"] == "INVALID_NUMERIC_FIELD" for error in payload["errors"])
+    assert payload["data"]["next_commands"] == []
     assert not output_path.exists()
 
 
@@ -466,6 +467,22 @@ def test_import_research_rejects_reviewed_rows_with_missing_evidence(tmp_path):
 
     assert payload["ok"] is False
     assert any(error["code"] == "RESEARCH_REVIEWED_FIELD_MISSING" for error in payload["errors"])
+    assert payload["data"]["next_commands"] == []
+
+
+def test_import_research_runtime_dry_run_error_has_no_write_command(monkeypatch, tmp_path):
+    monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(tmp_path / "runtime"))
+    csv_path = tmp_path / "research_notes.csv"
+    csv_path.write_text(
+        "证券代码,证券名称,状态,核心逻辑,关键证据,证伪风险\n000001,平安银行,reviewed,银行复核主线,,资产质量恶化\n",
+        encoding="utf-8",
+    )
+
+    payload = handle_import_research(str(csv_path), use_runtime=True, dry_run=True)
+
+    assert payload["ok"] is False
+    assert any(error["code"] == "RESEARCH_REVIEWED_FIELD_MISSING" for error in payload["errors"])
+    assert payload["data"]["next_commands"] == []
 
 
 def test_import_research_confirms_foundation_coverage(monkeypatch, tmp_path):
