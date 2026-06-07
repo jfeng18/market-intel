@@ -2766,6 +2766,7 @@ def mock_dashboard_review_plan(
     evidence: Dict[str, object],
 ) -> Dict[str, object]:
     items: List[Dict[str, object]] = []
+    add_mock_dashboard_runtime_setup(items)
     add_dashboard_plan_coverage(items, coverage, pool, "mock")
     candidates = market.get("candidates", []) if isinstance(market.get("candidates"), list) else []
     groups = market.get("top_groups", []) if isinstance(market.get("top_groups"), list) else []
@@ -2842,6 +2843,24 @@ def mock_dashboard_review_plan(
     }
 
 
+def add_mock_dashboard_runtime_setup(items: List[Dict[str, object]]) -> None:
+    items.append(
+        dashboard_plan_item(
+            "runtime_setup",
+            "准备正式 runtime 数据",
+            "mock 只验证工作台结构；正式复盘先确认行情、持仓、全 A 基础清单和研究证据 CSV 字段。",
+            "market-intel import schema --json",
+            "read",
+            "已确认可导入字段，并准备 quotes、holdings、a_share_universe 和 research_notes 文件。",
+            evidence=[
+                "需要 quotes/holdings 才能生成个人复盘。",
+                "需要 a_share_universe 才能减少全 A 种子覆盖偏差。",
+                "需要 research_notes 才能把 foundation 升级为 confirmed。",
+            ],
+        )
+    )
+
+
 def mock_dashboard_action_lane(plan: Dict[str, object]) -> Dict[str, object]:
     rows = []
     for item in plan.get("items", []) if isinstance(plan.get("items"), list) else []:
@@ -2900,10 +2919,10 @@ def mock_dashboard_handoff(pool: str, plan: Dict[str, object]) -> Dict[str, obje
             {
                 "rank": 1,
                 "source": "mock_to_runtime",
-                "title": "导入正式 runtime 数据",
+                "title": "初始化 runtime 并导入数据",
                 "reason": "mock 示例不能代表真实持仓或全市场结论。",
-                "json_command": "market-intel import schema --json",
-                "done_when": "已准备行情、持仓和全 A 基础清单导入文件。",
+                "json_command": "market-intel init runtime --json",
+                "done_when": "已初始化 runtime，并导入行情、持仓和全 A 基础清单文件。",
             }
         ],
         "record_templates": [],
@@ -3504,13 +3523,14 @@ def dashboard_coverage_action_items(coverage: Dict[str, object]) -> List[Dict[st
 def dashboard_handoff(digest: Dict[str, object]) -> Dict[str, object]:
     handoff = digest.get("review_handoff", {}) if isinstance(digest.get("review_handoff"), dict) else {}
     completion = digest.get("review_completion", {}) if isinstance(digest.get("review_completion"), dict) else {}
+    next_read = list(handoff.get("next_read", []))[:4] if isinstance(handoff.get("next_read"), list) else []
     return {
         "available": bool(handoff.get("available")),
         "summary": handoff.get("summary") or completion.get("summary") or "暂无交接信息。",
         "handoff_state": handoff.get("handoff_state"),
         "resume_prompt": handoff.get("resume_prompt"),
-        "next_read": list(handoff.get("next_read", []))[:4] if isinstance(handoff.get("next_read"), list) else [],
-        "manual_items": list(handoff.get("manual_items", []))[:4] if isinstance(handoff.get("manual_items"), list) else [],
+        "next_read": next_read,
+        "manual_items": compact_dashboard_manual_items(handoff.get("manual_items", []), next_read),
         "record_templates": list(handoff.get("record_templates", []))[:3] if isinstance(handoff.get("record_templates"), list) else [],
         "completion": {
             "completion_state": completion.get("completion_state"),
@@ -3520,6 +3540,25 @@ def dashboard_handoff(digest: Dict[str, object]) -> Dict[str, object]:
             "pending_count": completion.get("pending_count", 0),
         },
     }
+
+
+def compact_dashboard_manual_items(value: object, next_read: List[Dict[str, object]]) -> List[Dict[str, object]]:
+    next_read_commands = {
+        digest_json_variant(str(item.get("json_command") or ""))
+        for item in next_read
+        if isinstance(item, dict) and item.get("json_command")
+    }
+    rows = []
+    for item in value if isinstance(value, list) else []:
+        if not isinstance(item, dict):
+            continue
+        command = str(item.get("json_command") or "")
+        if command and digest_json_variant(command) in next_read_commands:
+            continue
+        rows.append(item)
+        if len(rows) >= 4:
+            break
+    return rows
 
 
 def dashboard_today_focus(
@@ -3919,6 +3958,8 @@ def add_dashboard_plan_handoff(items: List[Dict[str, object]], digest: Dict[str,
             continue
         command = str(item.get("json_command") or "")
         if command and command in seen:
+            continue
+        if command and digest_json_variant(command) in seen:
             continue
         items.append(
             dashboard_plan_item(
