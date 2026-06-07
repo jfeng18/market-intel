@@ -2261,11 +2261,14 @@ def render_dashboard_evidence_first_detail(value: object) -> str:
     missing = item.get("missing_evidence", []) if isinstance(item.get("missing_evidence"), list) else []
     missing_text = "、".join(str(row) for row in missing[:3] if row)
     done_when = dashboard_short_text(item.get("done_when") or "", 52)
+    command = str(item.get("json_command") or "").strip()
     parts = [str(item.get("title") or "").strip()]
     if missing_text:
         parts.append("缺 %s" % missing_text)
     if done_when:
         parts.append(done_when)
+    if command:
+        parts.append("命令: %s" % command)
     return " | ".join(part for part in parts if part)
 
 
