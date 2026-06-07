@@ -1049,18 +1049,20 @@ def test_dashboard_returns_one_screen_workbench(monkeypatch, tmp_path):
     assert "data.action_lane.items" in data["agent_contract"]["stable_fields"]
     assert "data.review_plan.items[].json_command" in data["agent_contract"]["stable_fields"]
     assert "market-intel dashboard" in text
+    assert len(text.splitlines()) <= 80
     assert "定位" in text
     assert "个人复盘操作系统" in text
-    assert "准入:" in text
     assert "覆盖底座" in text
     assert "全 A: 已接入 | 记录 16" in text
+    assert "质量:" in text
     assert "全市场" in text
-    assert "焦点:" in text
-    assert "下一条:" in text
+    assert "候选:" in text
     assert "持仓" in text
+    assert "先看:" in text
     assert "证据缺口" in text
     assert "复盘计划" in text
-    assert "行动队列" in text
+    assert "下一步" in text
+    assert "读:" in text
     assert "不生成买卖指令" in text
     assert "buy" not in text.lower()
     assert "sell" not in text.lower()
@@ -1114,10 +1116,12 @@ def test_dashboard_mock_returns_demo_workbench_without_runtime(monkeypatch, tmp_
     assert data["handoff"]["next_read"]
     assert any("mock" in item for item in data["guardrails"])
     assert "mock 示例" in text
+    assert len(text.splitlines()) <= 80
     assert "定位" in text
     assert "个人复盘操作系统" in text
-    assert "焦点:" in text
-    assert "下一条:" in text
+    assert "候选:" in text
+    assert "先看:" in text
+    assert "下一步" in text
     assert "覆盖底座" in text
     assert "全 A: 未接入" in text
     assert "market-intel dashboard" in text

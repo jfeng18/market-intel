@@ -69,6 +69,10 @@ LABELS = {
     "market_structure": "市场结构",
     "market_scan": "全市场扫描",
     "journal_record": "复盘留档",
+    "coverage_review": "覆盖复核",
+    "evidence_gap": "证据缺口",
+    "attention_item": "关注项",
+    "handoff": "交接",
 }
 
 QUESTION_LABELS = {
@@ -1705,6 +1709,7 @@ def render_dashboard_text(payload: Dict[str, object]) -> str:
     data = payload.get("data", {})
     if not isinstance(data, dict):
         return "market-intel dashboard\n\n无数据。"
+    handoff = data.get("handoff", {}) if isinstance(data.get("handoff"), dict) else {}
     lines = [
         "market-intel dashboard",
         "",
@@ -1720,35 +1725,30 @@ def render_dashboard_text(payload: Dict[str, object]) -> str:
     positioning = data.get("positioning", {}) if isinstance(data.get("positioning"), dict) else {}
     if positioning:
         lines.extend(["", "定位"])
-        lines.extend(render_dashboard_positioning(positioning))
+        lines.append("- %s" % (positioning.get("headline") or "个人复盘工作台。"))
     coverage = data.get("coverage_context", {}) if isinstance(data.get("coverage_context"), dict) else {}
     if coverage:
         lines.extend(["", "覆盖底座"])
-        lines.extend(render_focus_coverage_context(coverage))
+        lines.extend(render_dashboard_compact_coverage(coverage))
     market = data.get("market_pulse", {}) if isinstance(data.get("market_pulse"), dict) else {}
     if market:
         lines.extend(["", "全市场"])
-        lines.extend(render_dashboard_market_pulse(market))
+        lines.extend(render_dashboard_compact_market(market))
     portfolio = data.get("portfolio_pulse", {}) if isinstance(data.get("portfolio_pulse"), dict) else {}
     if portfolio:
         lines.extend(["", "持仓"])
-        lines.extend(render_dashboard_portfolio_pulse(portfolio))
+        lines.extend(render_dashboard_compact_portfolio(portfolio))
     evidence = data.get("evidence_gaps", {}) if isinstance(data.get("evidence_gaps"), dict) else {}
     if evidence:
         lines.extend(["", "证据缺口"])
-        lines.extend(render_dashboard_evidence_gaps(evidence))
+        lines.extend(render_dashboard_compact_evidence(evidence))
     plan = data.get("review_plan", {}) if isinstance(data.get("review_plan"), dict) else {}
     if plan:
         lines.extend(["", "复盘计划"])
-        lines.extend(render_dashboard_review_plan(plan))
-    actions = data.get("action_lane", {}) if isinstance(data.get("action_lane"), dict) else {}
-    if actions:
-        lines.extend(["", "行动队列"])
-        lines.extend(render_dashboard_action_lane(actions))
-    handoff = data.get("handoff", {}) if isinstance(data.get("handoff"), dict) else {}
+        lines.extend(render_dashboard_compact_review_plan(plan))
     if handoff:
-        lines.extend(["", "交接"])
-        lines.extend(render_dashboard_handoff(handoff))
+        lines.extend(["", "下一步"])
+        lines.extend(render_dashboard_compact_next_steps(handoff))
     guardrails = data.get("guardrails", []) if isinstance(data.get("guardrails"), list) else []
     if guardrails:
         lines.extend(["", "边界"])
@@ -1770,6 +1770,202 @@ def render_dashboard_positioning(value: Dict[str, object]) -> List[str]:
             lines.append("- 取舍: %s" % "；".join(parts))
     if value.get("selection_rule"):
         lines.append("- 准入: %s" % value.get("selection_rule"))
+    return lines
+
+
+def render_dashboard_compact_coverage(value: Dict[str, object]) -> List[str]:
+    lines = []
+    lines.append(
+        "- %s | %s | 缺口 %s"
+        % (value.get("pool") or "-", value.get("coverage_status") or "-", value.get("gap_count", 0))
+    )
+    universe = value.get("universe", {}) if isinstance(value.get("universe"), dict) else {}
+    if universe:
+        available = "已接入" if universe.get("available") else "未接入"
+        lines.append(
+            "  全 A: %s | 记录 %s | 行业 %s | 概念 %s | 指数 %s"
+            % (
+                available,
+                universe.get("record_count", 0),
+                universe.get("industry_count", 0),
+                universe.get("concept_count", 0),
+                universe.get("index_membership_count", 0),
+            )
+        )
+        profile = (
+            universe.get("sector_profile", {})
+            if isinstance(universe.get("sector_profile"), dict)
+            else {}
+        )
+        if profile:
+            lines.append(
+                "  字段覆盖: 行业 %.1f%% | 概念 %.1f%% | 指数 %.1f%%"
+                % (
+                    float(profile.get("industry_coverage_ratio") or 0) * 100,
+                    float(profile.get("concept_coverage_ratio") or 0) * 100,
+                    float(profile.get("index_coverage_ratio") or 0) * 100,
+                )
+            )
+        queue = (
+            universe.get("enrichment_queue", [])
+            if isinstance(universe.get("enrichment_queue"), list)
+            else []
+        )
+        if queue and isinstance(queue[0], dict):
+            first = queue[0]
+            lines.append(
+                "  补数: #%s %s | 缺 %s"
+                % (first.get("rank"), first.get("label"), first.get("missing_count", 0))
+            )
+    quality = (
+        value.get("top_data_quality_queue", [])
+        if isinstance(value.get("top_data_quality_queue"), list)
+        else []
+    )
+    if quality and isinstance(quality[0], dict):
+        first = quality[0]
+        lines.append(
+            "  质量: #%s %s | %s | 影响 %s"
+            % (first.get("rank"), first.get("flag"), first.get("severity"), first.get("affected_count", 0))
+        )
+    gaps = value.get("top_gaps", []) if isinstance(value.get("top_gaps"), list) else []
+    if gaps and isinstance(gaps[0], dict):
+        first_gap = gaps[0]
+        lines.append("  首要缺口: %s | %s" % (first_gap.get("severity"), first_gap.get("id")))
+    return lines
+
+
+def render_dashboard_compact_market(value: Dict[str, object]) -> List[str]:
+    lines = ["- %s" % (value.get("summary") or "暂无全市场扫描。")]
+    groups = value.get("top_groups", []) if isinstance(value.get("top_groups"), list) else []
+    if groups:
+        rendered = []
+        for group in groups[:3]:
+            if isinstance(group, dict):
+                rendered.append(
+                    "#%s %s%s %.0f"
+                    % (
+                        group.get("rank"),
+                        scan_group_type_label(group.get("group_type")),
+                        group.get("name"),
+                        float_or_default(group.get("score"), 0.0),
+                    )
+                )
+        if rendered:
+            lines.append("  板块: %s" % "；".join(rendered))
+    candidates = value.get("candidates", []) if isinstance(value.get("candidates"), list) else []
+    if candidates:
+        rendered_candidates = []
+        for item in candidates[:3]:
+            if isinstance(item, dict):
+                rendered_candidates.append(
+                    "#%s %s %s(%s)"
+                    % (
+                        item.get("rank"),
+                        item.get("symbol"),
+                        item.get("name"),
+                        label(item.get("coverage_state")),
+                    )
+                )
+        if rendered_candidates:
+            lines.append("  候选: %s" % "；".join(rendered_candidates))
+    return lines
+
+
+def render_dashboard_compact_portfolio(value: Dict[str, object]) -> List[str]:
+    lines = ["- %s" % (value.get("summary") or "暂无持仓复盘。")]
+    buckets = value.get("buckets", {}) if isinstance(value.get("buckets"), dict) else {}
+    if buckets:
+        lines.append(
+            "  分布: 重点 %s | 变化 %s | 缺行情 %s | 缺热点 %s | 重叠 %s"
+            % (
+                value.get("high_review_count", buckets.get("high_review", 0)),
+                value.get("changed_holding_count", 0),
+                buckets.get("missing_quote", 0),
+                buckets.get("without_hotspot", 0),
+                buckets.get("with_overlap", 0),
+            )
+        )
+    holdings = value.get("top_holdings", []) if isinstance(value.get("top_holdings"), list) else []
+    if holdings:
+        rendered = []
+        for item in holdings[:3]:
+            if isinstance(item, dict):
+                rendered.append("#%s %s %s" % (item.get("rank"), item.get("symbol"), item.get("name")))
+        if rendered:
+            lines.append("  先看: %s" % "；".join(rendered))
+    groups = value.get("pressure_groups", []) if isinstance(value.get("pressure_groups"), list) else []
+    if groups and isinstance(groups[0], dict):
+        group = groups[0]
+        group_type = {"chain": "链路", "theme": "主题"}.get(
+            str(group.get("group_type")),
+            label(group.get("group_type")),
+        )
+        lines.append(
+            "  压力: %s %s | 持仓 %s"
+            % (group_type, group.get("group"), group.get("holding_count"))
+        )
+    return lines
+
+
+def render_dashboard_compact_evidence(value: Dict[str, object]) -> List[str]:
+    lines = ["- %s" % (value.get("summary") or "暂无证据缺口。")]
+    repair = value.get("data_repair", {}) if isinstance(value.get("data_repair"), dict) else {}
+    if repair.get("available"):
+        lines.append("  数据修复: %s" % (repair.get("summary") or "需处理数据问题。"))
+    items = value.get("items", []) if isinstance(value.get("items"), list) else []
+    if items:
+        rendered = []
+        for item in items[:3]:
+            if isinstance(item, dict):
+                rendered.append(
+                    "#%s %s(%s)"
+                    % (
+                        item.get("rank"),
+                        item.get("title"),
+                        item.get("coverage_label") or label(item.get("coverage_status")),
+                    )
+                )
+        if rendered:
+            lines.append("  待补: %s" % "；".join(rendered))
+    return lines
+
+
+def render_dashboard_compact_review_plan(value: Dict[str, object]) -> List[str]:
+    lines = ["- %s" % (value.get("summary") or "暂无复盘计划。")]
+    items = value.get("items", []) if isinstance(value.get("items"), list) else []
+    for item in items[:3]:
+        if not isinstance(item, dict):
+            continue
+        state = "已读" if item.get("already_read") else "只读" if item.get("step_type") == "read" else "人工"
+        lines.append(
+            "  #%s %s | %s | %s"
+            % (item.get("rank"), item.get("title"), label(item.get("item_type")), state)
+        )
+        if item.get("json_command"):
+            lines.append("     命令: %s" % item.get("json_command"))
+    return lines
+
+
+def render_dashboard_compact_next_steps(value: Dict[str, object]) -> List[str]:
+    lines = []
+    next_read = value.get("next_read", []) if isinstance(value.get("next_read"), list) else []
+    if next_read:
+        for item in next_read[:3]:
+            if isinstance(item, dict):
+                lines.append(
+                    "- 读: #%s %s | %s"
+                    % (item.get("rank"), item.get("title"), item.get("json_command"))
+                )
+    manual = value.get("manual_items", []) if isinstance(value.get("manual_items"), list) else []
+    if manual and isinstance(manual[0], dict):
+        item = manual[0]
+        lines.append(
+            "- 人工: #%s %s | %s"
+            % (item.get("rank"), item.get("title"), item.get("json_command"))
+        )
+    if not lines:
+        lines.append("- 暂无下一步。")
     return lines
 
 
