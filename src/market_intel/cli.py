@@ -3998,10 +3998,7 @@ def dashboard_action_summary(today_focus: Dict[str, object], handoff: Dict[str, 
     gate = handoff.get("journal_gate", {}) if isinstance(handoff.get("journal_gate"), dict) else {}
     chain = today_focus.get("focus_chain", []) if isinstance(today_focus.get("focus_chain"), list) else []
     record_templates = handoff.get("record_templates", []) if isinstance(handoff.get("record_templates"), list) else []
-    first_record = next(
-        (item for item in record_templates if isinstance(item, dict) and item.get("prefilled_note_command")),
-        {},
-    )
+    first_record = dashboard_action_record_template(today_focus, record_templates)
     title = str(today_focus.get("title") or "暂无焦点")
     command = str(today_focus.get("json_command") or gate.get("json_command") or "")
     journal_state = str(gate.get("state") or "unknown")
@@ -4035,6 +4032,33 @@ def dashboard_action_summary(today_focus: Dict[str, object], handoff: Dict[str, 
         ],
         "source": str(today_focus.get("source") or ""),
     }
+
+
+def dashboard_action_record_template(today_focus: Dict[str, object], record_templates: List[object]) -> Dict[str, object]:
+    records = [item for item in record_templates if isinstance(item, dict) and item.get("prefilled_note_command")]
+    if not records:
+        return {}
+    preferred = dashboard_record_sections_for_source(str(today_focus.get("source") or ""))
+    if preferred:
+        for section in preferred:
+            match = next((item for item in records if str(item.get("section") or "") == section), None)
+            if match:
+                return match
+    return records[0]
+
+
+def dashboard_record_sections_for_source(source: str) -> List[str]:
+    if source in {"market_scan", "market_structure"}:
+        return ["market_structure"]
+    if source in {"candidate_queue", "holding_review", "security_review"}:
+        return ["security_review"]
+    if source in {"portfolio_pressure", "portfolio_exposure"}:
+        return ["portfolio_exposure"]
+    if source in {"coverage_review", "runtime_setup", "data_quality"}:
+        return ["data_quality"]
+    if source in {"current_change", "current_vs_latest"}:
+        return ["current_change"]
+    return []
 
 
 def dashboard_focus_chain(

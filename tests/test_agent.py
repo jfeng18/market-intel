@@ -15,6 +15,7 @@ from market_intel.cli import (
     handle_import_universe,
     handle_journal_note,
     handle_journal_save,
+    dashboard_action_summary,
     dashboard_journal_gate,
     run_agent_read_command,
 )
@@ -1225,6 +1226,7 @@ def test_dashboard_returns_one_screen_workbench(monkeypatch, tmp_path):
     assert data["action_summary"]["journal_state"] == data["handoff"]["journal_gate"]["state"]
     assert data["action_summary"]["next_chain"][0]["json_command"] == data["today_focus"]["focus_chain"][0]["json_command"]
     assert data["action_summary"]["record_template"]["available"] is True
+    assert data["action_summary"]["record_template"]["section"] == "market_structure"
     assert data["action_summary"]["record_template"]["prefilled_note_command"].startswith("market-intel journal note --section")
     assert data["action_summary"]["record_template"]["run_after"] == "market-intel journal save --runtime --json"
     assert [item["json_command"] for item in data["today_focus"]["focus_chain"][:3]] == [
@@ -1410,6 +1412,38 @@ def test_dashboard_mock_returns_demo_workbench_without_runtime(monkeypatch, tmp_
     assert coverage_payload["command"] == "pool.quality"
     assert coverage_payload["data"]["pool"] == "all-a"
     assert coverage_payload["data"]["flag"] == "invalid_symbol"
+
+
+def test_dashboard_action_summary_selects_record_template_by_focus_source():
+    summary = dashboard_action_summary(
+        {
+            "available": True,
+            "source": "candidate_queue",
+            "title": "300308 中际旭创",
+            "json_command": "market-intel pool explain 300308 --runtime --json",
+            "focus_chain": [],
+        },
+        {
+            "journal_gate": {"state": "needs_read", "ready_for_journal_note": False, "next_step": "先读候选。"},
+            "record_templates": [
+                {
+                    "section": "data_quality",
+                    "title": "数据质量",
+                    "prefilled_note_command": "market-intel journal note --section data_quality --text '数据质量。'",
+                    "run_after": "market-intel journal save --runtime --json",
+                },
+                {
+                    "section": "security_review",
+                    "title": "单票复核",
+                    "prefilled_note_command": "market-intel journal note --section security_review --text '单票复核。'",
+                    "run_after": "market-intel journal save --runtime --json",
+                },
+            ],
+        },
+    )
+
+    assert summary["record_template"]["section"] == "security_review"
+    assert "security_review" in summary["record_template"]["prefilled_note_command"]
 
 
 def test_dashboard_blocked_handoff_does_not_duplicate_next_read(monkeypatch, tmp_path):
