@@ -1,99 +1,49 @@
 # 数据合同
 
-只记录稳定读取口径。实现细节以 `src/market_intel/core/` 和测试为准。
+实现细节以 `src/market_intel/core/` 和测试为准；这里只记录稳定读取口径。
 
 ## JSON 外壳
+
+所有 JSON 命令使用同一外壳：
 
 ```json
 {
   "ok": true,
-  "command": "pool.coverage",
+  "command": "dashboard",
   "version": "0.1.0",
   "data": {},
   "warnings": [],
   "errors": [],
-  "meta": {
-    "generated_at": "2026-06-07T09:30:00+08:00",
-    "schema_version": "0.1",
-    "source": "pool:all-a"
-  }
+  "meta": {}
 }
 ```
 
 失败时 `ok=false`，`errors[]` 使用 `{code,message,detail}`，不把 traceback 放入 `data`。
 
-## PoolItem
+## 覆盖状态
 
-```json
-{
-  "symbol": "002837",
-  "name": "英维克",
-  "market": "CN_A",
-  "instrument_type": "security",
-  "tradable": true,
-  "primary_layer": "电力",
-  "primary_sub_sector": "液冷",
-  "primary_role": "龙头",
-  "logic": "数据中心温控与液冷方案",
-  "exposures": [],
-  "raw": {},
-  "data_quality_flags": []
-}
-```
+- `confirmed`：复盘池正式覆盖，或 foundation 标的已补 reviewed research notes。
+- `foundation`：全 A 基础清单收录，但研究证据未完成。
+- `draft`：候选或待确认补池行。
+- `missing`：持仓或行情标的不在复盘池/基础清单。
+- `blocked`：数据错误导致无法可信复盘。
 
-非证券或待上市行可 `symbol=null`；同一证券多链路合并到 `exposures[]`；原始字段保留在 `raw`。
+## 核心对象
 
-## Quote
+- `PoolItem`：证券、链路、角色、`exposures[]`、`raw`、`data_quality_flags`。
+- `Quote`：`symbol/trade_date/last_price/change_pct/amount/...`；字符串布尔必须显式解析。
+- `Holding`：按 distinct symbol 计数，重复 exposure 不制造重复持仓。
+- `research_notes_v1`：`symbol/name/status/thesis/evidence/invalidation/updated_at/source`。
+- `journal`：日报、假设、补充笔记和对比结果。
 
-```json
-{
-  "symbol": "002837",
-  "trade_date": "2026-06-07",
-  "last_price": 38.42,
-  "change_pct": 6.8,
-  "amount": 1850000000,
-  "amount_ratio": 2.4,
-  "turnover_rate": 8.6,
-  "amplitude_pct": 10.2,
-  "is_limit_up": false,
-  "is_stage_high": true,
-  "intraday_fade_pct": 1.5,
-  "source": "runtime"
-}
-```
+## CSV 口径
 
-布尔字段接受常见字符串；无效字符串必须报错，不能按 Python truthiness 处理。
+- Universe：`symbol,name,industry,concepts,index_membership,listing_status,source`
+- Research：`symbol,name,status,thesis,evidence,invalidation,updated_at,source`
 
-## Holding
+`status=reviewed` 时必须补齐 `thesis/evidence/invalidation`。
 
-```json
-{
-  "symbol": "002837",
-  "name": "英维克",
-  "quantity": 1000,
-  "source": "runtime"
-}
-```
-
-持仓复核按 distinct holding 计数，单个标的重复 exposure 不制造 `theme_concentration`。
-
-## CSV
-
-Universe:
-
-```text
-symbol,name,industry,concepts,index_membership,listing_status,source
-```
-
-Research:
-
-```text
-symbol,name,status,thesis,evidence,invalidation,updated_at,source
-```
-
-`status=reviewed` 时必须补齐 `thesis/evidence/invalidation`，foundation 标的才可升级为 confirmed。
-
-## 禁止输出
+## 禁止字段
 
 - `action=buy/sell/hold`
 - `recommendation=buy/sell/hold`

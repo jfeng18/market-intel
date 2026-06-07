@@ -1,16 +1,16 @@
 # market-intel
 
-面向全 A 的本地复盘工作台：把行情、持仓、覆盖边界、研究证据和 journal 留痕串成可复跑流程。
+面向全 A 的本地复盘工作台。它把行情、持仓、覆盖边界、研究证据和 journal 留痕串成一条可复跑流程。
 
-不是行情 App、交易 App 或荐股工具；不输出买卖指令、目标价或仓位建议。
+它不是行情 App、交易入口或荐股工具；不输出买卖指令、目标价或仓位建议。
 
 ## 竞争力
 
-- **全 A 边界清楚**：区分 `confirmed/foundation/draft/missing/blocked`，不把“收录”包装成“研究完成”。
-- **持仓优先**：先发现自己的票缺行情、缺覆盖、缺证据或暴露过度。
-- **证据闭环**：`coverage -> research -> import -> coverage -> journal` 可复验。
-- **agent-native**：JSON 稳定，带 `next_commands`、`done_when` 和可接手路径。
-- **本地私有**：runtime 数据不提交，公开文档不写个人信息。
+- 覆盖边界清楚：区分 `confirmed/foundation/draft/missing/blocked`。
+- 持仓优先：先看自己的票缺什么、重叠在哪里、风险暴露是否集中。
+- 证据闭环：基础清单、研究备注、dry-run 导入、coverage 复验、journal 留痕连起来。
+- agent 友好：稳定 JSON、`next_commands`、`done_when` 和接力路径。
+- 本地私有：runtime 数据不提交，公开文档不写个人信息。
 
 ## 安装
 
@@ -33,54 +33,34 @@ PYTHONPATH=src python3 -m market_intel.cli dashboard --mock --text
 market-intel dashboard --mock --text
 market-intel scan --mock --text
 market-intel portfolio review --mock --text
-market-intel focus --mock --text
 ```
 
-## 本地数据
+## 日常流程
 
 ```bash
 market-intel init runtime --json
-market-intel import quotes examples/quotes.csv.example --runtime --json
-market-intel import holdings examples/holdings.csv.example --runtime --json
-market-intel import universe examples/a_share_universe.csv.example --runtime --json
-market-intel import research examples/research_notes.csv.example --runtime --json
-```
-
-日常入口：
-
-```bash
 market-intel status runtime --text
 market-intel dashboard --text
 market-intel agent briefing --text
-market-intel daily --runtime --text
-market-intel journal save --runtime --json
 ```
 
-## 补数闭环
+补数据和留痕：
 
 ```bash
 market-intel pool coverage --runtime --text
 market-intel pool universe --runtime --output data/runtime/a_share_universe_patch.csv --text
-market-intel import universe data/runtime/a_share_universe_patch.csv --runtime --merge --dry-run --text
-market-intel import universe data/runtime/a_share_universe_patch.csv --runtime --merge --json
-market-intel pool coverage --runtime --text
-```
-
-研究证据：
-
-```bash
 market-intel pool research --runtime --output data/runtime/research_notes.todo.csv --text
+market-intel import universe data/runtime/a_share_universe_patch.csv --runtime --merge --dry-run --text
 market-intel import research data/runtime/research_notes.todo.csv --dry-run --json
-market-intel import research data/runtime/research_notes.todo.csv --runtime --json
-market-intel agent next --text
+market-intel journal save --runtime --json
 ```
 
 ## 文档
 
 - `docs/product.md`：定位、边界、路线。
-- `docs/data-model.md`：稳定 JSON 和核心字段。
-- `docs/design.md`：架构与流程。
-- `docs/review.md`：开发验收清单。
+- `docs/design.md`：架构和流程。
+- `docs/data-model.md`：稳定 JSON 口径。
+- `docs/review.md`：验收清单。
 
 ## 隐私
 

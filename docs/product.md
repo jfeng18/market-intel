@@ -1,46 +1,29 @@
 # 产品
 
-`market-intel` 是面向全 A 的本地复盘工作台。
+`market-intel` 是全 A 本地复盘工具，服务对象是股民和接力工作的 agent。
 
-## 不做
+## 做什么
 
-- 实时行情终端。
-- 交易入口。
-- 资讯流或社区。
-- 黑盒诊股。
-- 买卖建议、目标价、仓位建议。
+- 给出当天先读什么、为什么读、读完算什么。
+- 标出持仓缺行情、缺覆盖、缺研究证据和集中暴露。
+- 把基础清单、研究备注、导入校验、coverage 复验和 journal 串成闭环。
+- 用稳定 JSON 让 agent 可以接手，而不是重新猜上下文。
+
+## 不做什么
+
+- 不做实时行情终端、资讯流、社区或交易入口。
+- 不做黑盒诊股。
+- 不输出买卖建议、目标价或仓位建议。
 
 ## 差异化
 
-- 覆盖边界清楚：`confirmed/foundation/draft/missing/blocked`。
-- 持仓优先：先看自己的票是否缺行情、缺覆盖、缺证据或暴露集中。
-- 证据闭环：基础清单只说明存在，研究证据齐全才算 confirmed。
-- agent 可接力：稳定 JSON、`next_commands`、`done_when`。
-- journal 留痕：每天的判断能被下一次复盘验证或推翻。
-
-## 默认流程
-
-```text
-status runtime
--> dashboard / agent briefing
--> coverage / scan / portfolio review
--> universe / research 补数
--> import --dry-run
--> import --runtime
--> journal save / compare
-```
-
-## 全 A 原则
-
-- `all-a` 是默认目标范围。
-- AI 池只作为种子样例和回归底座。
-- 新板块沉到通用字段：行业、概念、指数成分、研究状态、持仓覆盖、风险暴露。
-- 不为每个板块写特殊规则，除非字段可验证、可复用、能进入 JSON contract。
+- 多数股票 App 更强在行情、资讯和交易入口；本项目更强在复盘流程、证据状态和本地留痕。
+- `foundation` 只表示全 A 基础清单收录，不能等同研究完成。
+- `confirmed` 必须有 reviewed research notes 或复盘池正式覆盖。
+- AI 产业链池只是种子样例和回归底座；默认产品范围是 `all-a`。
 
 ## 路线
 
-P0：全 A 基础清单、覆盖边界、补数 dry-run。
-
-P1：研究证据闭环、候选队列、持仓复核卡片。
-
-P2：journal 假设跟踪、轻量 GUI。
+- P0：全 A 基础清单、覆盖边界、补数 dry-run。
+- P1：研究证据闭环、候选队列、持仓复核卡片。
+- P2：journal 假设跟踪、轻量 GUI。
