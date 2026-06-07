@@ -2128,8 +2128,15 @@ def normalize_agent_symbol(symbol: Optional[str]) -> Optional[str]:
     if not text:
         return None
     for prefix in ("SH", "SZ", "BJ"):
+        for separator in (":", ".", "-"):
+            marker = "%s%s" % (prefix, separator)
+            if text.startswith(marker) and len(text) == len(marker) + 6 and text[len(marker):].isdigit():
+                return text[len(marker):]
         if text.startswith(prefix) and len(text) == len(prefix) + 6 and text[len(prefix):].isdigit():
             return text[len(prefix):]
+    for suffix in (".SH", ".SZ", ".BJ"):
+        if text.endswith(suffix) and len(text) == 6 + len(suffix) and text[:6].isdigit():
+            return text[:6]
     return text
 
 

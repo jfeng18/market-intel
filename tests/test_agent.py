@@ -1366,15 +1366,16 @@ def test_agent_next_can_focus_symbol(monkeypatch, tmp_path):
 def test_agent_next_normalizes_symbol_input(monkeypatch, tmp_path):
     import_runtime_examples(monkeypatch, tmp_path)
 
-    padded = handle_agent_next("ai-energy", max_quote_age_days=9999, max_steps=5, symbol=" 300308 ")
-    prefixed = handle_agent_next("ai-energy", max_quote_age_days=9999, max_steps=5, symbol="sz300308")
+    payloads = [
+        handle_agent_next("ai-energy", max_quote_age_days=9999, max_steps=5, symbol=value)
+        for value in [" 300308 ", "sz300308", "300308.SZ", "SZ:300308", "sz.300308"]
+    ]
 
-    assert padded["ok"] is True
-    assert padded["data"]["symbol"] == "300308"
-    assert padded["data"]["security_cards"]["cards"][0]["symbol"] == "300308"
-    assert prefixed["ok"] is True
-    assert prefixed["data"]["symbol"] == "300308"
-    assert prefixed["data"]["focus_chain"][0]["json_command"].startswith("market-intel portfolio explain 300308")
+    for payload in payloads:
+        assert payload["ok"] is True
+        assert payload["data"]["symbol"] == "300308"
+        assert payload["data"]["security_cards"]["cards"][0]["symbol"] == "300308"
+        assert payload["data"]["focus_chain"][0]["json_command"].startswith("market-intel portfolio explain 300308")
 
 
 def test_agent_next_surfaces_foundation_holding_review(monkeypatch, tmp_path):
