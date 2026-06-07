@@ -1741,17 +1741,17 @@ def coverage_next_actions(
         actions.append(
             {
                 "rank": 2,
-                "id": "expand_all_a_sources",
-                "command": "market-intel import universe examples/a_share_universe.csv.example --runtime --dry-run --json",
-                "done_when": "已用 dry-run 校验 A 股基础清单 CSV 字段、覆盖变化和 warnings。",
+                "id": "export_a_share_universe_patch",
+                "command": "market-intel pool universe --runtime --dry-run --json",
+                "done_when": "已用 runtime 行情预览 A 股基础清单补丁草稿；如果为空，先准备真实 <a_share_universe.csv>。",
             }
         )
         actions.append(
             {
                 "rank": 3,
-                "id": "import_all_a_sources",
-                "command": "market-intel import universe examples/a_share_universe.csv.example --runtime --json",
-                "done_when": "dry-run 通过后写入 A 股基础清单，并确认 coverage 的 universe.available=true。",
+                "id": "import_a_share_universe",
+                "command": "market-intel import universe <a_share_universe.csv> --runtime --dry-run --json",
+                "done_when": "已用真实 A 股基础清单 dry-run 校验字段、覆盖变化和 warnings；通过后再去掉 --dry-run 写入 runtime。",
             }
         )
     elif scope == "all_a_seed" and universe.get("available"):
@@ -1920,10 +1920,9 @@ def prioritize_action_queue(actions: List[Dict[str, object]]) -> None:
 def action_priority(action_id: str) -> int:
     priorities = {
         "clean_data_quality_queue": 0,
-        "expand_all_a_sources": 10,
-        "import_all_a_sources": 11,
-        "export_a_share_universe_patch": 12,
-        "merge_a_share_universe_patch": 13,
+        "export_a_share_universe_patch": 10,
+        "import_a_share_universe": 11,
+        "merge_a_share_universe_patch": 12,
         "review_a_share_universe": 14,
         "review_expansion_queue": 20,
         "export_research_queue": 21,
