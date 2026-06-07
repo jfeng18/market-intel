@@ -2174,6 +2174,7 @@ def build_mock_dashboard_data(
     actions = mock_dashboard_action_lane(plan)
     handoff = mock_dashboard_handoff(pool, plan)
     tiles = mock_dashboard_tiles(market, portfolio, evidence, plan)
+    today_focus = dashboard_today_focus(actions, plan, handoff)
     return {
         "pool": pool,
         "state": "demo_ready" if scan_payload.get("ok") and daily_payload.get("ok") else "demo_blocked",
@@ -2185,6 +2186,7 @@ def build_mock_dashboard_data(
             "writes_are_skipped": True,
             "mode": "mock",
         },
+        "today_focus": today_focus,
         "positioning": dashboard_positioning(pool, mode="mock"),
         "coverage_context": coverage,
         "tiles": tiles,
@@ -2634,21 +2636,30 @@ def build_dashboard_data(
     digest: Dict[str, object],
     max_steps: int,
 ) -> Dict[str, object]:
+    coverage = dashboard_coverage_context(digest)
+    market = dashboard_market_pulse(digest)
+    portfolio = dashboard_portfolio_pulse(digest)
+    evidence = dashboard_evidence_gaps(digest)
+    actions = dashboard_action_lane(digest, coverage)
+    handoff = dashboard_handoff(digest)
+    plan = dashboard_review_plan(pool, digest)
+    today_focus = dashboard_today_focus(actions, plan, handoff)
     return {
         "pool": pool,
         "state": dashboard_state(run_data, digest),
         "summary": dashboard_summary(run_data, digest),
         "source_agent_run_state": run_data.get("state"),
         "run_limits": run_data.get("run_limits", {"max_steps": max_steps, "read_only_only": True, "writes_are_skipped": True}),
+        "today_focus": today_focus,
         "positioning": dashboard_positioning(pool, mode="runtime"),
-        "coverage_context": dashboard_coverage_context(digest),
+        "coverage_context": coverage,
         "tiles": dashboard_tiles(digest),
-        "market_pulse": dashboard_market_pulse(digest),
-        "portfolio_pulse": dashboard_portfolio_pulse(digest),
-        "evidence_gaps": dashboard_evidence_gaps(digest),
-        "action_lane": dashboard_action_lane(digest, dashboard_coverage_context(digest)),
-        "handoff": dashboard_handoff(digest),
-        "review_plan": dashboard_review_plan(pool, digest),
+        "market_pulse": market,
+        "portfolio_pulse": portfolio,
+        "evidence_gaps": evidence,
+        "action_lane": actions,
+        "handoff": handoff,
+        "review_plan": plan,
         "guardrails": [
             "dashboard 只整理复盘优先级和证据缺口，不生成买卖指令、目标价或仓位建议。",
             "全 A 结论受行情源、A 股基础清单和研究证据覆盖度影响。",
@@ -3195,6 +3206,72 @@ def dashboard_handoff(digest: Dict[str, object]) -> Dict[str, object]:
     }
 
 
+def dashboard_today_focus(
+    action_lane: Dict[str, object],
+    plan: Dict[str, object],
+    handoff: Dict[str, object],
+) -> Dict[str, object]:
+    item = first_dashboard_focus_item(action_lane.get("items", []), prefer_read=True)
+    if not item:
+        item = first_dashboard_focus_item(plan.get("items", []), prefer_read=True)
+    if not item:
+        item = first_dashboard_focus_item(handoff.get("next_read", []), prefer_read=False)
+    if not item:
+        item = first_dashboard_focus_item(handoff.get("manual_items", []), prefer_read=False)
+    if not item:
+        return {
+            "available": False,
+            "summary": "暂无今日焦点。",
+            "source": "",
+            "title": "",
+            "reason": "",
+            "json_command": "",
+            "done_when": "",
+            "runnable": False,
+            "requires_manual": False,
+            "related_symbols": [],
+        }
+
+    command = str(item.get("json_command") or "")
+    source = str(item.get("item_type") or item.get("source") or "review_plan")
+    requires_manual = bool(item.get("requires_manual")) or str(item.get("step_type") or "") == "manual"
+    runnable = bool(command) and not requires_manual and digest_command_is_read_only(command)
+    title = str(item.get("title") or source)
+    reason = str(item.get("reason") or "按复盘队列优先级先处理。")
+    done_when = str(item.get("done_when") or "已完成该焦点项并记录下一步。")
+    return {
+        "available": True,
+        "summary": "今日先做：%s；完成后进入复盘计划下一项。" % title,
+        "source": source,
+        "title": title,
+        "reason": reason,
+        "json_command": command,
+        "done_when": done_when,
+        "runnable": runnable,
+        "requires_manual": requires_manual,
+        "related_symbols": dedupe_queue_texts(
+            item.get("related_symbols", []) if isinstance(item.get("related_symbols"), list) else []
+        )[:5],
+    }
+
+
+def first_dashboard_focus_item(value: object, prefer_read: bool) -> Dict[str, object]:
+    items = value if isinstance(value, list) else []
+    fallback = {}
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        command = str(item.get("json_command") or "")
+        if not fallback and (command or item.get("title")):
+            fallback = item
+        requires_manual = bool(item.get("requires_manual")) or str(item.get("step_type") or "") == "manual"
+        if prefer_read and (requires_manual or not command or not digest_command_is_read_only(command)):
+            continue
+        if command or item.get("title"):
+            return item
+    return fallback
+
+
 def dashboard_review_plan(pool: str, digest: Dict[str, object]) -> Dict[str, object]:
     items: List[Dict[str, object]] = []
     add_dashboard_plan_coverage(items, dashboard_coverage_context(digest), pool, "runtime")
@@ -3561,6 +3638,12 @@ def dashboard_contract() -> Dict[str, object]:
             "data.state",
             "data.summary",
             "data.tiles",
+            "data.today_focus",
+            "data.today_focus.title",
+            "data.today_focus.reason",
+            "data.today_focus.json_command",
+            "data.today_focus.done_when",
+            "data.today_focus.runnable",
             "data.positioning",
             "data.positioning.differentiators",
             "data.positioning.differentiators[].agent_path",

@@ -1028,8 +1028,14 @@ def test_dashboard_returns_one_screen_workbench(monkeypatch, tmp_path):
     assert data["coverage_context"]["top_gaps"]
     assert data["coverage_context"]["top_data_quality_queue"]
     assert data["coverage_context"]["top_data_quality_queue"][0]["samples"]
+    assert data["today_focus"]["available"] is True
+    assert data["today_focus"]["source"] == "coverage_review"
+    assert data["today_focus"]["json_command"] == data["action_lane"]["items"][0]["json_command"]
+    assert data["today_focus"]["done_when"]
     assert data["positioning"]["headline"].startswith("面向全 A")
     assert data["positioning"]["differentiators"][0]["agent_path"] == "data.coverage_context"
+    assert "data.today_focus" in data["agent_contract"]["stable_fields"]
+    assert "data.today_focus.json_command" in data["agent_contract"]["stable_fields"]
     assert "data.positioning" in data["agent_contract"]["stable_fields"]
     assert "data.positioning.differentiators[].agent_path" in data["agent_contract"]["stable_fields"]
     assert "data.positioning.selection_rule" in data["agent_contract"]["stable_fields"]
@@ -1074,6 +1080,8 @@ def test_dashboard_returns_one_screen_workbench(monkeypatch, tmp_path):
     assert "data.review_plan.items[].json_command" in data["agent_contract"]["stable_fields"]
     assert "market-intel dashboard" in text
     assert len(text.splitlines()) <= 80
+    assert "今日焦点" in text
+    assert "为什么:" in text
     assert "定位" in text
     assert "个人复盘操作系统" in text
     assert "覆盖底座" in text
@@ -1122,6 +1130,9 @@ def test_dashboard_mock_returns_demo_workbench_without_runtime(monkeypatch, tmp_
     assert data["positioning"]["differentiators"][1]["agent_path"] == "data.portfolio_pulse"
     assert data["coverage_context"]["available"] is True
     assert data["coverage_context"]["universe"]["available"] is False
+    assert data["today_focus"]["available"] is True
+    assert data["today_focus"]["source"] == "coverage_review"
+    assert data["today_focus"]["json_command"] == data["action_lane"]["items"][0]["json_command"]
     assert data["market_pulse"]["available"] is True
     assert data["market_pulse"]["candidates"]
     assert data["market_pulse"]["candidates"][0]["review_focus"]["headline"]
@@ -1146,6 +1157,7 @@ def test_dashboard_mock_returns_demo_workbench_without_runtime(monkeypatch, tmp_
     assert any("mock" in item for item in data["guardrails"])
     assert "mock 示例" in text
     assert len(text.splitlines()) <= 80
+    assert "今日焦点" in text
     assert "定位" in text
     assert "个人复盘操作系统" in text
     assert "候选:" in text

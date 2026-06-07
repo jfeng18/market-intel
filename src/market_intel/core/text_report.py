@@ -1833,6 +1833,10 @@ def render_dashboard_text(payload: Dict[str, object]) -> str:
         "状态",
         "- %s | %s" % (data.get("state"), data.get("summary") or "暂无摘要。"),
     ]
+    today_focus = data.get("today_focus", {}) if isinstance(data.get("today_focus"), dict) else {}
+    if today_focus.get("available"):
+        lines.extend(["", "今日焦点"])
+        lines.extend(render_dashboard_today_focus(today_focus))
     tiles = data.get("tiles", []) if isinstance(data.get("tiles"), list) else []
     if tiles:
         lines.extend(["", "概览"])
@@ -1871,6 +1875,19 @@ def render_dashboard_text(payload: Dict[str, object]) -> str:
         lines.extend(["", "边界"])
         lines.extend(render_list(guardrails, empty="不生成交易指令。"))
     return "\n".join(lines)
+
+
+def render_dashboard_today_focus(value: Dict[str, object]) -> List[str]:
+    lines = [
+        "- %s | %s" % (value.get("title") or "先看第一项", label(value.get("source") or "focus"))
+    ]
+    if value.get("reason"):
+        lines.append("  为什么: %s" % value.get("reason"))
+    if value.get("json_command"):
+        lines.append("  命令: %s" % value.get("json_command"))
+    if value.get("done_when"):
+        lines.append("  完成: %s" % value.get("done_when"))
+    return lines
 
 
 def render_dashboard_positioning(value: Dict[str, object]) -> List[str]:
