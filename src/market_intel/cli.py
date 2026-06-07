@@ -2061,8 +2061,9 @@ def handle_agent_next(
     if symbol:
         handoff = filter_agent_next_handoff_for_symbol(handoff, symbol)
         cards = filter_agent_next_cards_for_symbol(cards, symbol)
-        focus_chain = agent_next_symbol_focus_chain(symbol, handoff, cards, focus_chain)
+        focus_chain = agent_next_symbol_focus_chain(pool, symbol, handoff, cards, focus_chain)
         if not cards.get("cards"):
+            focus_chain = []
             return envelope(
                 command="agent.next",
                 data={
@@ -2120,6 +2121,7 @@ def agent_next_focus_chain(pool: str, digest: Dict[str, object], handoff: Dict[s
 
 
 def agent_next_symbol_focus_chain(
+    pool: str,
     symbol: str,
     handoff: Dict[str, object],
     cards: Dict[str, object],
@@ -2129,7 +2131,7 @@ def agent_next_symbol_focus_chain(
     seen = set()
     for source in [handoff.get("command_chain", []), handoff.get("next_read", [])]:
         for item in source if isinstance(source, list) else []:
-            add_agent_next_symbol_focus_item(rows, seen, item, symbol, allow_global=False)
+            add_agent_next_symbol_focus_item(rows, seen, item, pool, symbol, allow_global=False)
             if len(rows) >= 3:
                 return rows
     for card in cards.get("cards", []) if isinstance(cards.get("cards"), list) else []:
@@ -2145,6 +2147,7 @@ def agent_next_symbol_focus_chain(
                 "done_when": "已确认该标的行情、板块、覆盖状态、证据缺口和下一步留档项。",
                 "related_symbols": [card.get("symbol")],
             },
+            pool,
             symbol,
             allow_global=False,
         )
@@ -2161,6 +2164,7 @@ def agent_next_symbol_focus_chain(
                     "done_when": "已确认该标的行情、板块、覆盖状态、证据缺口和下一步留档项。",
                     "related_symbols": [card.get("symbol")],
                 },
+                pool,
                 symbol,
                 allow_global=False,
             )
@@ -2170,7 +2174,7 @@ def agent_next_symbol_focus_chain(
         symbols = item.get("related_symbols", []) if isinstance(item, dict) and isinstance(item.get("related_symbols"), list) else []
         if symbols and symbol not in symbols:
             continue
-        add_agent_next_symbol_focus_item(rows, seen, item, symbol, allow_global=False)
+        add_agent_next_symbol_focus_item(rows, seen, item, pool, symbol, allow_global=False)
         if len(rows) >= 3:
             return rows
     return rows
@@ -2180,12 +2184,13 @@ def add_agent_next_symbol_focus_item(
     rows: List[Dict[str, object]],
     seen: set,
     item: object,
+    pool: str,
     symbol: str,
     allow_global: bool = False,
 ) -> None:
     if not isinstance(item, dict):
         return
-    command = str(item.get("json_command") or "")
+    command = with_pool_arg(str(item.get("json_command") or ""), pool)
     if not command or not digest_command_is_read_only(command):
         return
     related = item.get("related_symbols", []) if isinstance(item.get("related_symbols"), list) else []

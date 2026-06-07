@@ -1258,6 +1258,7 @@ def test_agent_next_can_focus_symbol(monkeypatch, tmp_path):
     assert data["focus_chain"][0]["json_command"].startswith("market-intel portfolio explain 300308")
     assert data["focus_chain"][0]["related_symbols"] == ["300308"]
     assert data["focus_chain"][1]["json_command"].startswith("market-intel pool explain 300308")
+    assert all(item["json_command"].endswith("--pool ai-energy") for item in data["focus_chain"])
     assert all("300308" in item["json_command"] or "300308" in item.get("related_symbols", []) for item in data["focus_chain"])
     assert len(data["security_cards"]["cards"]) == 1
     assert data["security_cards"]["cards"][0]["symbol"] == "300308"
@@ -1360,6 +1361,7 @@ def test_agent_next_symbol_not_found(monkeypatch, tmp_path):
 
     assert payload["ok"] is False
     assert payload["data"]["state"] == "symbol_not_found"
+    assert payload["data"]["focus_chain"] == []
     assert payload["errors"][0]["code"] == "AGENT_NEXT_SYMBOL_NOT_FOUND"
 
 
