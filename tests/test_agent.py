@@ -29,6 +29,15 @@ def import_runtime_examples(monkeypatch, tmp_path):
     handle_import_holdings("examples/holdings.csv.example", use_runtime=True)
 
 
+def dashboard_text_max_non_command_line_length(text):
+    lines = []
+    for line in text.splitlines():
+        if "market-intel " in line:
+            continue
+        lines.append(len(line))
+    return max(lines, default=0)
+
+
 def import_runtime_with_many_holdings(monkeypatch, tmp_path):
     monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(tmp_path / "runtime"))
     handle_import_quotes("examples/quotes.csv.example", use_runtime=True)
@@ -1310,6 +1319,7 @@ def test_dashboard_returns_one_screen_workbench(monkeypatch, tmp_path):
     assert "data.handoff.completion_checklist[].status" in data["agent_contract"]["stable_fields"]
     assert "market-intel dashboard" in text
     assert len(text.splitlines()) <= 80
+    assert dashboard_text_max_non_command_line_length(text) <= 110
     assert "操作摘要" in text
     assert "门槛:" in text
     assert "记录前置:" in text
@@ -1410,6 +1420,7 @@ def test_dashboard_mock_returns_demo_workbench_without_runtime(monkeypatch, tmp_
     assert any("mock" in item for item in data["guardrails"])
     assert "mock 示例" in text
     assert len(text.splitlines()) <= 80
+    assert dashboard_text_max_non_command_line_length(text) <= 110
     assert "操作摘要" in text
     assert "门槛:" in text
     assert "记录: market-intel journal note --section" not in text

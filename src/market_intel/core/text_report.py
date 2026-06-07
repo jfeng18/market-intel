@@ -1843,7 +1843,7 @@ def render_dashboard_text(payload: Dict[str, object]) -> str:
         "market-intel dashboard",
         "",
         "状态",
-        "- %s | %s" % (data.get("state"), data.get("summary") or "暂无摘要。"),
+        "- %s | %s" % (data.get("state"), dashboard_short_text(data.get("summary") or "暂无摘要。", 80)),
     ]
     action_summary = data.get("action_summary", {}) if isinstance(data.get("action_summary"), dict) else {}
     if action_summary.get("available"):
@@ -1858,7 +1858,10 @@ def render_dashboard_text(payload: Dict[str, object]) -> str:
         lines.extend(["", "概览"])
         for item in tiles:
             if isinstance(item, dict):
-                lines.append("- %s: %s | %s" % (item.get("label"), item.get("value"), item.get("detail") or ""))
+                lines.append(
+                    "- %s: %s | %s"
+                    % (item.get("label"), item.get("value"), dashboard_short_text(item.get("detail") or "", 80))
+                )
     positioning = data.get("positioning", {}) if isinstance(data.get("positioning"), dict) else {}
     if positioning:
         lines.extend(["", "定位"])
@@ -1893,10 +1896,17 @@ def render_dashboard_text(payload: Dict[str, object]) -> str:
     return "\n".join(lines)
 
 
+def dashboard_short_text(value: object, limit: int = 80) -> str:
+    text = " ".join(str(value or "").split())
+    if len(text) <= limit:
+        return text
+    return "%s..." % text[: max(0, limit - 3)].rstrip()
+
+
 def render_dashboard_action_summary(value: Dict[str, object]) -> List[str]:
     lines = ["- %s" % (value.get("headline") or "暂无今日焦点。")]
     if value.get("why"):
-        lines.append("  为什么: %s" % value.get("why"))
+        lines.append("  为什么: %s" % dashboard_short_text(value.get("why"), 72))
     if value.get("next_command"):
         lines.append("  命令: %s" % value.get("next_command"))
     checklist = value.get("completion_checklist", []) if isinstance(value.get("completion_checklist"), list) else []
@@ -1907,7 +1917,7 @@ def render_dashboard_action_summary(value: Dict[str, object]) -> List[str]:
             % (
                 first_check.get("title") or first_check.get("check_id") or "收尾检查",
                 label(first_check.get("status") or ""),
-                first_check.get("done_when") or first_check.get("reason") or "",
+                dashboard_short_text(first_check.get("done_when") or first_check.get("reason") or "", 64),
             )
         )
     if value.get("journal_state"):
@@ -1935,11 +1945,11 @@ def render_dashboard_today_focus(value: Dict[str, object], compact: bool = False
         "- %s | %s" % (value.get("title") or "先看第一项", label(value.get("source") or "focus"))
     ]
     if value.get("reason") and not compact:
-        lines.append("  为什么: %s" % value.get("reason"))
+        lines.append("  为什么: %s" % dashboard_short_text(value.get("reason"), 72))
     if value.get("json_command") and not compact:
         lines.append("  命令: %s" % value.get("json_command"))
     if value.get("done_when"):
-        lines.append("  完成: %s" % value.get("done_when"))
+        lines.append("  完成: %s" % dashboard_short_text(value.get("done_when"), 72))
     chain = value.get("focus_chain", []) if isinstance(value.get("focus_chain"), list) else []
     if chain:
         lines.append("  接力:")
@@ -2029,7 +2039,7 @@ def render_dashboard_compact_coverage(value: Dict[str, object]) -> List[str]:
 
 
 def render_dashboard_compact_market(value: Dict[str, object]) -> List[str]:
-    lines = ["- %s" % (value.get("summary") or "暂无全市场扫描。")]
+    lines = ["- %s" % dashboard_short_text(value.get("summary") or "暂无全市场扫描。", 80)]
     breadth = value.get("market_breadth", {}) if isinstance(value.get("market_breadth"), dict) else {}
     if breadth:
         lines.append("  宽度: %s" % render_compact_market_breadth(breadth))
@@ -2103,7 +2113,7 @@ def render_compact_market_breadth(value: Dict[str, object]) -> str:
 
 
 def render_dashboard_compact_portfolio(value: Dict[str, object]) -> List[str]:
-    lines = ["- %s" % (value.get("summary") or "暂无持仓复盘。")]
+    lines = ["- %s" % dashboard_short_text(value.get("summary") or "暂无持仓复盘。", 80)]
     buckets = value.get("buckets", {}) if isinstance(value.get("buckets"), dict) else {}
     if buckets:
         lines.append(
@@ -2139,10 +2149,10 @@ def render_dashboard_compact_portfolio(value: Dict[str, object]) -> List[str]:
 
 
 def render_dashboard_compact_evidence(value: Dict[str, object]) -> List[str]:
-    lines = ["- %s" % (value.get("summary") or "暂无证据缺口。")]
+    lines = ["- %s" % dashboard_short_text(value.get("summary") or "暂无证据缺口。", 80)]
     repair = value.get("data_repair", {}) if isinstance(value.get("data_repair"), dict) else {}
     if repair.get("available"):
-        lines.append("  数据修复: %s" % (repair.get("summary") or "需处理数据问题。"))
+        lines.append("  数据修复: %s" % dashboard_short_text(repair.get("summary") or "需处理数据问题。", 72))
     items = value.get("items", []) if isinstance(value.get("items"), list) else []
     if items:
         rendered = []
@@ -2162,7 +2172,7 @@ def render_dashboard_compact_evidence(value: Dict[str, object]) -> List[str]:
 
 
 def render_dashboard_compact_review_plan(value: Dict[str, object]) -> List[str]:
-    lines = ["- %s" % (value.get("summary") or "暂无复盘计划。")]
+    lines = ["- %s" % dashboard_short_text(value.get("summary") or "暂无复盘计划。", 80)]
     items = value.get("items", []) if isinstance(value.get("items"), list) else []
     for item in items[:3]:
         if not isinstance(item, dict):
@@ -2183,7 +2193,7 @@ def render_dashboard_compact_next_steps(value: Dict[str, object]) -> List[str]:
     if gate:
         lines.append(
             "- 留档门槛: %s | %s"
-            % (gate.get("state") or "unknown", gate.get("next_step") or "")
+            % (gate.get("state") or "unknown", dashboard_short_text(gate.get("next_step") or "", 64))
         )
         if gate.get("json_command"):
             lines.append("  命令: %s" % gate.get("json_command"))
