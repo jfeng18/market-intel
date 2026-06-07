@@ -2248,7 +2248,25 @@ def render_dashboard_compact_evidence(value: Dict[str, object]) -> List[str]:
                 )
         if rendered:
             lines.append("  待补: %s" % "；".join(rendered))
+        first_detail = render_dashboard_evidence_first_detail(items[0])
+        if first_detail:
+            lines.append("  首项: %s" % first_detail)
     return lines
+
+
+def render_dashboard_evidence_first_detail(value: object) -> str:
+    item = value if isinstance(value, dict) else {}
+    if not item:
+        return ""
+    missing = item.get("missing_evidence", []) if isinstance(item.get("missing_evidence"), list) else []
+    missing_text = "、".join(str(row) for row in missing[:3] if row)
+    done_when = dashboard_short_text(item.get("done_when") or "", 52)
+    parts = [str(item.get("title") or "").strip()]
+    if missing_text:
+        parts.append("缺 %s" % missing_text)
+    if done_when:
+        parts.append(done_when)
+    return " | ".join(part for part in parts if part)
 
 
 def render_dashboard_compact_review_plan(value: Dict[str, object], compact: bool = False) -> List[str]:
