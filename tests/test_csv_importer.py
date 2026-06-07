@@ -46,6 +46,7 @@ def test_import_quotes_dry_run_normalizes_chinese_csv(tmp_path):
     assert payload["data"]["written"] is False
     assert payload["data"]["canonical_schema"]
     assert preview["symbol"] == "002837"
+    assert preview["name"] == "英维克"
     assert preview["trade_date"] == "2026-06-06"
     assert preview["amount"] == 1230000000.0
     assert any(warning["code"] == "QUOTE_FIELD_DEFAULTED" for warning in payload["warnings"])

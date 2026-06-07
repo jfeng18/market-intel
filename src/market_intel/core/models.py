@@ -73,6 +73,7 @@ class Quote:
     is_limit_up: bool
     is_stage_high: bool
     intraday_fade_pct: float
+    name: str = ""
     source: str = "mock"
 
     @classmethod
@@ -89,12 +90,14 @@ class Quote:
             is_limit_up=parse_bool(value.get("is_limit_up")),
             is_stage_high=parse_bool(value.get("is_stage_high")),
             intraday_fade_pct=float(value.get("intraday_fade_pct") or 0),
+            name=str(value.get("name") or ""),
             source=str(value.get("source") or "mock"),
         )
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "symbol": self.symbol,
+            "name": self.name,
             "trade_date": self.trade_date,
             "last_price": self.last_price,
             "change_pct": self.change_pct,

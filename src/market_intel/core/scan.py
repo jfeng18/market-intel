@@ -2,7 +2,8 @@ from collections import defaultdict
 from typing import Dict, Iterable, List, Optional, Tuple
 
 from .coverage import matched_coverage_state, research_status, split_universe_values
-from .models import Holding, PoolItem, Quote
+from .models import Exposure, Holding, PoolItem, Quote
+from .symbols import is_six_digit_code
 
 
 GroupKey = Tuple[str, str, str]
@@ -24,6 +25,7 @@ def build_market_scan(
         for item in items
         if item.tradable and item.symbol and item.symbol in quote_by_symbol
     ]
+    quoted_items.extend(quote_only_items(pool, items, quotes))
 
     groups = build_scan_groups(quoted_items)
     symbol_context = build_symbol_context(quoted_items, groups)
@@ -78,6 +80,55 @@ def build_scan_groups(quoted_items: List[Tuple[PoolItem, Quote]]) -> List[Dict[s
     for rank, row in enumerate(rows, start=1):
         row["rank"] = rank
     return rows
+
+
+def quote_only_items(
+    pool: str,
+    items: List[PoolItem],
+    quotes: List[Quote],
+) -> List[Tuple[PoolItem, Quote]]:
+    if pool != "all-a":
+        return []
+    covered_symbols = {item.symbol for item in items if item.symbol}
+    rows = []
+    for index, quote in enumerate(quotes, start=1):
+        if quote.symbol in covered_symbols or not is_six_digit_code(quote.symbol):
+            continue
+        rows.append((quote_only_pool_item(quote, index), quote))
+    return rows
+
+
+def quote_only_pool_item(quote: Quote, index: int) -> PoolItem:
+    name = quote.name or quote.symbol
+    exposure = Exposure(
+        layer="全A待分类",
+        sub_sector="行情未覆盖",
+        section="全A待分类 / 行情未覆盖",
+        role=None,
+        priority="P3",
+        logic="行情中出现但尚未接入 A 股基础清单。",
+        raw_row=index,
+    )
+    return PoolItem(
+        symbol=quote.symbol,
+        name=name,
+        market="CN_A",
+        instrument_type="security",
+        priority="P3",
+        tradable=True,
+        primary_layer="全A待分类",
+        primary_sub_sector="行情未覆盖",
+        primary_role=None,
+        logic="行情中出现但尚未接入 A 股基础清单。",
+        exposures=[exposure],
+        raw={
+            "raw_row": index,
+            "raw_company": name,
+            "pool_source": "quote_only",
+            "coverage_state": "quote_only",
+        },
+        data_quality_flags=["quote_only_candidate"],
+    )
 
 
 def scan_group_keys(item: PoolItem) -> List[GroupKey]:
@@ -294,8 +345,18 @@ def market_breadth_interpretation(state: str) -> str:
     return mapping.get(state, "先确认行情覆盖和板块共振质量。")
 
 
+def coverage_state_label(value: object) -> str:
+    labels = {
+        "confirmed": "已确认",
+        "foundation": "基础清单",
+        "draft": "草稿",
+        "quote_only": "行情待覆盖",
+    }
+    return labels.get(str(value), str(value or "未知"))
+
+
 def leader_row(item: PoolItem, quote: Quote) -> Dict[str, object]:
-    state = matched_coverage_state(item)
+    state = scan_coverage_state(item)
     return {
         "symbol": item.symbol,
         "name": item.name,
@@ -304,6 +365,13 @@ def leader_row(item: PoolItem, quote: Quote) -> Dict[str, object]:
         "is_stage_high": quote.is_stage_high,
         "coverage_state": state["state"],
     }
+
+
+def scan_coverage_state(item: PoolItem) -> Dict[str, object]:
+    raw = item.raw if isinstance(item.raw, dict) else {}
+    if raw.get("coverage_state") == "quote_only" or raw.get("pool_source") == "quote_only":
+        return {"state": "quote_only", "reasons": ["quote_not_in_universe"]}
+    return matched_coverage_state(item)
 
 
 def group_signals(
@@ -392,7 +460,7 @@ def build_scan_candidates(
         if not item.symbol:
             continue
         contexts = symbol_context.get(item.symbol, [])
-        state = matched_coverage_state(item)
+        state = scan_coverage_state(item)
         research = research_status(item)
         risk_flags = candidate_risk_flags(item, quote, contexts, state["state"])
         universe_context = candidate_universe_context(item, contexts)
@@ -481,6 +549,8 @@ def candidate_risk_flags(
         flags.append("foundation_pool_match")
     if coverage_state == "draft":
         flags.append("draft_pool_match")
+    if coverage_state == "quote_only":
+        flags.append("quote_only_candidate")
     for context in contexts[:2]:
         risks = context.get("risks", []) if isinstance(context.get("risks"), list) else []
         flags.extend(str(risk) for risk in risks)
@@ -512,6 +582,8 @@ def candidate_ranking_breakdown(
         factors.append(ranking_factor("holding_attention", 8, "当前持仓"))
     if "foundation_pool_match" in risk_flags or "draft_pool_match" in risk_flags:
         factors.append(ranking_factor("coverage_gap", 10, "覆盖待补，优先复核"))
+    if "quote_only_candidate" in risk_flags:
+        factors.append(ranking_factor("coverage_gap", 12, "行情异动但未入覆盖底座"))
     if research.get("available") and not research.get("confirmed"):
         factors.append(ranking_factor("research_unconfirmed", 5, "研究记录未确认"))
     if item.data_quality_flags:
@@ -647,7 +719,7 @@ def candidate_why_now(
     if universe_context.get("available") and universe_context.get("explain"):
         parts.append(str(universe_context.get("explain")))
     if coverage_state != "confirmed":
-        parts.append("覆盖状态 %s 需复核" % coverage_state)
+        parts.append("覆盖状态 %s 需复核" % coverage_state_label(coverage_state))
     return "；".join(parts)
 
 
@@ -675,6 +747,8 @@ def candidate_checklist(
         checklist.append("补齐 research_notes 的核心逻辑、关键证据和证伪风险%s。" % suffix)
     if coverage_state == "draft":
         checklist.append("确认草稿池行的行业/主题链路、角色、逻辑和证伪风险。")
+    if coverage_state == "quote_only":
+        checklist.append("先补 A 股基础清单的行业、概念和指数成分，再决定是否进入研究池。")
     if not checklist and risk_flags:
         checklist.append("核对风险标签是否影响复盘优先级。")
     return dedupe(checklist)[:5]
@@ -835,7 +909,7 @@ def candidate_review_headline(
         item.name,
         context_text,
         quote.change_pct,
-        coverage_state,
+        coverage_state_label(coverage_state),
     )
 
 
@@ -878,6 +952,8 @@ def candidate_signal_drivers(quote: Quote, contexts: List[Dict[str, object]]) ->
 
 def candidate_commands(symbol: object, coverage_state: str, pool: str) -> List[str]:
     commands = ["market-intel pool explain %s --text%s" % (symbol, pool_arg(pool))]
+    if coverage_state == "quote_only":
+        commands = ["market-intel import universe <a_share_universe.csv> --runtime --merge --dry-run --json"]
     if coverage_state == "foundation":
         commands.append("market-intel pool research --runtime --dry-run --json%s" % pool_arg(pool))
         commands.append("market-intel import research data/runtime/research_notes.todo.csv --dry-run --json")
@@ -885,6 +961,8 @@ def candidate_commands(symbol: object, coverage_state: str, pool: str) -> List[s
 
 
 def candidate_done_when(coverage_state: str) -> str:
+    if coverage_state == "quote_only":
+        return "已把该标的补入 A 股基础清单，至少包含名称、行业、概念或指数成分。"
     if coverage_state == "foundation":
         return "已补齐 reviewed research_notes，且核心逻辑、关键证据、证伪风险三项齐全。"
     if coverage_state == "draft":
@@ -946,7 +1024,7 @@ def candidate_queue_lane(candidate: Dict[str, object]) -> str:
     penalty_score = float(ranking.get("penalty_score") or 0)
     review_score = float(candidate.get("review_score") or 0)
 
-    if coverage_state in {"foundation", "draft"} or "invalid_symbol" in risk_flags:
+    if coverage_state in {"foundation", "draft", "quote_only"} or "invalid_symbol" in risk_flags:
         return "data_first"
     if (
         penalty_score >= 8
@@ -978,7 +1056,7 @@ def candidate_queue_reason(candidate: Dict[str, object], lane: str) -> str:
     summary = str(ranking.get("summary") or "").strip()
     coverage_state = str(candidate.get("coverage_state") or "")
     if lane == "data_first":
-        return "覆盖 %s，先补关键字段或研究证据；%s" % (coverage_state or "-", summary)
+        return "覆盖 %s，先补关键字段或研究证据；%s" % (coverage_state_label(coverage_state), summary)
     if lane == "deprioritized":
         return "风险降权 %.0f；%s" % (float(ranking.get("penalty_score") or 0), summary)
     return summary or str(candidate.get("why_now") or "")

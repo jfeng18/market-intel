@@ -38,6 +38,9 @@ LABELS = {
     "a_share_universe_foundation": "全 A 基础清单",
     "candidate_status": "候选状态",
     "candidate_queue": "候选队列",
+    "quote_only": "行情待覆盖",
+    "quote_only_candidate": "行情待覆盖",
+    "quote_not_in_universe": "行情未入基础清单",
     "extra_pool_overlay": "扩展池叠加",
     "pending_fields": "字段待补",
     "unmatched_holdings": "持仓未匹配池子",
@@ -64,6 +67,9 @@ LABELS = {
     "review_completion": "复盘收尾",
     "review_handoff": "复盘交接",
     "security_cards": "单票卡片",
+    "confirmed": "已确认",
+    "foundation": "基础清单",
+    "draft": "草稿",
     "changed_holdings": "变化持仓",
     "priority_holdings": "重点持仓",
     "portfolio_pressure": "组合压力",
@@ -857,7 +863,7 @@ def render_scan_candidates(value: object) -> List[str]:
                 label(row.get("priority")),
                 float(row.get("review_score") or 0),
                 quote.get("change_pct", 0),
-                row.get("coverage_state") or "-",
+                label(row.get("coverage_state")) if row.get("coverage_state") else "-",
             )
         )
         if row.get("why_now"):

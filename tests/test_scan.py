@@ -199,6 +199,71 @@ def test_scan_keeps_universe_context_for_non_leader_members(monkeypatch, tmp_pat
     assert "全 A 归属" in sixth["why_now"]
 
 
+def test_scan_all_a_keeps_quote_only_candidates_without_universe(tmp_path):
+    quotes_file = tmp_path / "quotes.json"
+    quotes_file.write_text(
+        json.dumps(
+            {
+                "quotes": [
+                    {
+                        "symbol": "600000",
+                        "name": "浦发银行",
+                        "trade_date": "2026-06-06",
+                        "last_price": 9.8,
+                        "change_pct": 6.8,
+                        "amount": 2100000000,
+                        "amount_ratio": 2.1,
+                        "turnover_rate": 1.8,
+                        "amplitude_pct": 5.3,
+                        "is_limit_up": False,
+                        "is_stage_high": True,
+                        "intraday_fade_pct": 0.5,
+                        "source": "test",
+                    },
+                    {
+                        "symbol": "300308",
+                        "name": "中际旭创",
+                        "trade_date": "2026-06-06",
+                        "last_price": 168.5,
+                        "change_pct": 1.2,
+                        "amount": 1200000000,
+                        "amount_ratio": 1.1,
+                        "turnover_rate": 1.4,
+                        "amplitude_pct": 3.2,
+                        "is_limit_up": False,
+                        "is_stage_high": False,
+                        "intraday_fade_pct": 0.3,
+                        "source": "test",
+                    },
+                ]
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    payload = handle_scan("all-a", use_mock=False, quotes_file=str(quotes_file), top=5, candidate_top=5)
+    data = payload["data"]
+    by_symbol = {item["symbol"]: item for item in data["candidate_securities"]}
+    quote_only = by_symbol["600000"]
+    text = render_scan_text(payload)
+
+    assert payload["ok"] is True
+    assert data["matched_quote_count"] == 2
+    assert data["unmatched_quote_count"] == 0
+    assert quote_only["name"] == "浦发银行"
+    assert quote_only["coverage_state"] == "quote_only"
+    assert quote_only["coverage_state_reasons"] == ["quote_not_in_universe"]
+    assert "quote_only_candidate" in quote_only["risk_flags"]
+    assert quote_only["commands"] == ["market-intel import universe <a_share_universe.csv> --runtime --merge --dry-run --json"]
+    assert quote_only["review_focus"]["coverage"]["state"] == "quote_only"
+    assert quote_only["review_focus"]["next_command"] == quote_only["commands"][0]
+    assert data["candidate_queue"]["buckets"]["data_first"]["items"][0]["symbol"] == "600000"
+    assert "浦发银行" in text
+    assert "行情待覆盖" in text
+    assert str(quotes_file) not in json.dumps(payload, ensure_ascii=False)
+
+
 def test_scan_breadth_classifies_weak_market(monkeypatch, tmp_path):
     universe_file = tmp_path / "a_share_universe.csv"
     universe_file.write_text(

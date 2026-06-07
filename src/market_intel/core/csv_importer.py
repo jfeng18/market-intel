@@ -11,6 +11,7 @@ SYMBOL_RE = re.compile(r"(?<!\d)(\d{6})(?!\d)")
 
 QUOTE_ALIASES = {
     "symbol": ["symbol", "code", "ticker", "stock_code", "证券代码", "股票代码", "代码", "标的代码"],
+    "name": ["name", "证券名称", "股票名称", "名称", "标的名称"],
     "trade_date": ["trade_date", "date", "日期", "交易日期", "行情日期"],
     "last_price": ["last_price", "price", "close", "最新价", "现价", "收盘价", "最新价格"],
     "change_pct": ["change_pct", "pct_chg", "pct_change", "涨跌幅", "涨幅", "今日涨幅"],
@@ -242,6 +243,7 @@ def import_schema() -> Dict[str, object]:
             "accepted_columns": QUOTE_ALIASES,
             "canonical_schema": quote_schema(),
             "defaults": {
+                "name": "缺失时使用 symbol",
                 "trade_date": "命令执行日期，可用 --trade-date 覆盖",
                 "last_price": None,
                 "change_pct": 0,
@@ -349,6 +351,10 @@ def parse_quote_row(
     symbol = normalize_symbol(get_value(row, QUOTE_ALIASES["symbol"]))
     if not symbol:
         return None, warnings, [issue("MISSING_SYMBOL", "行情记录缺少证券代码。", {"index": index})]
+    name = get_value(row, QUOTE_ALIASES["name"])
+    if is_empty(name):
+        name = symbol
+        warnings.append(default_warning("QUOTE_NAME_DEFAULTED", index, symbol, "name", name))
 
     trade_date = get_value(row, QUOTE_ALIASES["trade_date"])
     if is_empty(trade_date):
@@ -397,6 +403,7 @@ def parse_quote_row(
 
     return {
         "symbol": symbol,
+        "name": str(name),
         "trade_date": str(trade_date),
         "last_price": last_price,
         "change_pct": change_pct,
@@ -956,6 +963,7 @@ def coverage_ratio(count: int, total: int) -> float:
 def quote_schema() -> List[Dict[str, object]]:
     return [
         {"field": "symbol", "type": "string", "required": True},
+        {"field": "name", "type": "string", "required": False},
         {"field": "trade_date", "type": "string", "required": True},
         {"field": "last_price", "type": "number|null", "required": False},
         {"field": "change_pct", "type": "number", "required": True},
