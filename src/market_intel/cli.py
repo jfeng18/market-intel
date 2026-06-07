@@ -125,6 +125,7 @@ def build_parser() -> argparse.ArgumentParser:
     universe_parser.add_argument("--holdings-file")
     universe_parser.add_argument("--output")
     universe_parser.add_argument("--dry-run", action="store_true")
+    universe_parser.add_argument("--limit", type=int)
     universe_parser.add_argument("--json", action="store_true", dest="as_json")
 
     explain_parser = pool_subparsers.add_parser("explain")
@@ -427,6 +428,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                 args.runtime,
                 args.output,
                 args.dry_run,
+                args.limit,
             )
         elif args.resource == "pool" and args.action == "explain":
             result = handle_pool_explain(args.pool, args.symbol, args.runtime)
@@ -889,6 +891,7 @@ def handle_pool_universe(
     use_runtime: bool = False,
     output: Optional[str] = None,
     dry_run: bool = False,
+    limit: Optional[int] = None,
 ) -> Dict[str, Any]:
     # Universe patch export only needs the pool/universe view. Runtime universe is
     # loaded by the pool loader, so do not require runtime holdings here.
@@ -915,11 +918,18 @@ def handle_pool_universe(
 
     data = coverage_payload.get("data", {}) if isinstance(coverage_payload.get("data"), dict) else {}
     universe = data.get("universe", {}) if isinstance(data.get("universe"), dict) else {}
+    items = load_pool(pool)
+    universe_items = [
+        item
+        for item in items
+        if str(item.raw.get("pool_source") or "").startswith("universe:") or item.raw.get("universe_schema")
+    ]
     output_path = Path(output) if output else Path("data/runtime/a_share_universe_patch.csv")
     export_data = export_universe_patch_csv(
-        universe.get("enrichment_queue", []) if isinstance(universe.get("enrichment_queue"), list) else [],
+        universe_items,
         output_path,
         dry_run=dry_run,
+        limit=limit,
     )
     export_data["pool"] = pool
     export_data["mode"] = "runtime" if use_runtime else "file"
@@ -943,6 +953,7 @@ def pool_universe_contract() -> Dict[str, object]:
             "data.record_count",
             "data.written",
             "data.dry_run",
+            "data.limit",
             "data.fields",
             "data.rows",
             "data.next_commands",

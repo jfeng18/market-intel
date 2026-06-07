@@ -205,19 +205,29 @@ def test_pool_universe_exports_patch_template(monkeypatch, tmp_path):
     universe_file.write_text(
         "证券代码,证券名称,行业,概念,指数成分,上市状态\n"
         "000001,平安银行,银行,,沪深300,listed\n"
-        "600519,贵州茅台,,白酒;消费,,listed\n",
+        "600519,贵州茅台,,白酒;消费,,listed\n"
+        "000002,万科A,房地产,,沪深300,listed\n"
+        "000063,中兴通讯,通信,,沪深300,listed\n"
+        "000333,美的集团,家电,,沪深300,listed\n"
+        "000651,格力电器,家电,,沪深300,listed\n"
+        "002415,海康威视,计算机,,沪深300,listed\n"
+        "300750,宁德时代,电力设备,,沪深300,listed\n",
         encoding="utf-8",
     )
     monkeypatch.setenv("MARKET_INTEL_A_SHARE_UNIVERSE_PATHS", str(universe_file))
 
     dry_run_payload = handle_pool_universe("all-a", dry_run=True)
+    limited_payload = handle_pool_universe("all-a", dry_run=True, limit=2)
 
     assert dry_run_payload["ok"] is True
     assert dry_run_payload["command"] == "pool.universe"
     assert dry_run_payload["data"]["mode"] == "file"
     assert dry_run_payload["data"]["dry_run"] is True
     assert dry_run_payload["data"]["written"] is False
-    assert dry_run_payload["data"]["record_count"] == 2
+    assert dry_run_payload["data"]["record_count"] == 8
+    assert dry_run_payload["data"]["limit"] is None
+    assert limited_payload["data"]["record_count"] == 2
+    assert limited_payload["data"]["limit"] == 2
     assert dry_run_payload["data"]["fields"] == [
         "symbol",
         "name",
@@ -229,20 +239,74 @@ def test_pool_universe_exports_patch_template(monkeypatch, tmp_path):
     ]
     assert dry_run_payload["data"]["rows"] == [
         {
-            "symbol": "600519",
-            "name": "贵州茅台",
-            "industry": "",
-            "concepts": "白酒;消费",
-            "index_membership": "",
-            "listing_status": "listed",
-            "source": "pool.universe.todo",
-        },
-        {
             "symbol": "000001",
             "name": "平安银行",
             "industry": "银行",
             "concepts": "",
             "index_membership": "沪深300",
+            "listing_status": "listed",
+            "source": "pool.universe.todo",
+        },
+        {
+            "symbol": "000002",
+            "name": "万科A",
+            "industry": "房地产",
+            "concepts": "",
+            "index_membership": "沪深300",
+            "listing_status": "listed",
+            "source": "pool.universe.todo",
+        },
+        {
+            "symbol": "000063",
+            "name": "中兴通讯",
+            "industry": "通信",
+            "concepts": "",
+            "index_membership": "沪深300",
+            "listing_status": "listed",
+            "source": "pool.universe.todo",
+        },
+        {
+            "symbol": "000333",
+            "name": "美的集团",
+            "industry": "家电",
+            "concepts": "",
+            "index_membership": "沪深300",
+            "listing_status": "listed",
+            "source": "pool.universe.todo",
+        },
+        {
+            "symbol": "000651",
+            "name": "格力电器",
+            "industry": "家电",
+            "concepts": "",
+            "index_membership": "沪深300",
+            "listing_status": "listed",
+            "source": "pool.universe.todo",
+        },
+        {
+            "symbol": "002415",
+            "name": "海康威视",
+            "industry": "计算机",
+            "concepts": "",
+            "index_membership": "沪深300",
+            "listing_status": "listed",
+            "source": "pool.universe.todo",
+        },
+        {
+            "symbol": "300750",
+            "name": "宁德时代",
+            "industry": "电力设备",
+            "concepts": "",
+            "index_membership": "沪深300",
+            "listing_status": "listed",
+            "source": "pool.universe.todo",
+        },
+        {
+            "symbol": "600519",
+            "name": "贵州茅台",
+            "industry": "",
+            "concepts": "白酒;消费",
+            "index_membership": "",
             "listing_status": "listed",
             "source": "pool.universe.todo",
         },

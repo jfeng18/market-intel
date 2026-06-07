@@ -230,11 +230,12 @@ def export_research_queue_csv(
 
 
 def export_universe_patch_csv(
-    enrichment_queue: List[Dict[str, object]],
+    universe_items: List[PoolItem],
     output_path: Path,
     dry_run: bool = False,
+    limit: Optional[int] = None,
 ) -> Dict[str, object]:
-    rows = universe_patch_rows(enrichment_queue)
+    rows = universe_patch_rows(universe_items, limit=limit)
     written = False
     if rows and not dry_run:
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -248,6 +249,7 @@ def export_universe_patch_csv(
         "record_count": len(rows),
         "written": written,
         "dry_run": dry_run,
+        "limit": limit,
         "fields": list(UNIVERSE_PATCH_CSV_FIELDS),
         "rows": rows,
         "warnings": universe_patch_export_warnings(rows),
@@ -446,34 +448,30 @@ def research_candidate_rows(research_queue: List[Dict[str, object]]) -> List[Dic
     return rows
 
 
-def universe_patch_rows(enrichment_queue: List[Dict[str, object]]) -> List[Dict[str, object]]:
-    by_symbol: Dict[str, Dict[str, object]] = {}
-    order = []
-    for item in enrichment_queue:
-        field = str(item.get("field") or "")
-        if field not in {"industry", "concepts", "index_membership"}:
+def universe_patch_rows(universe_items: List[PoolItem], limit: Optional[int] = None) -> List[Dict[str, object]]:
+    rows = []
+    for item in sorted(universe_items, key=lambda value: str(value.symbol or "")):
+        if not item.symbol:
             continue
-        samples = item.get("samples", []) if isinstance(item.get("samples"), list) else []
-        for sample in samples:
-            if not isinstance(sample, dict):
-                continue
-            symbol = str(sample.get("symbol") or "").strip()
-            if not symbol:
-                continue
-            if symbol not in by_symbol:
-                by_symbol[symbol] = {
-                    "symbol": symbol,
-                    "name": str(sample.get("name") or ""),
-                    "industry": str(sample.get("industry") or ""),
-                    "concepts": str(sample.get("concepts") or ""),
-                    "index_membership": str(sample.get("index_membership") or ""),
-                    "listing_status": "listed",
-                    "source": "pool.universe.todo",
-                }
-                order.append(symbol)
-            if not str(by_symbol[symbol].get("name") or "").strip() and sample.get("name"):
-                by_symbol[symbol]["name"] = str(sample.get("name") or "")
-    return [by_symbol[symbol] for symbol in order]
+        industry = str(item.raw.get("universe_industry") or "").strip()
+        concepts = str(item.raw.get("universe_concepts") or "").strip()
+        index_membership = str(item.raw.get("universe_index_membership") or "").strip()
+        if industry and split_universe_values(concepts) and split_universe_values(index_membership):
+            continue
+        rows.append(
+            {
+                "symbol": item.symbol,
+                "name": item.name,
+                "industry": industry,
+                "concepts": concepts,
+                "index_membership": index_membership,
+                "listing_status": str(item.raw.get("universe_listing_status") or "listed"),
+                "source": "pool.universe.todo",
+            }
+        )
+        if limit is not None and len(rows) >= max(0, limit):
+            break
+    return rows
 
 
 def expansion_export_warnings(rows: List[Dict[str, object]]) -> List[Dict[str, object]]:
