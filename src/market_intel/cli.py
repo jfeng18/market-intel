@@ -2814,6 +2814,7 @@ def build_mock_dashboard_data(
     handoff = mock_dashboard_handoff(pool, plan)
     tiles = mock_dashboard_tiles(market, portfolio, evidence, plan)
     today_focus = dashboard_today_focus(actions, plan, handoff)
+    action_summary = dashboard_action_summary(today_focus, handoff)
     return {
         "pool": pool,
         "state": "demo_ready" if scan_payload.get("ok") and daily_payload.get("ok") else "demo_blocked",
@@ -2825,6 +2826,7 @@ def build_mock_dashboard_data(
             "writes_are_skipped": True,
             "mode": "mock",
         },
+        "action_summary": action_summary,
         "today_focus": today_focus,
         "positioning": dashboard_positioning(pool, mode="mock"),
         "coverage_context": coverage,
@@ -3305,12 +3307,14 @@ def build_dashboard_data(
     handoff = dashboard_handoff(digest)
     plan = dashboard_review_plan(pool, digest)
     today_focus = dashboard_today_focus(actions, plan, handoff)
+    action_summary = dashboard_action_summary(today_focus, handoff)
     return {
         "pool": pool,
         "state": dashboard_state(run_data, digest),
         "summary": dashboard_summary(run_data, digest),
         "source_agent_run_state": run_data.get("state"),
         "run_limits": run_data.get("run_limits", {"max_steps": max_steps, "read_only_only": True, "writes_are_skipped": True}),
+        "action_summary": action_summary,
         "today_focus": today_focus,
         "positioning": dashboard_positioning(pool, mode="runtime"),
         "coverage_context": coverage,
@@ -3990,6 +3994,37 @@ def dashboard_today_focus(
     }
 
 
+def dashboard_action_summary(today_focus: Dict[str, object], handoff: Dict[str, object]) -> Dict[str, object]:
+    gate = handoff.get("journal_gate", {}) if isinstance(handoff.get("journal_gate"), dict) else {}
+    chain = today_focus.get("focus_chain", []) if isinstance(today_focus.get("focus_chain"), list) else []
+    title = str(today_focus.get("title") or "暂无焦点")
+    command = str(today_focus.get("json_command") or gate.get("json_command") or "")
+    journal_state = str(gate.get("state") or "unknown")
+    next_step = str(gate.get("next_step") or "")
+    return {
+        "available": bool(today_focus.get("available") or command),
+        "headline": "先看：%s" % title if title else "暂无今日焦点。",
+        "why": str(today_focus.get("reason") or next_step or "按复盘队列继续。"),
+        "next_command": command,
+        "done_when": str(today_focus.get("done_when") or ""),
+        "journal_state": journal_state,
+        "journal_ready": bool(gate.get("ready_for_journal_note")),
+        "journal_next_step": next_step,
+        "blockers": list(gate.get("blockers", []))[:3] if isinstance(gate.get("blockers"), list) else [],
+        "next_chain": [
+            {
+                "rank": item.get("rank"),
+                "title": item.get("title"),
+                "json_command": item.get("json_command"),
+                "done_when": item.get("done_when"),
+            }
+            for item in chain[:3]
+            if isinstance(item, dict)
+        ],
+        "source": str(today_focus.get("source") or ""),
+    }
+
+
 def dashboard_focus_chain(
     action_lane: Dict[str, object],
     plan: Dict[str, object],
@@ -4444,6 +4479,12 @@ def dashboard_contract() -> Dict[str, object]:
             "data.state",
             "data.summary",
             "data.tiles",
+            "data.action_summary",
+            "data.action_summary.headline",
+            "data.action_summary.next_command",
+            "data.action_summary.journal_state",
+            "data.action_summary.next_chain",
+            "data.action_summary.next_chain[].json_command",
             "data.today_focus",
             "data.today_focus.title",
             "data.today_focus.reason",
