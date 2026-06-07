@@ -2263,6 +2263,7 @@ def mock_dashboard_candidate(pool: str, item: Dict[str, object]) -> Dict[str, ob
         "symbol": symbol,
         "name": item.get("name"),
         "review_score": item.get("review_score"),
+        "ranking_breakdown": compact_dashboard_ranking_breakdown(item.get("ranking_breakdown", {})),
         "coverage_state": item.get("coverage_state"),
         "universe_context": compact_dashboard_universe_context(item.get("universe_context", {})),
         "review_focus": review_focus,
@@ -2898,6 +2899,7 @@ def dashboard_scan_candidates(scan: Dict[str, object]) -> List[Dict[str, object]
                 "symbol": item.get("symbol"),
                 "name": item.get("name"),
                 "review_score": item.get("review_score"),
+                "ranking_breakdown": compact_dashboard_ranking_breakdown(item.get("ranking_breakdown", {})),
                 "coverage_state": item.get("coverage_state"),
                 "universe_context": compact_dashboard_universe_context(item.get("universe_context", {})),
                 "review_focus": review_focus,
@@ -2960,6 +2962,35 @@ def compact_scan_review_focus_with_next(value: object, next_command: object) -> 
     if next_command:
         focus["next_command"] = next_command
     return focus
+
+
+def compact_dashboard_ranking_breakdown(value: object) -> Dict[str, object]:
+    data = value if isinstance(value, dict) else {}
+    factors = data.get("factors", data.get("top_factors", []))
+    penalties = data.get("penalty_flags", [])
+    return {
+        "total_score": data.get("total_score"),
+        "raw_score": data.get("raw_score"),
+        "penalty_score": data.get("penalty_score"),
+        "top_factors": compact_dashboard_ranking_rows(factors),
+        "penalty_flags": compact_dashboard_ranking_rows(penalties),
+        "summary": data.get("summary"),
+    }
+
+
+def compact_dashboard_ranking_rows(value: object) -> List[Dict[str, object]]:
+    rows = value if isinstance(value, list) else []
+    return [
+        {
+            "id": item.get("id"),
+            "score": item.get("score"),
+            "reason": item.get("reason"),
+        }
+        for item in sorted(
+            (row for row in rows if isinstance(row, dict)),
+            key=lambda row: -float(row.get("score") or 0),
+        )[:4]
+    ]
 
 
 def dashboard_portfolio_pulse(digest: Dict[str, object]) -> Dict[str, object]:
@@ -3444,6 +3475,7 @@ def dashboard_contract() -> Dict[str, object]:
             "data.market_pulse.market_breadth",
             "data.market_pulse.top_groups",
             "data.market_pulse.candidates",
+            "data.market_pulse.candidates[].ranking_breakdown",
             "data.market_pulse.candidates[].universe_context",
             "data.portfolio_pulse",
             "data.portfolio_pulse.top_holdings",
@@ -3904,6 +3936,7 @@ def agent_run_digest_market_scan(briefing_data: Dict[str, object], results: List
                 "symbol": item.get("symbol"),
                 "name": item.get("name"),
                 "review_score": item.get("review_score"),
+                "ranking_breakdown": compact_dashboard_ranking_breakdown(item.get("ranking_breakdown", {})),
                 "coverage_state": item.get("coverage_state"),
                 "universe_context": item.get("universe_context", {}),
                 "review_focus": compact_scan_review_focus_with_next(
@@ -7400,6 +7433,7 @@ def agent_run_contract() -> Dict[str, object]:
             "data.review_digest.market_scan.market_breadth",
             "data.review_digest.market_scan.top_groups",
             "data.review_digest.market_scan.top_candidates",
+            "data.review_digest.market_scan.top_candidates[].ranking_breakdown",
             "data.review_digest.market_scan.top_candidates[].universe_context",
             "data.review_digest.data_repair_plan",
             "data.review_digest.data_repair_plan.items",
@@ -7540,6 +7574,7 @@ def agent_next_contract() -> Dict[str, object]:
             "data.market_scan.market_breadth",
             "data.market_scan.top_groups",
             "data.market_scan.top_candidates",
+            "data.market_scan.top_candidates[].ranking_breakdown",
             "data.market_scan.top_candidates[].universe_context",
             "data.review_handoff",
             "data.review_handoff.handoff_state",

@@ -83,6 +83,17 @@ LABELS = {
     "reference": "参考",
     "medium": "中",
     "high": "高",
+    "price_strength": "涨幅",
+    "sector_strength": "板块",
+    "universe_context": "全A",
+    "stage_high": "新高",
+    "holding_attention": "持仓",
+    "coverage_gap": "覆盖缺口",
+    "research_unconfirmed": "研究待确认",
+    "data_quality_attention": "数据质量",
+    "thin_resonance": "弱共振",
+    "missing_context": "缺上下文",
+    "hot_money_noise": "短线噪音",
 }
 
 QUESTION_LABELS = {
@@ -846,6 +857,10 @@ def render_scan_candidates(value: object) -> List[str]:
         )
         if row.get("why_now"):
             lines.append("   为何现在看: %s" % row.get("why_now"))
+        ranking = row.get("ranking_breakdown", {}) if isinstance(row.get("ranking_breakdown"), dict) else {}
+        ranking_line = render_ranking_breakdown_line(ranking)
+        if ranking_line:
+            lines.append("   排序: %s" % ranking_line)
         universe_context = row.get("universe_context", {}) if isinstance(row.get("universe_context"), dict) else {}
         if universe_context.get("available"):
             lines.append("   全 A: %s" % render_universe_context_line(universe_context))
@@ -906,6 +921,39 @@ def render_universe_context_line(value: Dict[str, object]) -> str:
     if value.get("score_bonus"):
         parts.append("加成 %.0f" % float(value.get("score_bonus") or 0))
     return " | ".join(parts) if parts else str(value.get("explain") or "已接入")
+
+
+def render_ranking_breakdown_line(value: Dict[str, object]) -> str:
+    if not value:
+        return ""
+    summary = value.get("summary")
+    if summary:
+        return str(summary)
+    factors = value.get("factors", value.get("top_factors", []))
+    penalties = value.get("penalty_flags", [])
+    parts = []
+    factor_text = render_ranking_rows(factors, "+")
+    if factor_text:
+        parts.append("主因 %s" % factor_text)
+    penalty_text = render_ranking_rows(penalties, "-")
+    if penalty_text:
+        parts.append("降权 %s" % penalty_text)
+    if value.get("total_score") is not None:
+        parts.append("总分 %.0f" % float_or_default(value.get("total_score"), 0.0))
+    return "；".join(parts)
+
+
+def render_ranking_rows(value: object, sign: str) -> str:
+    rows = value if isinstance(value, list) else []
+    parts = []
+    for item in rows[:3]:
+        if not isinstance(item, dict):
+            continue
+        score = float_or_default(item.get("score"), 0.0)
+        if score <= 0:
+            continue
+        parts.append("%s %s%.0f" % (label(item.get("id")), sign, score))
+    return "、".join(parts)
 
 
 def render_scan_actions(value: object) -> List[str]:

@@ -394,7 +394,7 @@ def build_scan_candidates(
         research = research_status(item)
         risk_flags = candidate_risk_flags(item, quote, contexts, state["state"])
         universe_context = candidate_universe_context(item, contexts)
-        review_score = candidate_review_score(
+        ranking_breakdown = candidate_ranking_breakdown(
             item,
             quote,
             contexts,
@@ -403,6 +403,7 @@ def build_scan_candidates(
             research,
             universe_context,
         )
+        review_score = ranking_breakdown["total_score"]
         checklist = candidate_checklist(quote, contexts, state["state"], research, risk_flags)
         commands = candidate_commands(item.symbol, state["state"], pool)
         done_when = candidate_done_when(state["state"])
@@ -425,6 +426,7 @@ def build_scan_candidates(
                 "research_status": research,
                 "risk_flags": risk_flags,
                 "review_score": review_score,
+                "ranking_breakdown": ranking_breakdown,
                 "priority": priority_label(review_score),
                 "why_now": candidate_why_now(
                     item,
@@ -445,6 +447,7 @@ def build_scan_candidates(
                     commands,
                     done_when,
                     universe_context,
+                    ranking_breakdown,
                 ),
                 "checklist": checklist,
                 "commands": commands,
@@ -483,6 +486,48 @@ def candidate_risk_flags(
     return sorted(set(flags))
 
 
+def candidate_ranking_breakdown(
+    item: PoolItem,
+    quote: Quote,
+    contexts: List[Dict[str, object]],
+    is_holding: bool,
+    risk_flags: List[str],
+    research: Dict[str, object],
+    universe_context: Dict[str, object],
+) -> Dict[str, object]:
+    best_context_score = max([float(context.get("score") or 0) for context in contexts] or [0])
+    factors = [
+        ranking_factor("price_strength", min(max(quote.change_pct, 0) * 2.2, 22), "涨幅 %+s%%" % quote.change_pct),
+        ranking_factor("turnover_expansion", min(quote.amount_ratio * 6, 18), "成交放大 %.2f" % quote.amount_ratio),
+        ranking_factor("sector_strength", min(best_context_score / 2, 40), "最强上下文 %.0f" % best_context_score),
+    ]
+    universe_bonus = float(universe_context.get("score_bonus") or 0)
+    if universe_bonus:
+        factors.append(ranking_factor("universe_context", universe_bonus, "全 A 归属加成"))
+    if quote.is_stage_high:
+        factors.append(ranking_factor("stage_high", 8, "阶段新高"))
+    if is_holding:
+        factors.append(ranking_factor("holding_attention", 8, "当前持仓"))
+    if "foundation_pool_match" in risk_flags or "draft_pool_match" in risk_flags:
+        factors.append(ranking_factor("coverage_gap", 10, "覆盖待补，优先复核"))
+    if research.get("available") and not research.get("confirmed"):
+        factors.append(ranking_factor("research_unconfirmed", 5, "研究记录未确认"))
+    if item.data_quality_flags:
+        factors.append(ranking_factor("data_quality_attention", 5, "数据质量需核对"))
+    penalty_flags = candidate_ranking_penalties(risk_flags, contexts, quote)
+    raw_score = sum(float(factor.get("score") or 0) for factor in factors)
+    penalty_score = sum(float(flag.get("score") or 0) for flag in penalty_flags)
+    total_score = round(clamp(raw_score - penalty_score), 2)
+    return {
+        "total_score": total_score,
+        "raw_score": round(raw_score, 2),
+        "penalty_score": round(penalty_score, 2),
+        "factors": [factor for factor in factors if float(factor.get("score") or 0) > 0],
+        "penalty_flags": penalty_flags,
+        "summary": ranking_breakdown_summary(factors, penalty_flags, total_score),
+    }
+
+
 def candidate_review_score(
     item: PoolItem,
     quote: Quote,
@@ -492,22 +537,89 @@ def candidate_review_score(
     research: Dict[str, object],
     universe_context: Dict[str, object],
 ) -> float:
-    best_context_score = max([float(context.get("score") or 0) for context in contexts] or [0])
-    score = min(max(quote.change_pct, 0) * 2.2, 22)
-    score += min(quote.amount_ratio * 6, 18)
-    score += min(best_context_score / 2, 40)
-    score += float(universe_context.get("score_bonus") or 0)
-    if quote.is_stage_high:
-        score += 8
-    if is_holding:
-        score += 8
-    if "foundation_pool_match" in risk_flags or "draft_pool_match" in risk_flags:
-        score += 10
-    if research.get("available") and not research.get("confirmed"):
-        score += 5
-    if item.data_quality_flags:
-        score += 5
-    return round(clamp(score), 2)
+    return candidate_ranking_breakdown(
+        item,
+        quote,
+        contexts,
+        is_holding,
+        risk_flags,
+        research,
+        universe_context,
+    )["total_score"]
+
+
+def ranking_factor(factor_id: str, score: float, reason: str) -> Dict[str, object]:
+    return {
+        "id": factor_id,
+        "score": round(max(score, 0), 2),
+        "reason": reason,
+    }
+
+
+def candidate_ranking_penalties(
+    risk_flags: List[str],
+    contexts: List[Dict[str, object]],
+    quote: Quote,
+) -> List[Dict[str, object]]:
+    penalties = []
+    if "chase_high_risk" in risk_flags:
+        penalties.append(ranking_factor("chase_high_risk", 6, "涨幅较高，避免追高"))
+    if "intraday_fade_risk" in risk_flags:
+        penalties.append(ranking_factor("intraday_fade_risk", 8, "日内回落削弱持续性"))
+    if "weak_price_context" in risk_flags:
+        penalties.append(ranking_factor("weak_price_context", 10, "价格上下文偏弱"))
+    if "single_name_or_thin_resonance" in risk_flags:
+        penalties.append(ranking_factor("thin_resonance", 5, "共振偏薄"))
+    if not contexts:
+        penalties.append(ranking_factor("missing_context", 8, "缺少板块上下文"))
+    if quote.amount_ratio >= 4 and quote.intraday_fade_pct >= 2:
+        penalties.append(ranking_factor("hot_money_noise", 4, "放量且回落，需防短线噪音"))
+    return penalties
+
+
+def ranking_breakdown_summary(
+    factors: List[Dict[str, object]],
+    penalty_flags: List[Dict[str, object]],
+    total_score: float,
+) -> str:
+    top_factors = [
+        "%s +%.0f" % (ranking_label(factor.get("id")), float(factor.get("score") or 0))
+        for factor in sorted(factors, key=lambda value: -float(value.get("score") or 0))[:3]
+        if float(factor.get("score") or 0) > 0
+    ]
+    penalties = [
+        "%s -%.0f" % (ranking_label(flag.get("id")), float(flag.get("score") or 0))
+        for flag in penalty_flags[:2]
+        if float(flag.get("score") or 0) > 0
+    ]
+    parts = []
+    if top_factors:
+        parts.append("主因 %s" % "、".join(top_factors))
+    if penalties:
+        parts.append("降权 %s" % "、".join(penalties))
+    parts.append("总分 %.0f" % total_score)
+    return "；".join(parts)
+
+
+def ranking_label(value: object) -> str:
+    labels = {
+        "price_strength": "涨幅",
+        "turnover_expansion": "放量",
+        "sector_strength": "板块",
+        "universe_context": "全A",
+        "stage_high": "新高",
+        "holding_attention": "持仓",
+        "coverage_gap": "覆盖缺口",
+        "research_unconfirmed": "研究待确认",
+        "data_quality_attention": "数据质量",
+        "chase_high_risk": "追高",
+        "intraday_fade_risk": "回落",
+        "weak_price_context": "弱价格",
+        "thin_resonance": "弱共振",
+        "missing_context": "缺上下文",
+        "hot_money_noise": "短线噪音",
+    }
+    return labels.get(str(value), str(value or "因子"))
 
 
 def candidate_why_now(
@@ -577,6 +689,7 @@ def candidate_review_focus(
     commands: List[str],
     done_when: str,
     universe_context: Dict[str, object],
+    ranking_breakdown: Dict[str, object],
 ) -> Dict[str, object]:
     state = str(coverage_state.get("state") or "")
     return {
@@ -590,11 +703,23 @@ def candidate_review_focus(
             "missing_research_fields": list(research.get("missing_fields", [])) if isinstance(research.get("missing_fields"), list) else [],
         },
         "universe_context": compact_universe_context(universe_context),
+        "ranking_breakdown": compact_ranking_breakdown(ranking_breakdown),
         "signal_drivers": candidate_signal_drivers(quote, contexts),
         "risk_flags": risk_flags[:8],
         "first_check": checklist[0] if checklist else "",
         "next_command": commands[0] if commands else "",
         "done_when": done_when,
+    }
+
+
+def compact_ranking_breakdown(value: Dict[str, object]) -> Dict[str, object]:
+    return {
+        "total_score": value.get("total_score"),
+        "raw_score": value.get("raw_score"),
+        "penalty_score": value.get("penalty_score"),
+        "top_factors": list(value.get("factors", []))[:4] if isinstance(value.get("factors"), list) else [],
+        "penalty_flags": list(value.get("penalty_flags", []))[:4] if isinstance(value.get("penalty_flags"), list) else [],
+        "summary": value.get("summary"),
     }
 
 
@@ -868,6 +993,7 @@ def scan_contract() -> Dict[str, object]:
             "data.sector_groups[].leaders",
             "data.candidate_securities",
             "data.candidate_securities[].review_score",
+            "data.candidate_securities[].ranking_breakdown",
             "data.candidate_securities[].universe_context",
             "data.candidate_securities[].coverage_state",
             "data.candidate_securities[].research_status",
@@ -875,6 +1001,7 @@ def scan_contract() -> Dict[str, object]:
             "data.candidate_securities[].review_focus.classification",
             "data.candidate_securities[].review_focus.coverage",
             "data.candidate_securities[].review_focus.universe_context",
+            "data.candidate_securities[].review_focus.ranking_breakdown",
             "data.candidate_securities[].review_focus.next_command",
             "data.candidate_securities[].why_now",
             "data.candidate_securities[].checklist",

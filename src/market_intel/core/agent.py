@@ -259,6 +259,7 @@ def compact_scan_candidate(item: Dict[str, object]) -> Dict[str, object]:
         "name": item.get("name"),
         "is_holding": bool(item.get("is_holding")),
         "review_score": item.get("review_score"),
+        "ranking_breakdown": compact_scan_ranking_breakdown(item.get("ranking_breakdown", {})),
         "priority": item.get("priority"),
         "coverage_state": item.get("coverage_state"),
         "coverage_state_reasons": list(item.get("coverage_state_reasons", []))[:5] if isinstance(item.get("coverage_state_reasons"), list) else [],
@@ -320,12 +321,42 @@ def compact_scan_review_focus(value: object) -> Dict[str, object]:
             else [],
         },
         "universe_context": compact_scan_universe_context(focus.get("universe_context", {})),
+        "ranking_breakdown": compact_scan_ranking_breakdown(focus.get("ranking_breakdown", {})),
         "signal_drivers": list(focus.get("signal_drivers", []))[:5] if isinstance(focus.get("signal_drivers"), list) else [],
         "risk_flags": list(focus.get("risk_flags", []))[:6] if isinstance(focus.get("risk_flags"), list) else [],
         "first_check": focus.get("first_check"),
         "next_command": focus.get("next_command"),
         "done_when": focus.get("done_when"),
     }
+
+
+def compact_scan_ranking_breakdown(value: object) -> Dict[str, object]:
+    data = value if isinstance(value, dict) else {}
+    factors = data.get("factors", data.get("top_factors", []))
+    penalties = data.get("penalty_flags", [])
+    return {
+        "total_score": data.get("total_score"),
+        "raw_score": data.get("raw_score"),
+        "penalty_score": data.get("penalty_score"),
+        "top_factors": compact_ranking_rows(factors),
+        "penalty_flags": compact_ranking_rows(penalties),
+        "summary": data.get("summary"),
+    }
+
+
+def compact_ranking_rows(value: object) -> List[Dict[str, object]]:
+    rows = value if isinstance(value, list) else []
+    return [
+        {
+            "id": item.get("id"),
+            "score": item.get("score"),
+            "reason": item.get("reason"),
+        }
+        for item in sorted(
+            (row for row in rows if isinstance(row, dict)),
+            key=lambda row: -float(row.get("score") or 0),
+        )[:4]
+    ]
 
 
 def compact_scan_universe_context(value: object) -> Dict[str, object]:
@@ -1384,6 +1415,7 @@ def agent_briefing_contract(max_quote_age_days: int) -> Dict[str, object]:
             "data.market_scan.market_breadth",
             "data.market_scan.sector_groups",
             "data.market_scan.candidate_securities",
+            "data.market_scan.candidate_securities[].ranking_breakdown",
             "data.market_scan.candidate_securities[].universe_context",
             "data.market_scan.candidate_securities[].why_now",
             "data.market_scan.candidate_securities[].checklist",
