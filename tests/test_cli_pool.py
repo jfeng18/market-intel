@@ -4,6 +4,7 @@ import subprocess
 
 from market_intel.cli import (
     handle_init_runtime,
+    handle_import_universe,
     handle_pool_coverage,
     handle_pool_expansion,
     handle_pool_explain,
@@ -236,6 +237,8 @@ def test_pool_universe_exports_patch_template(monkeypatch, tmp_path):
         "index_membership",
         "listing_status",
         "source",
+        "missing_fields",
+        "fill_hint",
     ]
     assert dry_run_payload["data"]["rows"] == [
         {
@@ -246,6 +249,8 @@ def test_pool_universe_exports_patch_template(monkeypatch, tmp_path):
             "index_membership": "沪深300",
             "listing_status": "listed",
             "source": "pool.universe.todo",
+            "missing_fields": "concepts",
+            "fill_hint": "补概念，多个用分号分隔",
         },
         {
             "symbol": "000002",
@@ -255,6 +260,8 @@ def test_pool_universe_exports_patch_template(monkeypatch, tmp_path):
             "index_membership": "沪深300",
             "listing_status": "listed",
             "source": "pool.universe.todo",
+            "missing_fields": "concepts",
+            "fill_hint": "补概念，多个用分号分隔",
         },
         {
             "symbol": "000063",
@@ -264,6 +271,8 @@ def test_pool_universe_exports_patch_template(monkeypatch, tmp_path):
             "index_membership": "沪深300",
             "listing_status": "listed",
             "source": "pool.universe.todo",
+            "missing_fields": "concepts",
+            "fill_hint": "补概念，多个用分号分隔",
         },
         {
             "symbol": "000333",
@@ -273,6 +282,8 @@ def test_pool_universe_exports_patch_template(monkeypatch, tmp_path):
             "index_membership": "沪深300",
             "listing_status": "listed",
             "source": "pool.universe.todo",
+            "missing_fields": "concepts",
+            "fill_hint": "补概念，多个用分号分隔",
         },
         {
             "symbol": "000651",
@@ -282,6 +293,8 @@ def test_pool_universe_exports_patch_template(monkeypatch, tmp_path):
             "index_membership": "沪深300",
             "listing_status": "listed",
             "source": "pool.universe.todo",
+            "missing_fields": "concepts",
+            "fill_hint": "补概念，多个用分号分隔",
         },
         {
             "symbol": "002415",
@@ -291,6 +304,8 @@ def test_pool_universe_exports_patch_template(monkeypatch, tmp_path):
             "index_membership": "沪深300",
             "listing_status": "listed",
             "source": "pool.universe.todo",
+            "missing_fields": "concepts",
+            "fill_hint": "补概念，多个用分号分隔",
         },
         {
             "symbol": "300750",
@@ -300,6 +315,8 @@ def test_pool_universe_exports_patch_template(monkeypatch, tmp_path):
             "index_membership": "沪深300",
             "listing_status": "listed",
             "source": "pool.universe.todo",
+            "missing_fields": "concepts",
+            "fill_hint": "补概念，多个用分号分隔",
         },
         {
             "symbol": "600519",
@@ -309,6 +326,8 @@ def test_pool_universe_exports_patch_template(monkeypatch, tmp_path):
             "index_membership": "",
             "listing_status": "listed",
             "source": "pool.universe.todo",
+            "missing_fields": "industry;index_membership",
+            "fill_hint": "补行业；补指数成分，多个用分号分隔",
         },
     ]
     assert dry_run_payload["data"]["next_commands"] == [
@@ -328,6 +347,16 @@ def test_pool_universe_exports_patch_template(monkeypatch, tmp_path):
     with output_file.open(encoding="utf-8") as handle:
         rows = list(csv.DictReader(handle))
     assert rows == dry_run_payload["data"]["rows"]
+    rows[0]["concepts"] = "股份行;金融科技"
+    rows[-1]["industry"] = "食品饮料"
+    rows[-1]["index_membership"] = "上证50;沪深300"
+    with output_file.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=write_payload["data"]["fields"])
+        writer.writeheader()
+        writer.writerows(rows)
+    import_payload = handle_import_universe(str(output_file), use_runtime=True, dry_run=True, merge=True)
+    assert import_payload["ok"] is True
+    assert import_payload["data"]["coverage_delta"]["write_mode"] == "merge"
     assert str(universe_file) not in json.dumps(write_payload, ensure_ascii=False)
 
 
@@ -913,7 +942,17 @@ def test_pool_universe_cli_smoke(monkeypatch, tmp_path, cli_cmd):
     payload = json.loads(result.stdout)
     assert payload["command"] == "pool.universe"
     assert payload["data"]["rows"][0]["symbol"] == "000001"
-    assert payload["data"]["fields"] == ["symbol", "name", "industry", "concepts", "index_membership", "listing_status", "source"]
+    assert payload["data"]["fields"] == [
+        "symbol",
+        "name",
+        "industry",
+        "concepts",
+        "index_membership",
+        "listing_status",
+        "source",
+        "missing_fields",
+        "fill_hint",
+    ]
 
 
 def test_pool_expansion_review_cli_smoke(tmp_path, cli_cmd):

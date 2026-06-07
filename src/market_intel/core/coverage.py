@@ -24,7 +24,17 @@ CN_A_PREFIXES = {
 
 POOL_CSV_FIELDS = ["status", "priority", "section", "level", "company", "code", "desc", "notes"]
 RESEARCH_CSV_FIELDS = ["symbol", "name", "status", "thesis", "evidence", "invalidation", "updated_at", "source"]
-UNIVERSE_PATCH_CSV_FIELDS = ["symbol", "name", "industry", "concepts", "index_membership", "listing_status", "source"]
+UNIVERSE_PATCH_CSV_FIELDS = [
+    "symbol",
+    "name",
+    "industry",
+    "concepts",
+    "index_membership",
+    "listing_status",
+    "source",
+    "missing_fields",
+    "fill_hint",
+]
 
 
 def build_pool_coverage(
@@ -456,7 +466,8 @@ def universe_patch_rows(universe_items: List[PoolItem], limit: Optional[int] = N
         industry = str(item.raw.get("universe_industry") or "").strip()
         concepts = str(item.raw.get("universe_concepts") or "").strip()
         index_membership = str(item.raw.get("universe_index_membership") or "").strip()
-        if industry and split_universe_values(concepts) and split_universe_values(index_membership):
+        missing_fields = universe_patch_missing_fields(industry, concepts, index_membership)
+        if not missing_fields:
             continue
         rows.append(
             {
@@ -467,11 +478,33 @@ def universe_patch_rows(universe_items: List[PoolItem], limit: Optional[int] = N
                 "index_membership": index_membership,
                 "listing_status": str(item.raw.get("universe_listing_status") or "listed"),
                 "source": "pool.universe.todo",
+                "missing_fields": ";".join(missing_fields),
+                "fill_hint": universe_patch_fill_hint(missing_fields),
             }
         )
         if limit is not None and len(rows) >= max(0, limit):
             break
     return rows
+
+
+def universe_patch_missing_fields(industry: str, concepts: str, index_membership: str) -> List[str]:
+    missing = []
+    if not industry:
+        missing.append("industry")
+    if not split_universe_values(concepts):
+        missing.append("concepts")
+    if not split_universe_values(index_membership):
+        missing.append("index_membership")
+    return missing
+
+
+def universe_patch_fill_hint(missing_fields: List[str]) -> str:
+    labels = {
+        "industry": "补行业",
+        "concepts": "补概念，多个用分号分隔",
+        "index_membership": "补指数成分，多个用分号分隔",
+    }
+    return "；".join(labels[field] for field in missing_fields if field in labels)
 
 
 def expansion_export_warnings(rows: List[Dict[str, object]]) -> List[Dict[str, object]]:
@@ -505,7 +538,11 @@ def universe_patch_export_warnings(rows: List[Dict[str, object]]) -> List[Dict[s
         {
             "code": "UNIVERSE_PATCH_NEEDS_ENRICHMENT",
             "message": "Universe patch CSV is a draft. Fill missing industry, concepts, or index_membership before merge import.",
-            "detail": {"record_count": len(rows), "required_fields": ["industry", "concepts", "index_membership"]},
+            "detail": {
+                "record_count": len(rows),
+                "required_fields": ["industry", "concepts", "index_membership"],
+                "helper_fields": ["missing_fields", "fill_hint"],
+            },
         }
     ]
 
