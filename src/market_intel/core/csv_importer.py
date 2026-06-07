@@ -306,6 +306,7 @@ def import_schema() -> Dict[str, object]:
                 "source": "csv:<filename>",
             },
             "example_commands": [
+                "market-intel import research examples/research_notes.csv.example --runtime --dry-run --json",
                 "market-intel import research examples/research_notes.csv.example --runtime --json",
                 "market-intel import research research_notes.csv --output data/runtime/research_notes.csv --json",
                 "market-intel import research research_notes.csv --dry-run --json",
