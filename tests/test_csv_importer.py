@@ -11,7 +11,7 @@ from market_intel.cli import (
     handle_pool_coverage,
 )
 from market_intel.core.fixtures import load_holdings_file, load_quotes_file
-from market_intel.core.text_report import render_import_universe_text
+from market_intel.core.text_report import render_import_text, render_import_universe_text
 
 
 def test_import_schema_is_agent_friendly():
@@ -98,6 +98,37 @@ def test_import_runtime_dry_run_suggests_write_and_review(monkeypatch, tmp_path)
         "market-intel pool coverage --runtime --text",
         "market-intel agent next --text",
     ]
+
+
+def test_import_text_renders_common_imports(monkeypatch, tmp_path):
+    runtime = tmp_path / "runtime"
+    monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(runtime))
+    quotes_csv = tmp_path / "quotes.csv"
+    holdings_csv = tmp_path / "holdings.csv"
+    research_csv = tmp_path / "research_notes.csv"
+    quotes_csv.write_text("证券代码,证券名称,交易日期,涨跌幅,成交额,量比\n002837,英维克,2026-06-06,7.2%,12.3亿,2.4\n", encoding="utf-8")
+    holdings_csv.write_text("证券代码,证券名称,持仓数量\n002837,英维克,300\n", encoding="utf-8")
+    research_csv.write_text(
+        "证券代码,证券名称,状态,核心逻辑,关键证据,证伪风险\n"
+        "002837,英维克,reviewed,液冷温控复核,订单和毛利率变化,需求放缓\n",
+        encoding="utf-8",
+    )
+
+    quotes_text = render_import_text(handle_import_quotes(str(quotes_csv), use_runtime=True, dry_run=True))
+    holdings_text = render_import_text(handle_import_holdings(str(holdings_csv), use_runtime=True, dry_run=True))
+    research_text = render_import_text(handle_import_research(str(research_csv), use_runtime=True, dry_run=True))
+
+    assert "market-intel import quotes" in quotes_text
+    assert "002837 英维克 | 2026-06-06 | 涨跌 7.20% | 成交 12.30亿 | 量比 2.40" in quotes_text
+    assert "market-intel import quotes quotes.csv --runtime --json" in quotes_text
+    assert "market-intel import holdings" in holdings_text
+    assert "002837 英维克 | 数量 300" in holdings_text
+    assert "market-intel import holdings holdings.csv --runtime --json" in holdings_text
+    assert "market-intel import research" in research_text
+    assert "002837 英维克 | reviewed | 逻辑 已填 | 证据 已填 | 证伪 已填" in research_text
+    assert "market-intel import research research_notes.csv --runtime --json" in research_text
+    assert str(runtime) not in quotes_text + holdings_text + research_text
+    assert str(tmp_path) not in quotes_text + holdings_text + research_text
 
 
 def test_import_holdings_writes_output(tmp_path):
@@ -560,6 +591,32 @@ def test_import_quotes_cli_smoke(tmp_path, cli_cmd):
 
     assert payload["ok"] is True
     assert payload["data"]["preview"][0]["symbol"] == "002837"
+
+
+def test_import_common_cli_text_smoke(tmp_path, cli_cmd):
+    csv_files = {
+        "quotes": tmp_path / "quotes.csv",
+        "holdings": tmp_path / "holdings.csv",
+        "research": tmp_path / "research_notes.csv",
+    }
+    csv_files["quotes"].write_text("证券代码,证券名称,交易日期,涨跌幅\n002837,英维克,2026-06-06,7.2%\n", encoding="utf-8")
+    csv_files["holdings"].write_text("证券代码,证券名称,持仓数量\n002837,英维克,300\n", encoding="utf-8")
+    csv_files["research"].write_text(
+        "证券代码,证券名称,状态,核心逻辑,关键证据,证伪风险\n"
+        "002837,英维克,reviewed,液冷温控复核,订单和毛利率变化,需求放缓\n",
+        encoding="utf-8",
+    )
+
+    for kind, csv_path in csv_files.items():
+        result = subprocess.run(
+            cli_cmd("import", kind, str(csv_path), "--dry-run", "--text"),
+            check=True,
+            text=True,
+            capture_output=True,
+        )
+        assert "market-intel import %s" % kind in result.stdout
+        assert "下一步" in result.stdout
+        assert str(tmp_path) not in result.stdout
 
 
 def test_import_universe_cli_smoke(tmp_path, cli_cmd):

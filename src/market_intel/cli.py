@@ -59,6 +59,7 @@ from .core.text_report import (
     render_agent_run_text,
     render_daily_report_text,
     render_focus_text,
+    render_import_text,
     render_import_universe_text,
     render_market_map_text,
     render_pool_coverage_text,
@@ -271,6 +272,7 @@ def build_parser() -> argparse.ArgumentParser:
     import_quotes_parser.add_argument("--dry-run", action="store_true")
     import_quotes_parser.add_argument("--trade-date")
     import_quotes_parser.add_argument("--json", action="store_true", dest="as_json")
+    import_quotes_parser.add_argument("--text", action="store_true")
 
     import_holdings_parser = import_subparsers.add_parser("holdings")
     import_holdings_parser.add_argument("csv_path")
@@ -278,6 +280,7 @@ def build_parser() -> argparse.ArgumentParser:
     import_holdings_parser.add_argument("--output")
     import_holdings_parser.add_argument("--dry-run", action="store_true")
     import_holdings_parser.add_argument("--json", action="store_true", dest="as_json")
+    import_holdings_parser.add_argument("--text", action="store_true")
 
     import_universe_parser = import_subparsers.add_parser("universe")
     import_universe_parser.add_argument("csv_path")
@@ -294,6 +297,7 @@ def build_parser() -> argparse.ArgumentParser:
     import_research_parser.add_argument("--output")
     import_research_parser.add_argument("--dry-run", action="store_true")
     import_research_parser.add_argument("--json", action="store_true", dest="as_json")
+    import_research_parser.add_argument("--text", action="store_true")
 
     init_parser = subparsers.add_parser("init")
     init_subparsers = init_parser.add_subparsers(dest="action")
@@ -572,6 +576,9 @@ def main(argv: Optional[List[str]] = None) -> int:
                 args.dry_run,
                 args.trade_date,
             )
+            if args.text:
+                print(render_import_text(result))
+                return 0 if result["ok"] else 1
         elif args.resource == "import" and args.action == "holdings":
             result = handle_import_holdings(
                 args.csv_path,
@@ -579,6 +586,9 @@ def main(argv: Optional[List[str]] = None) -> int:
                 args.output,
                 args.dry_run,
             )
+            if args.text:
+                print(render_import_text(result))
+                return 0 if result["ok"] else 1
         elif args.resource == "import" and args.action == "universe":
             result = handle_import_universe(
                 args.csv_path,
@@ -597,6 +607,9 @@ def main(argv: Optional[List[str]] = None) -> int:
                 args.output,
                 args.dry_run,
             )
+            if args.text:
+                print(render_import_text(result))
+                return 0 if result["ok"] else 1
         elif args.resource == "init" and args.action == "runtime":
             result = handle_init_runtime(args.force)
         elif args.resource == "validate" and args.action == "runtime":

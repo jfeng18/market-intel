@@ -518,6 +518,91 @@ def render_import_universe_text(payload: Dict[str, object]) -> str:
     return "\n".join(lines)
 
 
+def render_import_text(payload: Dict[str, object]) -> str:
+    data = payload.get("data", {})
+    kind = str(data.get("kind") or "") if isinstance(data, dict) else ""
+    command = str(payload.get("command") or "")
+    if not kind and command.startswith("import."):
+        kind = command.split(".", 1)[1]
+    if kind == "universe":
+        return render_import_universe_text(payload)
+    title = "market-intel import %s" % (kind or "data")
+    if not isinstance(data, dict):
+        return "%s\n\n无数据。" % title
+
+    lines = [
+        title,
+        "",
+        "状态",
+        "- input %s | output %s | dry_run %s | written %s"
+        % (
+            data.get("input") or "-",
+            data.get("output") or "-",
+            data.get("dry_run"),
+            data.get("written"),
+        ),
+        "- records %s | preview %s | warnings %s | errors %s"
+        % (
+            data.get("record_count", 0),
+            len(data.get("preview", [])) if isinstance(data.get("preview"), list) else 0,
+            len(payload.get("warnings", [])) if isinstance(payload.get("warnings"), list) else 0,
+            len(payload.get("errors", [])) if isinstance(payload.get("errors"), list) else 0,
+        ),
+        "",
+        "预览",
+    ]
+    lines.extend(render_import_preview(data.get("preview", []), str(kind or "")))
+    issues = payload.get("errors") or payload.get("warnings")
+    if issues:
+        lines.extend(["", "告警/错误"])
+        lines.extend(render_scan_errors(issues))
+    lines.extend(["", "下一步"])
+    lines.extend(render_command_list(data.get("next_commands", [])))
+    lines.extend(["", "边界", "- dry-run 不写入 runtime。", "- errors 非空时不会写入输出文件，也不会给出写入命令。"])
+    return "\n".join(lines)
+
+
+def render_import_preview(value: object, kind: str) -> List[str]:
+    rows = value if isinstance(value, list) else []
+    if not rows:
+        return ["- 暂无预览记录。"]
+    lines = []
+    for row in rows[:5]:
+        if not isinstance(row, dict):
+            continue
+        symbol = row.get("symbol") or "-"
+        name = row.get("name") or "-"
+        if kind == "quotes":
+            lines.append(
+                "- %s %s | %s | 涨跌 %.2f%% | 成交 %.2f亿 | 量比 %.2f"
+                % (
+                    symbol,
+                    name,
+                    row.get("trade_date") or "-",
+                    float_or_default(row.get("change_pct"), 0.0),
+                    float_or_default(row.get("amount"), 0.0) / 100000000,
+                    float_or_default(row.get("amount_ratio"), 0.0),
+                )
+            )
+        elif kind == "holdings":
+            lines.append("- %s %s | 数量 %s" % (symbol, name, row.get("quantity") if row.get("quantity") is not None else "-"))
+        elif kind == "research":
+            lines.append(
+                "- %s %s | %s | 逻辑 %s | 证据 %s | 证伪 %s"
+                % (
+                    symbol,
+                    name,
+                    row.get("status") or "-",
+                    "已填" if row.get("thesis") else "待补",
+                    "已填" if row.get("evidence") else "待补",
+                    "已填" if row.get("invalidation") else "待补",
+                )
+            )
+        else:
+            lines.append("- %s %s" % (symbol, name))
+    return lines or ["- 暂无预览记录。"]
+
+
 def render_universe_summary(value: object) -> List[str]:
     data = value if isinstance(value, dict) else {}
     if not data.get("available"):
