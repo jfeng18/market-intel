@@ -37,6 +37,7 @@ LABELS = {
     "draft_pool_match": "草稿池覆盖",
     "a_share_universe_foundation": "全 A 基础清单",
     "candidate_status": "候选状态",
+    "candidate_queue": "候选队列",
     "extra_pool_overlay": "扩展池叠加",
     "pending_fields": "字段待补",
     "unmatched_holdings": "持仓未匹配池子",

@@ -940,6 +940,7 @@ def build_review_focus(
     if market_scan.get("available"):
         groups = market_scan.get("sector_groups", []) if isinstance(market_scan.get("sector_groups"), list) else []
         candidates = market_scan.get("candidate_securities", []) if isinstance(market_scan.get("candidate_securities"), list) else []
+        queue_item = first_candidate_queue_item(market_scan)
         if groups or candidates:
             focus.append(
                 focus_item(
@@ -949,6 +950,17 @@ def build_review_focus(
                     "先看行业/概念/链路强弱，再进入持仓和单票复核。",
                     compact_scan_evidence(groups[:3], candidates[:3]),
                     ["market-intel scan --runtime --text"],
+                )
+            )
+        if queue_item:
+            focus.append(
+                focus_item(
+                    19,
+                    "candidate_queue_next",
+                    "队列首项",
+                    "按候选队列先读最值得推进的标的，而不是只停留在 Top 列表。",
+                    [candidate_queue_evidence(queue_item)],
+                    [queue_item.get("next_command") or "market-intel pool explain %s --runtime --text" % queue_item.get("symbol")],
                 )
             )
 
@@ -1413,15 +1425,23 @@ def briefing_next_commands(
         "market-intel watchlist --runtime --text",
     ]
     first_scan_symbol = None
+    first_queue_command = None
     if isinstance(market_scan, dict) and market_scan.get("available"):
-        candidates = market_scan.get("candidate_securities", []) if isinstance(market_scan.get("candidate_securities"), list) else []
-        first_scan_symbol = first_symbol_from_items(candidates)
+        queue_item = first_candidate_queue_item(market_scan)
+        if queue_item:
+            first_scan_symbol = str(queue_item.get("symbol") or "") or None
+            first_queue_command = queue_item.get("next_command")
+        if not first_scan_symbol:
+            candidates = market_scan.get("candidate_securities", []) if isinstance(market_scan.get("candidate_securities"), list) else []
+            first_scan_symbol = first_symbol_from_items(candidates)
     portfolio = daily.get("portfolio_review", {}) if isinstance(daily.get("portfolio_review"), dict) else {}
     portfolio_items = portfolio.get("top_items", []) if isinstance(portfolio.get("top_items"), list) else []
     first_symbol = first_symbol_from_items(portfolio_items)
     if first_symbol:
         commands.append("market-intel portfolio explain %s --runtime --text" % first_symbol)
-    if first_scan_symbol:
+    if first_queue_command:
+        commands.append(str(first_queue_command))
+    elif first_scan_symbol:
         commands.append("market-intel pool explain %s --runtime --text" % first_scan_symbol)
     if current_change.get("available"):
         commands.append("market-intel journal latest --text")
@@ -1434,6 +1454,28 @@ def briefing_next_commands(
     else:
         commands.append("market-intel journal save --runtime --json")
     return dedupe(commands)
+
+
+def first_candidate_queue_item(market_scan: Dict[str, object]) -> Optional[Dict[str, object]]:
+    queue = market_scan.get("candidate_queue", {}) if isinstance(market_scan.get("candidate_queue"), dict) else {}
+    buckets = queue.get("buckets", {}) if isinstance(queue.get("buckets"), dict) else {}
+    for key in ["review_now", "data_first", "deprioritized"]:
+        bucket = buckets.get(key, {}) if isinstance(buckets.get(key), dict) else {}
+        items = bucket.get("items", []) if isinstance(bucket.get("items"), list) else []
+        for item in items:
+            if isinstance(item, dict) and item.get("symbol"):
+                return item
+    return None
+
+
+def candidate_queue_evidence(item: Dict[str, object]) -> str:
+    return "%s %s | 分 %s | 覆盖 %s | %s" % (
+        item.get("symbol"),
+        item.get("name"),
+        render_number(item.get("review_score")),
+        item.get("coverage_state"),
+        item.get("reason") or "候选队列首项",
+    )
 
 
 def agent_briefing_contract(max_quote_age_days: int) -> Dict[str, object]:

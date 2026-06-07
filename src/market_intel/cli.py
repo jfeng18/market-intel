@@ -2464,6 +2464,7 @@ def mock_dashboard_review_plan(
                 evidence=dashboard_market_plan_evidence(groups, candidates),
             )
         )
+    add_dashboard_plan_candidate_queue(items, market, pool, "mock")
     for holding in portfolio.get("top_holdings", [])[:2] if isinstance(portfolio.get("top_holdings"), list) else []:
         if not isinstance(holding, dict) or not holding.get("symbol"):
             continue
@@ -3198,6 +3199,7 @@ def dashboard_review_plan(pool: str, digest: Dict[str, object]) -> Dict[str, obj
     items: List[Dict[str, object]] = []
     add_dashboard_plan_coverage(items, dashboard_coverage_context(digest), pool, "runtime")
     add_dashboard_plan_market(items, digest)
+    add_dashboard_plan_candidate_queue(items, dashboard_market_pulse(digest), pool, "runtime")
     add_dashboard_plan_portfolio(items, digest)
     add_dashboard_plan_evidence(items, digest)
     add_dashboard_plan_attention(items, digest)
@@ -3319,6 +3321,59 @@ def add_dashboard_plan_market(items: List[Dict[str, object]], digest: Dict[str, 
                 evidence=dashboard_market_plan_evidence(groups, candidates),
             )
         )
+
+
+def add_dashboard_plan_candidate_queue(
+    items: List[Dict[str, object]],
+    market: Dict[str, object],
+    pool: str,
+    mode: str,
+) -> None:
+    queue_item = dashboard_candidate_queue_next_item(market)
+    if not queue_item:
+        return
+    command = dashboard_candidate_queue_command(queue_item, pool, mode)
+    items.append(
+        dashboard_plan_item(
+            "candidate_queue",
+            "%s %s" % (queue_item.get("symbol"), queue_item.get("name") or ""),
+            queue_item.get("reason") or "读取候选队列首项。",
+            command,
+            "read",
+            "已确认该候选的板块共振、排序因子、覆盖状态和下一步核对项。",
+            related_symbols=[queue_item.get("symbol")],
+            evidence=[
+                "队列 %s | 分 %s | 覆盖 %s"
+                % (queue_item.get("lane") or "-", queue_item.get("review_score"), queue_item.get("coverage_state"))
+            ],
+        )
+    )
+
+
+def dashboard_candidate_queue_next_item(market: Dict[str, object]) -> Dict[str, object]:
+    queue = market.get("candidate_queue", {}) if isinstance(market.get("candidate_queue"), dict) else {}
+    buckets = queue.get("buckets", {}) if isinstance(queue.get("buckets"), dict) else {}
+    for key in ["review_now", "data_first", "deprioritized"]:
+        bucket = buckets.get(key, {}) if isinstance(buckets.get(key), dict) else {}
+        items = bucket.get("items", []) if isinstance(bucket.get("items"), list) else []
+        for item in items:
+            if isinstance(item, dict) and item.get("symbol"):
+                return item
+    return {}
+
+
+def dashboard_candidate_queue_command(item: Dict[str, object], pool: str, mode: str) -> str:
+    command = str(item.get("next_command") or "")
+    if not command and item.get("symbol"):
+        command = "market-intel pool explain %s --text" % item.get("symbol")
+    if not command:
+        return with_pool_arg("market-intel scan --json", pool)
+    command = digest_json_variant(command)
+    if mode == "runtime" and " --runtime" not in command and "pool explain" in command:
+        command = command.replace(" --json", " --runtime --json")
+    if mode == "mock":
+        command = command.replace(" --runtime", "")
+    return with_pool_arg(command, pool)
 
 
 def dashboard_market_plan_evidence(groups: object, candidates: object) -> List[object]:
@@ -6478,7 +6533,10 @@ def review_handoff_next_read(
             )
         )
     if rows:
+        add_candidate_queue_next_read(digest, rows, seen_commands)
         return rows[:5]
+
+    add_candidate_queue_next_read(digest, rows, seen_commands)
 
     attention = digest.get("attention_queue", {}) if isinstance(digest.get("attention_queue"), dict) else {}
     items = attention.get("items", []) if isinstance(attention.get("items"), list) else []
@@ -6501,6 +6559,34 @@ def review_handoff_next_read(
             )
         )
     return rows[:5]
+
+
+def add_candidate_queue_next_read(
+    digest: Dict[str, object],
+    rows: List[Dict[str, object]],
+    seen_commands: set,
+) -> None:
+    market_scan = digest.get("market_scan", {}) if isinstance(digest.get("market_scan"), dict) else {}
+    item = dashboard_candidate_queue_next_item(market_scan)
+    if not item:
+        return
+    command = str(item.get("next_command") or "")
+    if not command and item.get("symbol"):
+        command = "market-intel pool explain %s --runtime --json" % item.get("symbol")
+    command_key = digest_json_variant(command)
+    if not command_key or command_key in seen_commands:
+        return
+    seen_commands.add(command_key)
+    rows.append(
+        review_handoff_command_item(
+            len(rows) + 1,
+            "candidate_queue",
+            "%s %s" % (item.get("symbol"), item.get("name") or ""),
+            item.get("reason") or "读取候选队列首项。",
+            command,
+            "已确认该候选的板块共振、排序因子、覆盖状态和下一步核对项。",
+        )
+    )
 
 
 def review_handoff_command_item(
