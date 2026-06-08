@@ -2,7 +2,7 @@ import json
 import shlex
 import subprocess
 
-from market_intel.cli import handle_daily, handle_init_runtime
+from market_intel.cli import build_daily_command_queue, handle_daily, handle_init_runtime
 from market_intel.core.text_report import render_daily_report_text
 
 
@@ -267,3 +267,23 @@ def test_daily_command_queue_runnable_commands_parse(cli_cmd):
             capture_output=True,
         )
         assert result.returncode == 0, command
+
+
+def test_daily_command_queue_keeps_placeholder_commands_non_runnable():
+    queue = build_daily_command_queue(
+        {
+            "review_tasks": [
+                {
+                    "title": "导入真实持仓",
+                    "commands": ["market-intel import holdings <holdings.csv> --runtime"],
+                }
+            ],
+            "security_review_queue": [],
+            "journal_actions": [],
+        }
+    )
+
+    item = queue[0]
+    assert item["command"] == "market-intel import holdings <holdings.csv> --runtime"
+    assert item["runnable"] is False
+    assert "占位符" in item["unavailable_reason"]

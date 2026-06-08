@@ -124,13 +124,17 @@ def test_review_sample_runtime_next_commands_prepare_real_data(tmp_path, monkeyp
     holdings_item = result["command_queue"][1]
     assert holdings_item["state_effect"] == "writes_runtime"
     assert holdings_item["json_command"] == "market-intel import holdings <holdings.csv> --runtime --json"
+    assert holdings_item["runnable"] is False
+    assert "占位符" in holdings_item["unavailable_reason"]
 
     universe_item = result["command_queue"][2]
     assert universe_item["state_effect"] == "read_only"
     assert universe_item["mutates_state"] is False
+    assert universe_item["runnable"] is False
 
     status_item = result["command_queue"][-1]
     assert status_item["state_effect"] == "read_only"
+    assert status_item["runnable"] is True
 
 
 def test_review_report_with_journal_history(tmp_path, monkeypatch):

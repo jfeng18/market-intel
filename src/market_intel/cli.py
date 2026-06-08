@@ -10348,12 +10348,11 @@ def build_daily_command_queue(data: Dict[str, object]) -> List[Dict[str, object]
             existing["related_focus"] = dedupe_queue_texts(
                 list(existing.get("related_focus", [])) + [item for item in related if item]
             )[:4]
-            if runnable:
+            if runnable and not existing.get("unavailable_reason"):
                 existing["runnable"] = True
-                existing.pop("unavailable_reason", None)
             return existing
         item = command_queue_item(text, len(rows) + 1, [item for item in related if item])
-        item["runnable"] = bool(runnable)
+        item["runnable"] = bool(runnable) and bool(item.get("runnable", True))
         item["source"] = source
         if unavailable_reason and not runnable:
             item["unavailable_reason"] = unavailable_reason

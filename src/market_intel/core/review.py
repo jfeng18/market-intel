@@ -314,7 +314,7 @@ def _command_queue(commands: List[str]) -> List[Dict[str, Any]]:
     rows = []
     for command in commands:
         item = command_queue_item(command, len(rows) + 1, _command_focus(command))
-        item["runnable"] = True
+        item["runnable"] = bool(item.get("runnable", True))
         item["source"] = "review.next_commands"
         rows.append(item)
     return rows

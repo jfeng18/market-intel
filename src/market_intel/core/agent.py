@@ -2255,7 +2255,7 @@ def command_focus_index(focus: List[Dict[str, object]], checklist: List[Dict[str
 
 def command_queue_item(command: str, rank: int, related_focus: List[str]) -> Dict[str, object]:
     contract = command_execution_contract(command)
-    return {
+    item = {
         "rank": rank,
         "command": command,
         "json_command": json_variant(command),
@@ -2269,6 +2269,10 @@ def command_queue_item(command: str, rank: int, related_focus: List[str]) -> Dic
         "done_when": contract["done_when"],
         "related_focus": related_focus[:4],
     }
+    if command_has_path_placeholder(command):
+        item["runnable"] = False
+        item["unavailable_reason"] = "命令包含占位符，需要先替换为真实本地文件路径。"
+    return item
 
 
 def json_variant(command: str) -> str:
@@ -2279,6 +2283,13 @@ def json_variant(command: str) -> str:
     if " --text" in command:
         return command.replace(" --text", " --json")
     return "%s --json" % command
+
+
+def command_has_path_placeholder(command: str) -> bool:
+    padded = " %s " % command
+    if " import " not in padded:
+        return False
+    return "<" in command or ">" in command
 
 
 def command_mutates_state(command: str) -> bool:

@@ -69,6 +69,8 @@ def test_command_contract_describes_runtime_imports():
     assert "data.record_count" in holdings["read_fields"]
     assert "真实持仓" in holdings["output_use"]
     assert "dry-run" in holdings["done_when"]
+    assert holdings["runnable"] is False
+    assert "占位符" in holdings["unavailable_reason"]
 
     universe_dry_run = command_queue_item(
         "market-intel import universe <a_share_universe.csv> --runtime --dry-run --json",
@@ -79,6 +81,7 @@ def test_command_contract_describes_runtime_imports():
     assert universe_dry_run["input_context"] == ["a_share_universe_csv", "runtime_universe"]
     assert "data.coverage_delta" in universe_dry_run["read_fields"]
     assert "coverage_delta" in universe_dry_run["done_when"]
+    assert universe_dry_run["runnable"] is False
 
     research_dry_run = command_queue_item(
         "market-intel import research <research_notes.csv> --runtime --dry-run --json",
@@ -88,6 +91,7 @@ def test_command_contract_describes_runtime_imports():
     assert research_dry_run["state_effect"] == "read_only"
     assert research_dry_run["input_context"] == ["research_notes_csv", "runtime_research_notes"]
     assert "reviewed" in research_dry_run["done_when"]
+    assert research_dry_run["runnable"] is False
 
 
 def import_runtime_with_many_holdings(monkeypatch, tmp_path):
