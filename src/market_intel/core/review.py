@@ -277,9 +277,9 @@ def _next_commands(window: str, journal_entry: Optional[Dict[str, Any]]) -> List
     if journal_entry:
         commands.append("market-intel journal show %s --text" % journal_entry.get("id"))
     if window == "day":
-        commands.append("market-intel review --window week --text")
+        commands.append("market-intel review --window week --no-sync --no-save --text")
     elif window == "week":
-        commands.append("market-intel review --window month --text")
+        commands.append("market-intel review --window month --no-sync --no-save --text")
     commands.append("market-intel journal timeline --text")
     commands.append("market-intel focus --runtime --text")
     return commands

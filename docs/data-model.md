@@ -53,6 +53,7 @@ Agent 优先读：
 
 - `data.next_commands[]`：给人看的后续命令，保留兼容。
 - `data.command_queue[]`：agent 接力队列；每项包含 `command/json_command/state_effect/runnable/done_when`。
+- 复盘后的周/月级变化追踪 follow-up 默认带 `--no-sync --no-save`，只读对比，不重复同步或留档。
 - `state_effect=read_only` 才适合自动只读执行；`writes_runtime`、`writes_journal`、`writes_runtime_journal` 需人工确认或专门写入流程。
 
 ## CSV 口径

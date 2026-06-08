@@ -281,10 +281,14 @@ def test_review_command_queue_has_agent_execution_contract(tmp_path, monkeypatch
         save_journal=True,
     )
 
-    week_item = next(item for item in result["command_queue"] if item["command"] == "market-intel review --window week --text")
-    assert week_item["json_command"] == "market-intel review --window week --json"
-    assert week_item["state_effect"] == "writes_runtime_journal"
-    assert week_item["mutates_state"] is True
+    week_item = next(
+        item
+        for item in result["command_queue"]
+        if item["command"] == "market-intel review --window week --no-sync --no-save --text"
+    )
+    assert week_item["json_command"] == "market-intel review --window week --no-sync --no-save --json"
+    assert week_item["state_effect"] == "read_only"
+    assert week_item["mutates_state"] is False
     assert "data.command_queue" in week_item["read_fields"]
     assert week_item["done_when"]
 
@@ -310,7 +314,11 @@ def test_review_next_commands_week_suggests_month(tmp_path, monkeypatch):
         save_journal=False,
     )
 
-    assert any("month" in cmd for cmd in result["next_commands"])
+    month_command = "market-intel review --window month --no-sync --no-save --text"
+    assert month_command in result["next_commands"]
+    month_item = next(item for item in result["command_queue"] if item["command"] == month_command)
+    assert month_item["json_command"] == "market-intel review --window month --no-sync --no-save --json"
+    assert month_item["state_effect"] == "read_only"
 
 
 def test_handle_review_envelope(tmp_path, monkeypatch):
@@ -369,8 +377,8 @@ def test_render_review_text_success(tmp_path, monkeypatch):
     assert "今日摘要" in text
     assert "下一步" in text
     assert "#1" in text
-    assert "写入" in text
-    assert "market-intel review --window week --text" in text
+    assert "读取" in text
+    assert "market-intel review --window week --no-sync --no-save --text" in text
     assert "边界" in text
     assert "buy" not in text.lower()
     assert "sell" not in text.lower()
