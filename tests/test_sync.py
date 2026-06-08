@@ -436,3 +436,4 @@ def test_limit_up_threshold():
     assert _limit_up_threshold("688001", True) == 19.9    # STAR Market ST
     assert _limit_up_threshold("830001", False) == 29.9   # BSE 8xxxxx
     assert _limit_up_threshold("430047", False) == 29.9   # BSE 43xxxx
+    assert _limit_up_threshold("920118", False) == 29.9   # BSE 920xxx

@@ -248,12 +248,12 @@ def _limit_up_threshold(symbol: str, is_st: bool) -> float:
 
     Main board (000/001/002/003/600/601/603/605): 10% normal, 5% ST
     ChiNext (300) and STAR Market (688): 20% (ST same since 2020 reform)
-    BSE (4xxxxx/8xxxxx): 30% (ST same)
+    BSE (4xxxxx/8xxxxx/920xxx): 30% (ST same)
     """
     prefix = symbol[:3]
     if prefix == "300" or prefix == "688":
         return 19.9
-    if symbol.startswith("8") or symbol.startswith("4"):
+    if symbol.startswith("8") or symbol.startswith("4") or prefix == "920":
         return 29.9
     return 4.9 if is_st else 9.9
 
