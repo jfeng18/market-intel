@@ -52,6 +52,10 @@ def test_review_report_basic_structure(tmp_path, monkeypatch):
     assert result["risk_flags"] == ["持仓集中度偏高"]
     assert result["journal_saved"] is False
     assert result["agent_contract"]["boundary"]
+    assert "data.command_queue" in result["agent_contract"]["stable_fields"]
+    assert "data.command_queue[].state_effect" in result["agent_contract"]["stable_fields"]
+    assert result["command_queue"]
+    assert [item["command"] for item in result["command_queue"]] == result["next_commands"]
     assert not result["errors"]
 
 
@@ -267,6 +271,35 @@ def test_review_next_commands_with_journal(tmp_path, monkeypatch):
     assert any("week" in cmd for cmd in result["next_commands"])
 
 
+def test_review_command_queue_has_agent_execution_contract(tmp_path, monkeypatch):
+    monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(tmp_path / "runtime"))
+
+    result = build_review_report(
+        sync_result=_mock_sync_result(),
+        daily_payload=_mock_daily_payload(),
+        window="day",
+        save_journal=True,
+    )
+
+    week_item = next(item for item in result["command_queue"] if item["command"] == "market-intel review --window week --text")
+    assert week_item["json_command"] == "market-intel review --window week --json"
+    assert week_item["state_effect"] == "writes_runtime_journal"
+    assert week_item["mutates_state"] is True
+    assert "data.command_queue" in week_item["read_fields"]
+    assert week_item["done_when"]
+
+    show_item = next(item for item in result["command_queue"] if "journal show" in item["command"])
+    assert show_item["json_command"].endswith("--json")
+    assert show_item["state_effect"] == "read_only"
+    assert show_item["mutates_state"] is False
+    assert "data.entry" in show_item["read_fields"]
+
+    focus_item = next(item for item in result["command_queue"] if item["command"] == "market-intel focus --runtime --text")
+    assert focus_item["json_command"] == "market-intel focus --runtime --json"
+    assert focus_item["state_effect"] == "read_only"
+    assert "data.first_runnable_command" in focus_item["read_fields"]
+
+
 def test_review_next_commands_week_suggests_month(tmp_path, monkeypatch):
     monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(tmp_path / "runtime"))
 
@@ -335,6 +368,9 @@ def test_render_review_text_success(tmp_path, monkeypatch):
     assert "数据同步" in text
     assert "今日摘要" in text
     assert "下一步" in text
+    assert "#1" in text
+    assert "写入" in text
+    assert "market-intel review --window week --text" in text
     assert "边界" in text
     assert "buy" not in text.lower()
     assert "sell" not in text.lower()

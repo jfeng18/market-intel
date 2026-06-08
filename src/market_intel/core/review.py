@@ -3,6 +3,7 @@
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
+from .agent import command_queue_item
 from .journal import (
     compare_daily_payloads,
     list_journal_entries,
@@ -74,6 +75,7 @@ def build_review_report(
         ))
 
     daily_data = daily_payload.get("data", {}) if isinstance(daily_payload.get("data"), dict) else {}
+    next_commands = _next_commands(window, journal_entry)
 
     return {
         "window": window,
@@ -88,7 +90,8 @@ def build_review_report(
         "journal_saved": journal_entry is not None,
         "journal_entry": _compact_journal_entry(journal_entry) if journal_entry else None,
         "journal_status": journal_status,
-        "next_commands": _next_commands(window, journal_entry),
+        "next_commands": next_commands,
+        "command_queue": _command_queue(next_commands),
         "agent_contract": _agent_contract(),
         "warnings": warnings,
         "errors": errors,
@@ -282,6 +285,28 @@ def _next_commands(window: str, journal_entry: Optional[Dict[str, Any]]) -> List
     return commands
 
 
+def _command_queue(commands: List[str]) -> List[Dict[str, Any]]:
+    rows = []
+    for command in commands:
+        item = command_queue_item(command, len(rows) + 1, _command_focus(command))
+        item["runnable"] = True
+        item["source"] = "review.next_commands"
+        rows.append(item)
+    return rows
+
+
+def _command_focus(command: str) -> List[str]:
+    if " journal show " in " %s " % command:
+        return ["日报留档"]
+    if " journal timeline " in " %s " % command:
+        return ["历史时间线"]
+    if " review " in " %s " % command:
+        return ["变化追踪"]
+    if " focus " in " %s " % command:
+        return ["复盘工作台"]
+    return ["复盘后续"]
+
+
 def _agent_contract() -> Dict[str, Any]:
     return {
         "stable_fields": [
@@ -295,6 +320,12 @@ def _agent_contract() -> Dict[str, Any]:
             "data.journal_status",
             "data.journal_status.code",
             "data.next_commands",
+            "data.command_queue",
+            "data.command_queue[].command",
+            "data.command_queue[].json_command",
+            "data.command_queue[].runnable",
+            "data.command_queue[].state_effect",
+            "data.command_queue[].done_when",
         ],
         "boundary": "不产生交易指令、目标价或仓位建议。",
         "read_order": [
@@ -308,6 +339,7 @@ def _agent_contract() -> Dict[str, Any]:
             "data.brief",
             "data.watchlist",
             "data.portfolio_review",
+            "data.command_queue",
         ],
     }
 

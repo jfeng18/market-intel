@@ -49,6 +49,12 @@ Agent 优先读：
 - `data.coverage_context`、`data.market_pulse`、`data.portfolio_pulse`、`data.evidence_gaps`：上下文。
 - `data.review_plan.items[]`：完整接力队列。
 
+## Review
+
+- `data.next_commands[]`：给人看的后续命令，保留兼容。
+- `data.command_queue[]`：agent 接力队列；每项包含 `command/json_command/state_effect/runnable/done_when`。
+- `state_effect=read_only` 才适合自动只读执行；`writes_runtime`、`writes_journal`、`writes_runtime_journal` 需人工确认或专门写入流程。
+
 ## CSV 口径
 
 - Universe：`symbol,name,industry,concepts,index_membership,listing_status,source`

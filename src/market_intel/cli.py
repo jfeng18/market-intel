@@ -9175,6 +9175,11 @@ def first_digest_read_command(commands: List[object], default: str) -> str:
 
 def digest_command_is_read_only(command: str) -> bool:
     padded = " %s " % command
+    text = command.strip()
+    if text.startswith("market-intel review"):
+        return " --no-sync " in padded and " --no-save " in padded
+    if text.startswith("market-intel sync quotes"):
+        return " --dry-run " in padded
     if " journal save " in padded or " journal note " in padded:
         return False
     if " import research " in padded and " --dry-run " in padded:

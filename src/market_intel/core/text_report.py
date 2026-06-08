@@ -57,6 +57,7 @@ LABELS = {
     "read_only": "只读",
     "writes_journal": "写入留档",
     "writes_runtime": "写入 runtime",
+    "writes_runtime_journal": "写入 runtime/留档",
     "portfolio_review": "持仓复核",
     "watchlist": "观察清单",
     "data_quality": "数据质量",
@@ -688,7 +689,7 @@ def render_review_text(payload: Dict[str, object]) -> str:
         lines.extend(["", "日报留档", "- 未保存：%s" % reason])
 
     lines.extend(["", "下一步"])
-    lines.extend(render_command_list(data.get("next_commands", [])))
+    lines.extend(render_command_queue_lines(data.get("command_queue", []), limit=6))
     lines.extend(["", "边界", "- 不产生交易指令、目标价或仓位建议。"])
     return "\n".join(lines)
 

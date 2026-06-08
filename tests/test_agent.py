@@ -19,7 +19,7 @@ from market_intel.cli import (
     dashboard_journal_gate,
     run_agent_read_command,
 )
-from market_intel.core.agent import build_agent_plan
+from market_intel.core.agent import build_agent_plan, command_queue_item
 from market_intel.core.text_report import label, render_agent_briefing_text, render_agent_next_text, render_agent_plan_text, render_agent_run_text, render_dashboard_text
 
 
@@ -36,6 +36,26 @@ def dashboard_text_max_non_command_line_length(text):
             continue
         lines.append(len(line))
     return max(lines, default=0)
+
+
+def test_command_contract_marks_review_and_sync_state_effects():
+    review_item = command_queue_item("market-intel review --window week --text", 1, [])
+    assert review_item["json_command"] == "market-intel review --window week --json"
+    assert review_item["mutates_state"] is True
+    assert review_item["state_effect"] == "writes_runtime_journal"
+    assert "data.command_queue" in review_item["read_fields"]
+
+    no_write_review = command_queue_item("market-intel review --window week --no-sync --no-save --text", 2, [])
+    assert no_write_review["state_effect"] == "read_only"
+    assert no_write_review["mutates_state"] is False
+
+    sync_item = command_queue_item("market-intel sync quotes", 3, [])
+    assert sync_item["state_effect"] == "writes_runtime"
+    assert sync_item["mutates_state"] is True
+
+    dry_run_sync = command_queue_item("market-intel sync quotes --dry-run", 4, [])
+    assert dry_run_sync["state_effect"] == "read_only"
+    assert dry_run_sync["mutates_state"] is False
 
 
 def import_runtime_with_many_holdings(monkeypatch, tmp_path):

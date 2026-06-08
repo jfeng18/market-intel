@@ -2299,18 +2299,40 @@ def command_execution_contract(command: str) -> Dict[str, object]:
 
 def command_state_effect(command: str) -> str:
     padded = " %s " % command
+    text = command.strip()
+    if text.startswith("market-intel review"):
+        no_sync = " --no-sync " in padded
+        no_save = " --no-save " in padded
+        if no_sync and no_save:
+            return "read_only"
+        if no_sync:
+            return "writes_journal"
+        if no_save:
+            return "writes_runtime"
+        return "writes_runtime_journal"
+    if text.startswith("market-intel sync quotes"):
+        return "read_only" if " --dry-run " in padded else "writes_runtime"
     if " journal save " in padded or " journal note " in padded:
         return "writes_journal"
-    if " import quotes " in padded or " import holdings " in padded or " init runtime" in command:
+    if " import schema " in padded:
+        return "read_only"
+    if " import " in padded and " --dry-run " not in padded:
+        return "writes_runtime"
+    if " init runtime" in command:
         return "writes_runtime"
     return "read_only"
 
 
 def command_input_context(command: str) -> List[str]:
+    text = command.strip()
+    if text.startswith("market-intel review"):
+        return ["runtime_quotes", "runtime_holdings", "journal_entries", "pool"]
     if "status runtime" in command or "validate runtime" in command:
         return ["runtime_quotes", "runtime_holdings", "pool"]
     if "agent briefing" in command:
         return ["runtime_daily", "journal_timeline", "latest_archive_compare"]
+    if text.startswith("market-intel focus"):
+        return ["runtime_daily", "runtime_holdings", "runtime_quotes", "pool"]
     if "pool coverage" in command:
         return ["pool", "runtime_holdings", "all_a_universe", "research_notes"]
     if "pool quality" in command:
@@ -2327,7 +2349,7 @@ def command_input_context(command: str) -> List[str]:
         return ["symbol", "pool", "optional_runtime_quotes"]
     if "watchlist" in command:
         return ["runtime_quotes", "runtime_holdings", "pool"]
-    if "journal latest" in command or "journal timeline" in command or "journal compare" in command:
+    if "journal latest" in command or "journal show" in command or "journal timeline" in command or "journal compare" in command:
         return ["journal_entries"]
     if "journal save" in command:
         return ["runtime_daily", "journal_entries"]
@@ -2339,12 +2361,17 @@ def command_input_context(command: str) -> List[str]:
 
 
 def command_output_use(command: str) -> str:
+    text = command.strip()
+    if text.startswith("market-intel review"):
+        return "生成一键复盘结果，读取变化追踪、同步状态、留档状态和下一步队列。"
     if "status runtime" in command:
         return "判断今天是否能生成日报，以及是否需要先修数据。"
     if "validate runtime" in command:
         return "把错误和告警转成数据质量复核项。"
     if "agent briefing" in command:
         return "作为当天复盘的主工作台和后续命令来源。"
+    if text.startswith("market-intel focus"):
+        return "读取复盘聚焦视图和第一条可执行后续命令。"
     if "pool coverage" in command:
         return "先确认全 A/复盘池覆盖边界、持仓覆盖状态和证据缺口。"
     if "pool quality" in command:
@@ -2363,6 +2390,8 @@ def command_output_use(command: str) -> str:
         return "确认盘中观察项和持仓观察是否需要进入复核队列。"
     if "journal latest" in command:
         return "读取最近一次留档和用户复盘笔记。"
+    if "journal show" in command:
+        return "读取指定日报留档，确认当时摘要、风险和后续命令。"
     if "journal compare" in command:
         return "识别最近两份留档之间的热点、持仓和风险变化。"
     if "journal timeline" in command:
@@ -2377,12 +2406,17 @@ def command_output_use(command: str) -> str:
 
 
 def command_done_when(command: str) -> str:
+    text = command.strip()
+    if text.startswith("market-intel review"):
+        return "已读取 data.changes、data.daily_summary、data.journal_status 和 data.command_queue。"
     if "status runtime" in command:
         return "已确认 data.readiness.state，并记录 blocked/degraded/ready 的原因。"
     if "validate runtime" in command:
         return "errors 已清空，或每个 warning/error 都有对应处理说明。"
     if "agent briefing" in command:
         return "已读取 review_focus、review_checklist、current_change 和 command_queue。"
+    if text.startswith("market-intel focus"):
+        return "已读取复盘焦点、覆盖上下文、优先标的和第一条可执行命令。"
     if "pool coverage" in command:
         return "已记录 coverage status、universe sector_profile、holdings_coverage、gaps 和 next_actions。"
     if "pool quality" in command:
@@ -2401,6 +2435,8 @@ def command_done_when(command: str) -> str:
         return "已记录观察项中的持仓标记、风险标签和后续单票命令。"
     if "journal latest" in command:
         return "已读取最近留档、最新用户笔记和 next_commands。"
+    if "journal show" in command:
+        return "已读取指定日报的 payload、entry 和 next_commands。"
     if "journal compare" in command:
         return "已记录新增、减少和变化项，并提炼出需要复核的变化。"
     if "journal timeline" in command:
@@ -2415,6 +2451,12 @@ def command_done_when(command: str) -> str:
 
 
 def command_read_contract(command: str) -> tuple:
+    text = command.strip()
+    if text.startswith("market-intel review"):
+        return (
+            ["data.changes", "data.sync", "data.journal_status", "data.command_queue"],
+            "读取一键复盘的变化、同步、留档和后续队列。",
+        )
     if "status runtime" in command:
         return (
             ["data.readiness", "data.validation.summary", "data.freshness"],
@@ -2429,6 +2471,11 @@ def command_read_contract(command: str) -> tuple:
         return (
             ["data.review_focus", "data.review_checklist", "data.current_change", "data.command_queue"],
             "读取 agent 可接力的复盘入口。",
+        )
+    if text.startswith("market-intel focus"):
+        return (
+            ["data.summary", "data.coverage_context", "data.priority_securities", "data.first_runnable_command"],
+            "读取聚焦视图，确认最值得继续看的标的和命令。",
         )
     if "pool coverage" in command:
         return (
@@ -2474,6 +2521,11 @@ def command_read_contract(command: str) -> tuple:
         return (
             ["data.entry", "data.payload.data.summary", "data.next_commands"],
             "读取最近日报留档。",
+        )
+    if "journal show" in command:
+        return (
+            ["data.entry", "data.payload.data.summary", "data.next_commands"],
+            "读取指定日报留档。",
         )
     if "journal compare" in command:
         return (
