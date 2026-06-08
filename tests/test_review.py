@@ -9,7 +9,7 @@ from market_intel.core.review import build_review_report, _window_label, _find_e
 def _mock_sync_result():
     return {
         "record_count": 100,
-        "trade_date": "20260608",
+        "trade_date": "2026-06-08",
         "summary": {"total": 100, "limit_up": 5, "stage_high": 3},
         "errors": [],
         "warnings": [],
@@ -149,6 +149,50 @@ def test_review_report_sync_error_propagated(tmp_path, monkeypatch):
     assert len(result["errors"]) >= 1
 
 
+def test_review_report_sync_error_skips_journal(tmp_path, monkeypatch):
+    monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(tmp_path / "runtime"))
+
+    sync_result = {
+        "record_count": 0,
+        "trade_date": "2026-06-08",
+        "errors": [{"code": "AKSHARE_SPOT_FAILED", "message": "timeout", "detail": {}}],
+        "warnings": [],
+    }
+
+    result = build_review_report(
+        sync_result=sync_result,
+        daily_payload=_mock_daily_payload(),
+        window="day",
+        save_journal=True,
+    )
+
+    assert result["journal_saved"] is False
+    assert any(w["code"] == "REVIEW_JOURNAL_SKIPPED_SYNC_FAILED" for w in result["warnings"])
+    assert not (tmp_path / "runtime" / "journal").exists()
+
+
+def test_review_report_sync_skipped_status(tmp_path, monkeypatch):
+    monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(tmp_path / "runtime"))
+
+    result = build_review_report(
+        sync_result={
+            "record_count": 0,
+            "trade_date": None,
+            "summary": {"total": 0, "limit_up": 0, "stage_high": 0},
+            "skipped": True,
+            "errors": [],
+            "warnings": [],
+        },
+        daily_payload=_mock_daily_payload(),
+        window="day",
+        save_journal=False,
+    )
+
+    assert result["sync"]["ok"] is True
+    assert result["sync"]["status"] == "skipped"
+    assert result["sync"]["skipped"] is True
+
+
 def test_review_report_daily_error_propagated(tmp_path, monkeypatch):
     monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(tmp_path / "runtime"))
 
@@ -274,3 +318,33 @@ def test_render_review_text_success(tmp_path, monkeypatch):
     assert "边界" in text
     assert "buy" not in text.lower()
     assert "sell" not in text.lower()
+
+
+def test_render_review_text_sync_skipped(tmp_path, monkeypatch):
+    monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(tmp_path / "runtime"))
+
+    from market_intel.core.text_report import render_review_text
+
+    payload = {
+        "ok": True,
+        "command": "review",
+        "data": build_review_report(
+            sync_result={
+                "record_count": 0,
+                "trade_date": None,
+                "summary": {"total": 0, "limit_up": 0, "stage_high": 0},
+                "skipped": True,
+                "errors": [],
+                "warnings": [],
+            },
+            daily_payload=_mock_daily_payload(),
+            window="day",
+            save_journal=False,
+        ),
+        "errors": [],
+        "warnings": [],
+    }
+
+    text = render_review_text(payload)
+    assert "已跳过" in text
+    assert "数据同步" in text

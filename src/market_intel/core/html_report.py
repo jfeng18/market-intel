@@ -181,7 +181,10 @@ def _render_sync_status(data: Dict[str, Any]) -> str:
     sync = data.get("sync", {}) if isinstance(data.get("sync"), dict) else {}
     summary = sync.get("summary", {}) if isinstance(sync.get("summary"), dict) else {}
     ok = sync.get("ok", False)
-    status_badge = '<span class="badge badge-green">成功</span>' if ok else '<span class="badge badge-red">失败</span>'
+    if sync.get("skipped"):
+        status_badge = '<span class="badge badge-dim">已跳过</span>'
+    else:
+        status_badge = '<span class="badge badge-green">成功</span>' if ok else '<span class="badge badge-red">失败</span>'
     return """<h2>数据同步</h2>
 <div class="card">
 %s 标的 %s &middot; 涨停 %s &middot; 阶段新高 %s

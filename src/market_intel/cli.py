@@ -1922,7 +1922,14 @@ def handle_review(
     no_sync: bool = False,
     no_save: bool = False,
 ) -> Dict[str, Any]:
-    sync_result: Dict[str, Any] = {"record_count": 0, "errors": [], "warnings": []}
+    sync_result: Dict[str, Any] = {
+        "record_count": 0,
+        "trade_date": None,
+        "summary": {"total": 0, "limit_up": 0, "stage_high": 0},
+        "skipped": True,
+        "errors": [],
+        "warnings": [],
+    }
     if not no_sync:
         sync_result = sync_quotes(dry_run=False)
 

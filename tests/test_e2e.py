@@ -8,6 +8,7 @@ import pytest
 from market_intel.cli import (
     handle_init_runtime,
     handle_review,
+    handle_status_runtime,
     handle_sync_quotes,
 )
 from market_intel.core.fixtures import load_quotes_file
@@ -83,6 +84,11 @@ def test_full_flow_init_sync_review_journal(tmp_path, monkeypatch):
     # Verify quotes are loadable
     quotes = load_quotes_file(tmp_path / "runtime" / "quotes.json")
     assert len(quotes) == 3
+    assert {quote.trade_date for quote in quotes} == {"2026-06-08"}
+
+    status_result = handle_status_runtime("all-a", max_quote_age_days=9999)
+    assert status_result["data"]["freshness"]["errors"] == []
+    assert status_result["data"]["freshness"]["latest_trade_date"] == "2026-06-08"
 
     # Step 3: Review (no-sync since we already synced, save journal)
     review_result = handle_review(no_sync=True, no_save=False)
@@ -157,3 +163,21 @@ def test_full_flow_no_runtime_gives_guidance(tmp_path, monkeypatch):
     assert "错误" in text
     assert "init runtime" in text
     assert "sync quotes" in text
+
+
+def test_full_flow_review_sync_failure_does_not_save_journal(tmp_path, monkeypatch):
+    monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(tmp_path / "runtime"))
+
+    handle_init_runtime(force=False)
+    with patch.dict("sys.modules", {"akshare": _setup_mock_ak()}):
+        handle_sync_quotes(dry_run=False, trade_date="20260608")
+
+    mock_ak = MagicMock()
+    mock_ak.stock_zh_a_spot_em.side_effect = Exception("network down")
+    with patch.dict("sys.modules", {"akshare": mock_ak}):
+        review_result = handle_review(no_sync=False, no_save=False)
+
+    assert review_result["ok"] is False
+    assert review_result["data"]["sync"]["status"] == "failed"
+    assert review_result["data"]["journal_saved"] is False
+    assert not (tmp_path / "runtime" / "journal").exists()

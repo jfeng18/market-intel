@@ -22,17 +22,20 @@ def sync_quotes(
 
     Returns a result dict compatible with the project's envelope pattern.
     """
-    resolved_date = trade_date or _today_str()
     warnings: List[Dict[str, Any]] = []
     errors: List[Dict[str, Any]] = []
+    api_date, quote_date, date_error = _resolve_trade_dates(trade_date)
+    if date_error:
+        errors.append(date_error)
+        return _build_result([], dry_run, False, str(trade_date or ""), warnings, errors)
 
-    spot_df, zt_codes, high_codes, fetch_errors = _fetch_market_data(resolved_date)
+    spot_df, zt_codes, high_codes, fetch_errors = _fetch_market_data(api_date)
     errors.extend(fetch_errors)
 
     if errors:
-        return _build_result([], dry_run, False, resolved_date, warnings, errors)
+        return _build_result([], dry_run, False, quote_date, warnings, errors)
 
-    records = _transform_quotes(spot_df, zt_codes, high_codes, resolved_date)
+    records = _transform_quotes(spot_df, zt_codes, high_codes, quote_date)
 
     if symbols:
         normalized = {s.strip().zfill(6) for s in symbols}
@@ -49,7 +52,7 @@ def sync_quotes(
 
     if not records:
         errors.append(_issue("SYNC_NO_RECORDS", "未获取到任何行情记录。", {}))
-        return _build_result([], dry_run, False, resolved_date, warnings, errors)
+        return _build_result([], dry_run, False, quote_date, warnings, errors)
 
     written = False
     if not dry_run:
@@ -58,7 +61,7 @@ def sync_quotes(
         mark_runtime_dataset_imported("quotes", "sync:akshare")
         written = True
 
-    return _build_result(records, dry_run, written, resolved_date, warnings, errors)
+    return _build_result(records, dry_run, written, quote_date, warnings, errors)
 
 
 def _fetch_market_data(
@@ -257,6 +260,25 @@ def _limit_up_threshold(symbol: str, is_st: bool) -> float:
 
 def _today_str() -> str:
     return date.today().strftime("%Y%m%d")
+
+
+def _resolve_trade_dates(value: Optional[str]) -> Tuple[str, str, Optional[Dict[str, Any]]]:
+    text = str(value or "").strip()
+    if not text:
+        today = date.today()
+        return today.strftime("%Y%m%d"), today.isoformat(), None
+    try:
+        if len(text) == 8 and text.isdigit():
+            parsed = datetime.strptime(text, "%Y%m%d").date()
+        else:
+            parsed = date.fromisoformat(text[:10])
+    except ValueError:
+        return "", "", _issue(
+            "SYNC_TRADE_DATE_INVALID",
+            "trade_date 需要 YYYYMMDD 或 YYYY-MM-DD。",
+            {"trade_date": text},
+        )
+    return parsed.strftime("%Y%m%d"), parsed.isoformat(), None
 
 
 def _issue(code: str, message: str, detail: Dict[str, Any]) -> Dict[str, Any]:

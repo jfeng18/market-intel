@@ -101,6 +101,8 @@ def test_sync_quotes_writes_to_runtime(tmp_path, monkeypatch):
 
     symbols = {q["symbol"] for q in data["quotes"]}
     assert symbols == {"600519", "002837", "300750", "000001", "688001"}
+    assert {q["trade_date"] for q in data["quotes"]} == {"2026-06-08"}
+    assert result["trade_date"] == "2026-06-08"
 
 
 def test_sync_quotes_limit_up_detection(tmp_path, monkeypatch):
@@ -181,6 +183,32 @@ def test_sync_quotes_missing_symbol_warning(tmp_path, monkeypatch):
 
     assert result["record_count"] == 0
     assert any(w["code"] == "SYNC_SYMBOLS_NOT_FOUND" for w in result["warnings"])
+
+
+def test_sync_quotes_accepts_iso_trade_date_for_runtime(tmp_path, monkeypatch):
+    monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(tmp_path / "runtime"))
+    mock_ak = _setup_mock_ak()
+
+    with patch.dict("sys.modules", {"akshare": mock_ak}):
+        result = sync_quotes(dry_run=False, trade_date="2026-06-08")
+
+    assert not result["errors"]
+    assert result["trade_date"] == "2026-06-08"
+    mock_ak.stock_zt_pool_em.assert_called_with(date="20260608")
+    data = json.loads((tmp_path / "runtime" / "quotes.json").read_text(encoding="utf-8"))
+    assert {q["trade_date"] for q in data["quotes"]} == {"2026-06-08"}
+
+
+def test_sync_quotes_rejects_invalid_trade_date(tmp_path, monkeypatch):
+    monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(tmp_path / "runtime"))
+
+    with patch.dict("sys.modules", {"akshare": _setup_mock_ak()}):
+        result = sync_quotes(dry_run=False, trade_date="20260632")
+
+    assert result["errors"]
+    assert result["errors"][0]["code"] == "SYNC_TRADE_DATE_INVALID"
+    assert result["written"] is False
+    assert not (tmp_path / "runtime" / "quotes.json").exists()
 
 
 def test_sync_quotes_akshare_not_installed(tmp_path, monkeypatch):
@@ -373,7 +401,7 @@ def test_render_sync_text(tmp_path, monkeypatch):
     text = render_sync_text(payload)
     assert "market-intel sync quotes" in text
     assert "akshare" in text
-    assert "20260608" in text
+    assert "2026-06-08" in text
     assert "dry_run True" in text
     assert "下一步" in text
     assert "边界" in text

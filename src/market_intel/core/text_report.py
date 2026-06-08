@@ -660,13 +660,14 @@ def render_review_text(payload: Dict[str, object]) -> str:
         lines.extend(["", "变化追踪", "- %s" % changes.get("summary", "无历史数据可对比。")])
 
     sync = data.get("sync", {}) if isinstance(data.get("sync"), dict) else {}
+    sync_status = "已跳过" if sync.get("skipped") else "成功" if sync.get("ok") else "失败"
     lines.extend([
         "",
         "数据同步",
         "- 行情 %s 条 | 日期 %s | %s" % (
             sync.get("record_count", 0),
             sync.get("trade_date", "-"),
-            "成功" if sync.get("ok") else "失败",
+            sync_status,
         ),
     ])
 

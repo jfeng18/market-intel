@@ -32,11 +32,12 @@ def build_review_report(
     warnings: List[Dict[str, Any]] = []
     errors: List[Dict[str, Any]] = []
 
-    sync_ok = not sync_result.get("errors")
+    sync_errors = sync_result.get("errors", []) if isinstance(sync_result.get("errors"), list) else []
+    sync_ok = not sync_errors
     daily_ok = daily_payload.get("ok", False)
 
     if not sync_ok:
-        errors.extend(sync_result.get("errors", []))
+        errors.extend(sync_errors)
     if not daily_ok:
         daily_errors = daily_payload.get("errors", [])
         if isinstance(daily_errors, list):
@@ -45,7 +46,7 @@ def build_review_report(
     changes = _build_changes(daily_payload, window, warnings)
 
     journal_entry = None
-    if save_journal and daily_ok:
+    if save_journal and daily_ok and sync_ok:
         journal_result = save_daily_journal(daily_payload)
         if journal_result.get("saved"):
             journal_entry = journal_result.get("entry")
@@ -53,6 +54,12 @@ def build_review_report(
             journal_errors = journal_result.get("errors", [])
             if isinstance(journal_errors, list):
                 warnings.extend(journal_errors)
+    elif save_journal and daily_ok and not sync_ok:
+        warnings.append(_issue(
+            "REVIEW_JOURNAL_SKIPPED_SYNC_FAILED",
+            "同步失败，本次复盘未写入 journal，避免用旧行情污染变化追踪。",
+            {},
+        ))
 
     daily_data = daily_payload.get("data", {}) if isinstance(daily_payload.get("data"), dict) else {}
 
@@ -180,8 +187,12 @@ def _summarize_changes(
 
 
 def _compact_sync(sync_result: Dict[str, Any]) -> Dict[str, Any]:
+    errors = sync_result.get("errors", []) if isinstance(sync_result.get("errors"), list) else []
+    skipped = bool(sync_result.get("skipped"))
     return {
-        "ok": not sync_result.get("errors"),
+        "ok": not errors,
+        "status": "skipped" if skipped else "ok" if not errors else "failed",
+        "skipped": skipped,
         "record_count": sync_result.get("record_count", 0),
         "trade_date": sync_result.get("trade_date"),
         "summary": sync_result.get("summary"),
@@ -256,3 +267,7 @@ def _agent_contract() -> Dict[str, Any]:
             "data.portfolio_review",
         ],
     }
+
+
+def _issue(code: str, message: str, detail: Dict[str, Any]) -> Dict[str, Any]:
+    return {"code": code, "message": message, "detail": detail}
