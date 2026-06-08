@@ -97,6 +97,42 @@ def test_review_report_sample_runtime_skips_journal(tmp_path, monkeypatch):
     assert not (tmp_path / "runtime" / "journal").exists()
 
 
+def test_review_sample_runtime_next_commands_prepare_real_data(tmp_path, monkeypatch):
+    monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(tmp_path / "runtime"))
+
+    result = build_review_report(
+        sync_result=_mock_sync_result(),
+        daily_payload=_mock_daily_payload(),
+        window="day",
+        save_journal=True,
+        runtime_profile={"mode": "sample", "sample_datasets": ["quotes", "holdings", "universe", "research"]},
+    )
+
+    assert result["next_commands"] == [
+        "market-intel sync quotes",
+        "market-intel import holdings <holdings.csv> --runtime",
+        "market-intel import universe <a_share_universe.csv> --runtime --dry-run --json",
+        "market-intel import research <research_notes.csv> --runtime --dry-run --json",
+        "market-intel status runtime --text",
+    ]
+    assert [item["command"] for item in result["command_queue"]] == result["next_commands"]
+
+    sync_item = result["command_queue"][0]
+    assert sync_item["state_effect"] == "writes_runtime"
+    assert sync_item["mutates_state"] is True
+
+    holdings_item = result["command_queue"][1]
+    assert holdings_item["state_effect"] == "writes_runtime"
+    assert holdings_item["json_command"] == "market-intel import holdings <holdings.csv> --runtime --json"
+
+    universe_item = result["command_queue"][2]
+    assert universe_item["state_effect"] == "read_only"
+    assert universe_item["mutates_state"] is False
+
+    status_item = result["command_queue"][-1]
+    assert status_item["state_effect"] == "read_only"
+
+
 def test_review_report_with_journal_history(tmp_path, monkeypatch):
     """When there's a prior journal entry, changes should be available."""
     monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(tmp_path / "runtime"))

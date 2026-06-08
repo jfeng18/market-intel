@@ -188,6 +188,8 @@ def test_full_flow_sample_runtime_does_not_save_journal(tmp_path, monkeypatch):
     assert review_result["data"]["journal_saved"] is False
     assert review_result["data"]["journal_status"]["code"] == "sample_runtime"
     assert "样例数据" in text
+    assert "market-intel sync quotes" in text
+    assert "import holdings <holdings.csv> --runtime" in text
     assert not (tmp_path / "runtime" / "journal").exists()
 
 

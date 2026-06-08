@@ -2327,6 +2327,16 @@ def command_input_context(command: str) -> List[str]:
     text = command.strip()
     if text.startswith("market-intel review"):
         return ["runtime_quotes", "runtime_holdings", "journal_entries", "pool"]
+    if text.startswith("market-intel sync quotes"):
+        return ["akshare_or_trade_date", "runtime_quotes"]
+    if " import quotes " in " %s " % command:
+        return ["quotes_csv", "runtime_quotes"]
+    if " import holdings " in " %s " % command:
+        return ["holdings_csv", "runtime_holdings"]
+    if " import universe " in " %s " % command:
+        return ["a_share_universe_csv", "runtime_universe"]
+    if " import research " in " %s " % command:
+        return ["research_notes_csv", "runtime_research_notes"]
     if "status runtime" in command or "validate runtime" in command:
         return ["runtime_quotes", "runtime_holdings", "pool"]
     if "agent briefing" in command:
@@ -2364,6 +2374,16 @@ def command_output_use(command: str) -> str:
     text = command.strip()
     if text.startswith("market-intel review"):
         return "生成一键复盘结果，读取变化追踪、同步状态、留档状态和下一步队列。"
+    if text.startswith("market-intel sync quotes"):
+        return "更新或预检 runtime 行情，让正式复盘摆脱样例 quotes。"
+    if " import quotes " in " %s " % command:
+        return "导入或 dry-run 真实行情 CSV，确认字段和记录数。"
+    if " import holdings " in " %s " % command:
+        return "导入或 dry-run 真实持仓 CSV，确认持仓进入复盘上下文。"
+    if " import universe " in " %s " % command:
+        return "导入或 dry-run A 股基础清单，确认覆盖变化和字段质量。"
+    if " import research " in " %s " % command:
+        return "导入或 dry-run 研究证据，确认 reviewed 记录证据完整。"
     if "status runtime" in command:
         return "判断今天是否能生成日报，以及是否需要先修数据。"
     if "validate runtime" in command:
@@ -2409,6 +2429,18 @@ def command_done_when(command: str) -> str:
     text = command.strip()
     if text.startswith("market-intel review"):
         return "已读取 data.changes、data.daily_summary、data.journal_status 和 data.command_queue。"
+    if text.startswith("market-intel sync quotes"):
+        if " --dry-run " in " %s " % command:
+            return "dry-run 无 errors，已确认 record_count、trade_date 和 preview。"
+        return "行情已写入 runtime，且 data.record_count、data.trade_date 可用于 status runtime 复验。"
+    if " import quotes " in " %s " % command:
+        return "导入结果 ok=true；若是 dry-run，确认 errors 为空后再去掉 --dry-run 写入 runtime。"
+    if " import holdings " in " %s " % command:
+        return "导入结果 ok=true，真实持仓已进入 runtime 或 dry-run 已确认可写入。"
+    if " import universe " in " %s " % command:
+        return "coverage_delta 已确认；dry-run 无 errors 后再决定是否写入 runtime。"
+    if " import research " in " %s " % command:
+        return "reviewed 研究记录证据字段齐全，导入或 dry-run 无 errors。"
     if "status runtime" in command:
         return "已确认 data.readiness.state，并记录 blocked/degraded/ready 的原因。"
     if "validate runtime" in command:
@@ -2456,6 +2488,31 @@ def command_read_contract(command: str) -> tuple:
         return (
             ["data.changes", "data.sync", "data.journal_status", "data.command_queue"],
             "读取一键复盘的变化、同步、留档和后续队列。",
+        )
+    if text.startswith("market-intel sync quotes"):
+        return (
+            ["data.record_count", "data.trade_date", "data.summary", "errors", "warnings"],
+            "同步或预检全 A 行情。",
+        )
+    if " import quotes " in " %s " % command:
+        return (
+            ["data.record_count", "data.preview", "data.coverage_delta", "errors", "warnings"],
+            "导入或预检行情 CSV。",
+        )
+    if " import holdings " in " %s " % command:
+        return (
+            ["data.record_count", "data.preview", "data.next_commands", "errors", "warnings"],
+            "导入或预检持仓 CSV。",
+        )
+    if " import universe " in " %s " % command:
+        return (
+            ["data.record_count", "data.coverage_delta", "data.next_commands", "errors", "warnings"],
+            "导入或预检 A 股基础清单。",
+        )
+    if " import research " in " %s " % command:
+        return (
+            ["data.record_count", "data.preview", "data.next_commands", "errors", "warnings"],
+            "导入或预检研究证据 CSV。",
         )
     if "status runtime" in command:
         return (

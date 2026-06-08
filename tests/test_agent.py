@@ -52,10 +52,42 @@ def test_command_contract_marks_review_and_sync_state_effects():
     sync_item = command_queue_item("market-intel sync quotes", 3, [])
     assert sync_item["state_effect"] == "writes_runtime"
     assert sync_item["mutates_state"] is True
+    assert "data.record_count" in sync_item["read_fields"]
+    assert sync_item["input_context"] == ["akshare_or_trade_date", "runtime_quotes"]
+    assert "行情" in sync_item["done_when"]
 
     dry_run_sync = command_queue_item("market-intel sync quotes --dry-run", 4, [])
     assert dry_run_sync["state_effect"] == "read_only"
     assert dry_run_sync["mutates_state"] is False
+    assert "dry-run" in dry_run_sync["done_when"]
+
+
+def test_command_contract_describes_runtime_imports():
+    holdings = command_queue_item("market-intel import holdings <holdings.csv> --runtime", 1, [])
+    assert holdings["state_effect"] == "writes_runtime"
+    assert holdings["input_context"] == ["holdings_csv", "runtime_holdings"]
+    assert "data.record_count" in holdings["read_fields"]
+    assert "真实持仓" in holdings["output_use"]
+    assert "dry-run" in holdings["done_when"]
+
+    universe_dry_run = command_queue_item(
+        "market-intel import universe <a_share_universe.csv> --runtime --dry-run --json",
+        2,
+        [],
+    )
+    assert universe_dry_run["state_effect"] == "read_only"
+    assert universe_dry_run["input_context"] == ["a_share_universe_csv", "runtime_universe"]
+    assert "data.coverage_delta" in universe_dry_run["read_fields"]
+    assert "coverage_delta" in universe_dry_run["done_when"]
+
+    research_dry_run = command_queue_item(
+        "market-intel import research <research_notes.csv> --runtime --dry-run --json",
+        3,
+        [],
+    )
+    assert research_dry_run["state_effect"] == "read_only"
+    assert research_dry_run["input_context"] == ["research_notes_csv", "runtime_research_notes"]
+    assert "reviewed" in research_dry_run["done_when"]
 
 
 def import_runtime_with_many_holdings(monkeypatch, tmp_path):

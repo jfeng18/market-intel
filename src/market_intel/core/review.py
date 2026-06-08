@@ -75,7 +75,7 @@ def build_review_report(
         ))
 
     daily_data = daily_payload.get("data", {}) if isinstance(daily_payload.get("data"), dict) else {}
-    next_commands = _next_commands(window, journal_entry)
+    next_commands = _next_commands(window, journal_entry, journal_status)
 
     return {
         "window": window,
@@ -272,7 +272,14 @@ def _window_label(window: str) -> str:
     return labels.get(window, "日级")
 
 
-def _next_commands(window: str, journal_entry: Optional[Dict[str, Any]]) -> List[str]:
+def _next_commands(
+    window: str,
+    journal_entry: Optional[Dict[str, Any]],
+    journal_status: Optional[Dict[str, Any]] = None,
+) -> List[str]:
+    status = journal_status if isinstance(journal_status, dict) else {}
+    if status.get("code") == "sample_runtime":
+        return _sample_runtime_commands(status)
     commands = []
     if journal_entry:
         commands.append("market-intel journal show %s --text" % journal_entry.get("id"))
@@ -282,6 +289,24 @@ def _next_commands(window: str, journal_entry: Optional[Dict[str, Any]]) -> List
         commands.append("market-intel review --window month --no-sync --no-save --text")
     commands.append("market-intel journal timeline --text")
     commands.append("market-intel focus --runtime --text")
+    return commands
+
+
+def _sample_runtime_commands(journal_status: Dict[str, Any]) -> List[str]:
+    commands = ["market-intel sync quotes"]
+    sample_datasets = (
+        journal_status.get("sample_datasets", [])
+        if isinstance(journal_status.get("sample_datasets"), list)
+        else []
+    )
+    sample_set = set(str(item) for item in sample_datasets)
+    if not sample_set or "holdings" in sample_set:
+        commands.append("market-intel import holdings <holdings.csv> --runtime")
+    if not sample_set or "universe" in sample_set:
+        commands.append("market-intel import universe <a_share_universe.csv> --runtime --dry-run --json")
+    if not sample_set or "research" in sample_set:
+        commands.append("market-intel import research <research_notes.csv> --runtime --dry-run --json")
+    commands.append("market-intel status runtime --text")
     return commands
 
 
