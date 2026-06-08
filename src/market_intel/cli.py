@@ -29,6 +29,7 @@ from .core.coverage import (
 from .core.daily import build_daily_report, validate_daily_files
 from .core.focus import build_focus_report
 from .core.holdings import calculate_holding_impacts
+from .core.html_report import render_review_html
 from .core.journal import (
     build_journal_timeline,
     compare_latest_journal_to_payload,
@@ -274,6 +275,8 @@ def build_parser() -> argparse.ArgumentParser:
     review_parser.add_argument("--map-top", type=int, default=2)
     review_parser.add_argument("--no-sync", action="store_true")
     review_parser.add_argument("--no-save", action="store_true")
+    review_parser.add_argument("--html", action="store_true")
+    review_parser.add_argument("--output", help="HTML output file path")
     review_parser.add_argument("--json", action="store_true", dest="as_json")
     review_parser.add_argument("--text", action="store_true")
 
@@ -601,6 +604,12 @@ def main(argv: Optional[List[str]] = None) -> int:
                 args.no_sync,
                 args.no_save,
             )
+            if args.html:
+                html_content = render_review_html(result)
+                output_path = args.output or "review.html"
+                Path(output_path).write_text(html_content, encoding="utf-8")
+                print("HTML report written to: %s" % output_path)
+                return 0 if result["ok"] else 1
             if args.text:
                 print(render_review_text(result))
                 return 0 if result["ok"] else 1
