@@ -45,6 +45,7 @@ from .core.map_view import build_market_map
 from .core.models import Holding, PoolItem
 from .core.normalize import explain_pool_item, find_pool_item
 from .core.pool_loader import DEFAULT_POOL, default_pool_path, list_pools, load_pool
+from .core.review import build_review_report
 from .core.portfolio import build_portfolio_explain, build_portfolio_review
 from .core.runtime import init_runtime, mark_runtime_dataset_imported, runtime_missing_files, runtime_paths
 from .core.scan import build_market_scan
@@ -78,6 +79,7 @@ from .core.text_report import (
     render_portfolio_explain_text,
     render_portfolio_review_text,
     render_runtime_status_text,
+    render_review_text,
     render_scan_text,
     render_sync_text,
     render_watchlist_text,
@@ -264,6 +266,16 @@ def build_parser() -> argparse.ArgumentParser:
     focus_parser.add_argument("--pool", default=DEFAULT_POOL)
     focus_parser.add_argument("--json", action="store_true", dest="as_json")
     focus_parser.add_argument("--text", action="store_true")
+
+    review_parser = subparsers.add_parser("review")
+    review_parser.add_argument("--window", choices=["day", "week", "month"], default="day")
+    review_parser.add_argument("--pool", default=DEFAULT_POOL)
+    review_parser.add_argument("--top", type=int, default=5)
+    review_parser.add_argument("--map-top", type=int, default=2)
+    review_parser.add_argument("--no-sync", action="store_true")
+    review_parser.add_argument("--no-save", action="store_true")
+    review_parser.add_argument("--json", action="store_true", dest="as_json")
+    review_parser.add_argument("--text", action="store_true")
 
     sync_parser = subparsers.add_parser("sync")
     sync_subparsers = sync_parser.add_subparsers(dest="action")
@@ -579,6 +591,18 @@ def main(argv: Optional[List[str]] = None) -> int:
             )
             if args.text:
                 print(render_focus_text(result))
+                return 0 if result["ok"] else 1
+        elif args.resource == "review":
+            result = handle_review(
+                args.pool,
+                args.window,
+                args.top,
+                args.map_top,
+                args.no_sync,
+                args.no_save,
+            )
+            if args.text:
+                print(render_review_text(result))
                 return 0 if result["ok"] else 1
         elif args.resource == "import" and args.action == "schema":
             result = handle_import_schema()
@@ -1860,6 +1884,43 @@ def handle_focus(
         data=data,
         warnings=daily_payload.get("warnings", []) if isinstance(daily_payload.get("warnings"), list) else [],
         source=daily_payload.get("meta", {}).get("source") if isinstance(daily_payload.get("meta"), dict) else None,
+    )
+
+
+def handle_review(
+    pool: str = DEFAULT_POOL,
+    window: str = "day",
+    top: int = 5,
+    map_top: int = 2,
+    no_sync: bool = False,
+    no_save: bool = False,
+) -> Dict[str, Any]:
+    sync_result: Dict[str, Any] = {"record_count": 0, "errors": [], "warnings": []}
+    if not no_sync:
+        sync_result = sync_quotes(dry_run=False)
+
+    daily_payload = handle_daily(
+        pool=pool,
+        use_mock=False,
+        top=top,
+        map_top=map_top,
+        use_runtime=True,
+    )
+
+    data = build_review_report(
+        sync_result=sync_result,
+        daily_payload=daily_payload,
+        window=window,
+        save_journal=not no_save,
+    )
+    errors = data.get("errors", [])
+    return envelope(
+        command="review",
+        data=data,
+        warnings=data.get("warnings", []),
+        errors=errors if isinstance(errors, list) else [],
+        source="review",
+        ok=not bool(errors),
     )
 
 

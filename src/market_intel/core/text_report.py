@@ -610,6 +610,61 @@ def render_import_universe_text(payload: Dict[str, object]) -> str:
     return "\n".join(lines)
 
 
+def render_review_text(payload: Dict[str, object]) -> str:
+    data = payload.get("data", {})
+    if not isinstance(data, dict):
+        return "market-intel review\n\n无数据。"
+
+    lines = ["market-intel review"]
+
+    changes = data.get("changes", {}) if isinstance(data.get("changes"), dict) else {}
+    if changes.get("available"):
+        lines.extend([
+            "",
+            "变化追踪（%s）" % changes.get("window_label", "日级"),
+            "- %s" % changes.get("summary", "无变化数据。"),
+        ])
+        risk = changes.get("risk_flags", {}) if isinstance(changes.get("risk_flags"), dict) else {}
+        added_risks = risk.get("added", []) if isinstance(risk.get("added"), list) else []
+        removed_risks = risk.get("removed", []) if isinstance(risk.get("removed"), list) else []
+        if added_risks:
+            lines.append("- 新增风险: %s" % "、".join(str(r) for r in added_risks[:5]))
+        if removed_risks:
+            lines.append("- 消除风险: %s" % "、".join(str(r) for r in removed_risks[:5]))
+    else:
+        lines.extend(["", "变化追踪", "- %s" % changes.get("summary", "无历史数据可对比。")])
+
+    sync = data.get("sync", {}) if isinstance(data.get("sync"), dict) else {}
+    lines.extend([
+        "",
+        "数据同步",
+        "- 行情 %s 条 | 日期 %s | %s" % (
+            sync.get("record_count", 0),
+            sync.get("trade_date", "-"),
+            "成功" if sync.get("ok") else "失败",
+        ),
+    ])
+
+    lines.extend(["", "今日摘要", "- %s" % (data.get("daily_summary") or "无摘要。")])
+
+    risk_flags = data.get("risk_flags", []) if isinstance(data.get("risk_flags"), list) else []
+    if risk_flags:
+        lines.extend(["", "风险标记"])
+        for flag in risk_flags[:8]:
+            lines.append("- %s" % flag)
+
+    journal = data.get("journal_entry", {}) if isinstance(data.get("journal_entry"), dict) else {}
+    if data.get("journal_saved"):
+        lines.extend(["", "日报留档", "- 已保存: %s" % (journal.get("id") or "-")])
+    else:
+        lines.extend(["", "日报留档", "- 未保存（使用 --no-save 跳过或 daily 执行失败）"])
+
+    lines.extend(["", "下一步"])
+    lines.extend(render_command_list(data.get("next_commands", [])))
+    lines.extend(["", "边界", "- 不产生交易指令、目标价或仓位建议。"])
+    return "\n".join(lines)
+
+
 def render_sync_text(payload: Dict[str, object]) -> str:
     data = payload.get("data", {})
     if not isinstance(data, dict):
