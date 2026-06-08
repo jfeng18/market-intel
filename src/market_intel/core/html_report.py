@@ -383,9 +383,12 @@ def _render_validation(data: Dict[str, Any]) -> str:
 
 def _render_footer(data: Dict[str, Any]) -> str:
     journal = data.get("journal_entry", {}) if isinstance(data.get("journal_entry"), dict) else {}
+    journal_status = data.get("journal_status", {}) if isinstance(data.get("journal_status"), dict) else {}
     lines = []
     if data.get("journal_saved") and journal:
         lines.append('<div class="card">日报留档: %s</div>' % _esc(str(journal.get("id", ""))))
+    elif journal_status:
+        lines.append('<div class="card">日报留档: 未保存，%s</div>' % _esc(str(journal_status.get("reason", ""))))
 
     lines.append('<div class="guardrails">')
     lines.append("不产生交易指令、目标价或仓位建议。由 market-intel 生成。")

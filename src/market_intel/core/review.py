@@ -23,6 +23,7 @@ def build_review_report(
     daily_payload: Dict[str, Any],
     window: str = "day",
     save_journal: bool = True,
+    runtime_profile: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Build a combined review report from sync + daily + change tracking.
 
@@ -46,19 +47,30 @@ def build_review_report(
     changes = _build_changes(daily_payload, window, warnings)
 
     journal_entry = None
-    if save_journal and daily_ok and sync_ok:
+    profile = runtime_profile if isinstance(runtime_profile, dict) else {}
+    journal_status = _journal_status(save_journal, daily_ok, sync_ok, profile)
+    if journal_status["can_save"]:
         journal_result = save_daily_journal(daily_payload)
         if journal_result.get("saved"):
             journal_entry = journal_result.get("entry")
+            journal_status["saved"] = True
+            journal_status["reason"] = "日报已写入 journal。"
         else:
             journal_errors = journal_result.get("errors", [])
             if isinstance(journal_errors, list):
                 warnings.extend(journal_errors)
+                journal_status["reason"] = "journal 写入失败。"
     elif save_journal and daily_ok and not sync_ok:
         warnings.append(_issue(
             "REVIEW_JOURNAL_SKIPPED_SYNC_FAILED",
             "同步失败，本次复盘未写入 journal，避免用旧行情污染变化追踪。",
             {},
+        ))
+    elif journal_status["code"] == "sample_runtime":
+        warnings.append(_issue(
+            "REVIEW_JOURNAL_SKIPPED_SAMPLE_RUNTIME",
+            "runtime 仍包含样例数据，本次复盘未写入 journal。",
+            {"sample_datasets": journal_status.get("sample_datasets", [])},
         ))
 
     daily_data = daily_payload.get("data", {}) if isinstance(daily_payload.get("data"), dict) else {}
@@ -75,6 +87,7 @@ def build_review_report(
         "validation": daily_data.get("validation"),
         "journal_saved": journal_entry is not None,
         "journal_entry": _compact_journal_entry(journal_entry) if journal_entry else None,
+        "journal_status": journal_status,
         "next_commands": _next_commands(window, journal_entry),
         "agent_contract": _agent_contract(),
         "warnings": warnings,
@@ -207,6 +220,34 @@ def _compact_journal_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _journal_status(
+    save_journal: bool,
+    daily_ok: bool,
+    sync_ok: bool,
+    profile: Dict[str, Any],
+) -> Dict[str, Any]:
+    sample_datasets = (
+        profile.get("sample_datasets", [])
+        if isinstance(profile.get("sample_datasets"), list)
+        else []
+    )
+    if not save_journal:
+        return {"can_save": False, "saved": False, "code": "disabled", "reason": "用户使用 --no-save 跳过留档。"}
+    if not daily_ok:
+        return {"can_save": False, "saved": False, "code": "daily_failed", "reason": "daily 执行失败，未写入 journal。"}
+    if not sync_ok:
+        return {"can_save": False, "saved": False, "code": "sync_failed", "reason": "同步失败，未写入 journal。"}
+    if profile.get("mode") == "sample" or sample_datasets:
+        return {
+            "can_save": False,
+            "saved": False,
+            "code": "sample_runtime",
+            "reason": "runtime 仍包含样例数据，未写入 journal。",
+            "sample_datasets": sample_datasets,
+        }
+    return {"can_save": True, "saved": False, "code": "ready", "reason": "runtime 可写入 journal。"}
+
+
 def _empty_changes(window: str, reason: str) -> Dict[str, Any]:
     return {
         "available": False,
@@ -251,6 +292,8 @@ def _agent_contract() -> Dict[str, Any]:
             "data.daily_summary",
             "data.risk_flags",
             "data.journal_saved",
+            "data.journal_status",
+            "data.journal_status.code",
             "data.next_commands",
         ],
         "boundary": "不产生交易指令、目标价或仓位建议。",

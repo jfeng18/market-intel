@@ -207,6 +207,20 @@ def test_html_report_handles_no_changes():
     assert "无历史数据可对比" in html
 
 
+def test_html_report_shows_unsaved_journal_reason():
+    payload = _mock_review_payload()
+    payload["data"]["journal_saved"] = False
+    payload["data"]["journal_entry"] = None
+    payload["data"]["journal_status"] = {
+        "code": "sample_runtime",
+        "reason": "runtime 仍包含样例数据，未写入 journal。",
+    }
+    html = render_review_html(payload)
+    assert "日报留档" in html
+    assert "样例数据" in html
+    assert "未保存" in html
+
+
 def test_score_color():
     assert "red" in _score_color(75)
     assert "orange" in _score_color(55)

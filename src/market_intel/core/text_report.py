@@ -680,10 +680,12 @@ def render_review_text(payload: Dict[str, object]) -> str:
             lines.append("- %s" % flag)
 
     journal = data.get("journal_entry", {}) if isinstance(data.get("journal_entry"), dict) else {}
+    journal_status = data.get("journal_status", {}) if isinstance(data.get("journal_status"), dict) else {}
     if data.get("journal_saved"):
         lines.extend(["", "日报留档", "- 已保存: %s" % (journal.get("id") or "-")])
     else:
-        lines.extend(["", "日报留档", "- 未保存（使用 --no-save 跳过或 daily 执行失败）"])
+        reason = journal_status.get("reason") or "使用 --no-save 跳过或 daily 执行失败。"
+        lines.extend(["", "日报留档", "- 未保存：%s" % reason])
 
     lines.extend(["", "下一步"])
     lines.extend(render_command_list(data.get("next_commands", [])))

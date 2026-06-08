@@ -4,6 +4,7 @@ import subprocess
 from market_intel.cli import (
     handle_import_holdings,
     handle_import_quotes,
+    handle_init_runtime,
     handle_journal_compare,
     handle_journal_latest,
     handle_journal_list,
@@ -73,6 +74,18 @@ def test_journal_latest_when_empty(monkeypatch, tmp_path):
     assert payload["ok"] is False
     assert payload["data"]["found"] is False
     assert payload["data"]["next_commands"]
+
+
+def test_journal_save_blocks_sample_runtime(monkeypatch, tmp_path):
+    monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(tmp_path / "runtime"))
+    handle_init_runtime(force=False)
+
+    payload = handle_journal_save("ai-energy", use_runtime=True)
+
+    assert payload["ok"] is False
+    assert payload["data"]["saved"] is False
+    assert payload["errors"][0]["code"] == "JOURNAL_SAMPLE_RUNTIME"
+    assert not (tmp_path / "runtime" / "journal").exists()
 
 
 def test_journal_note_attaches_to_latest_entry(monkeypatch, tmp_path):

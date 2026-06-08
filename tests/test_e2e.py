@@ -6,6 +6,9 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from market_intel.cli import (
+    handle_import_holdings,
+    handle_import_research,
+    handle_import_universe,
     handle_init_runtime,
     handle_review,
     handle_status_runtime,
@@ -90,20 +93,30 @@ def test_full_flow_init_sync_review_journal(tmp_path, monkeypatch):
     assert status_result["data"]["freshness"]["errors"] == []
     assert status_result["data"]["freshness"]["latest_trade_date"] == "2026-06-08"
 
-    # Step 3: Review (no-sync since we already synced, save journal)
+    # Step 3: Review still skips journal while holdings/universe/research are samples.
     review_result = handle_review(no_sync=True, no_save=False)
     assert review_result["command"] == "review"
+    data = review_result["data"]
+    assert data["journal_saved"] is False
+    assert data["journal_status"]["code"] == "sample_runtime"
+
+    handle_import_holdings("examples/holdings.csv.example", use_runtime=True)
+    handle_import_universe("examples/a_share_universe.csv.example", use_runtime=True)
+    handle_import_research("examples/research_notes.csv.example", use_runtime=True)
+
+    # Step 4: Review after all runtime datasets are real saves journal.
+    review_result = handle_review(no_sync=True, no_save=False)
     data = review_result["data"]
     assert data["journal_saved"] is True
     assert data["journal_entry"] is not None
 
-    # Step 4: Verify journal was saved
+    # Step 5: Verify journal was saved
     journal_dir = tmp_path / "runtime" / "journal"
     assert journal_dir.exists()
     entries = list(journal_dir.glob("*.json"))
     assert len(entries) == 1
 
-    # Step 5: Second review should show changes
+    # Step 6: Second review should show changes
     review2 = handle_review(no_sync=True, no_save=False)
     data2 = review2["data"]
     assert data2["changes"]["available"] is True
@@ -163,6 +176,19 @@ def test_full_flow_no_runtime_gives_guidance(tmp_path, monkeypatch):
     assert "错误" in text
     assert "init runtime" in text
     assert "sync quotes" in text
+
+
+def test_full_flow_sample_runtime_does_not_save_journal(tmp_path, monkeypatch):
+    monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(tmp_path / "runtime"))
+
+    handle_init_runtime(force=False)
+    review_result = handle_review(no_sync=True, no_save=False)
+    text = render_review_text(review_result)
+
+    assert review_result["data"]["journal_saved"] is False
+    assert review_result["data"]["journal_status"]["code"] == "sample_runtime"
+    assert "样例数据" in text
+    assert not (tmp_path / "runtime" / "journal").exists()
 
 
 def test_full_flow_review_sync_failure_does_not_save_journal(tmp_path, monkeypatch):

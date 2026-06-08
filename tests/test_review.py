@@ -75,6 +75,24 @@ def test_review_report_saves_journal(tmp_path, monkeypatch):
     assert len(entries) == 1
 
 
+def test_review_report_sample_runtime_skips_journal(tmp_path, monkeypatch):
+    monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(tmp_path / "runtime"))
+
+    result = build_review_report(
+        sync_result=_mock_sync_result(),
+        daily_payload=_mock_daily_payload(),
+        window="day",
+        save_journal=True,
+        runtime_profile={"mode": "sample", "sample_datasets": ["quotes"]},
+    )
+
+    assert result["journal_saved"] is False
+    assert result["journal_status"]["code"] == "sample_runtime"
+    assert result["journal_status"]["sample_datasets"] == ["quotes"]
+    assert any(w["code"] == "REVIEW_JOURNAL_SKIPPED_SAMPLE_RUNTIME" for w in result["warnings"])
+    assert not (tmp_path / "runtime" / "journal").exists()
+
+
 def test_review_report_with_journal_history(tmp_path, monkeypatch):
     """When there's a prior journal entry, changes should be available."""
     monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(tmp_path / "runtime"))
@@ -168,6 +186,7 @@ def test_review_report_sync_error_skips_journal(tmp_path, monkeypatch):
 
     assert result["journal_saved"] is False
     assert any(w["code"] == "REVIEW_JOURNAL_SKIPPED_SYNC_FAILED" for w in result["warnings"])
+    assert result["journal_status"]["code"] == "sync_failed"
     assert not (tmp_path / "runtime" / "journal").exists()
 
 
@@ -191,6 +210,7 @@ def test_review_report_sync_skipped_status(tmp_path, monkeypatch):
     assert result["sync"]["ok"] is True
     assert result["sync"]["status"] == "skipped"
     assert result["sync"]["skipped"] is True
+    assert result["journal_status"]["code"] == "disabled"
 
 
 def test_review_report_daily_error_propagated(tmp_path, monkeypatch):
@@ -348,3 +368,28 @@ def test_render_review_text_sync_skipped(tmp_path, monkeypatch):
     text = render_review_text(payload)
     assert "已跳过" in text
     assert "数据同步" in text
+
+
+def test_render_review_text_sample_runtime_journal_status(tmp_path, monkeypatch):
+    monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(tmp_path / "runtime"))
+
+    from market_intel.core.text_report import render_review_text
+
+    payload = {
+        "ok": True,
+        "command": "review",
+        "data": build_review_report(
+            sync_result=_mock_sync_result(),
+            daily_payload=_mock_daily_payload(),
+            window="day",
+            save_journal=True,
+            runtime_profile={"mode": "sample", "sample_datasets": ["quotes"]},
+        ),
+        "errors": [],
+        "warnings": [],
+    }
+
+    text = render_review_text(payload)
+    assert "日报留档" in text
+    assert "样例数据" in text
+    assert "未保存" in text

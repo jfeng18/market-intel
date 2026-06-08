@@ -49,7 +49,7 @@ from .core.pool_edit import pool_add, pool_remove
 from .core.pool_loader import DEFAULT_POOL, default_pool_path, list_pools, load_pool
 from .core.review import build_review_report
 from .core.portfolio import build_portfolio_explain, build_portfolio_review
-from .core.runtime import init_runtime, mark_runtime_dataset_imported, runtime_missing_files, runtime_paths
+from .core.runtime import init_runtime, mark_runtime_dataset_imported, runtime_missing_files, runtime_paths, runtime_profile
 from .core.scan import build_market_scan
 from .core.scoring import calculate_hotspots
 from .core.status import build_runtime_status
@@ -1946,6 +1946,7 @@ def handle_review(
         daily_payload=daily_payload,
         window=window,
         save_journal=not no_save,
+        runtime_profile=runtime_profile(),
     )
     errors = data.get("errors", [])
     return envelope(
@@ -9819,6 +9820,28 @@ def handle_journal_save(
             source=daily_payload.get("meta", {}).get("source") if isinstance(daily_payload.get("meta"), dict) else None,
             ok=False,
         )
+    profile = runtime_profile() if use_runtime else {}
+    if use_runtime and runtime_profile_is_sample(profile):
+        errors = [
+            error(
+                "JOURNAL_SAMPLE_RUNTIME",
+                "runtime 仍包含样例数据，未写入 journal。",
+                {"sample_datasets": profile.get("sample_datasets", [])},
+            )
+        ]
+        return envelope(
+            command="journal.save",
+            data={
+                "saved": False,
+                "daily": daily_payload,
+                "profile": profile,
+                "next_commands": sample_runtime_import_commands(),
+            },
+            warnings=profile.get("warnings", []) if isinstance(profile.get("warnings"), list) else [],
+            errors=errors,
+            source=daily_payload.get("meta", {}).get("source") if isinstance(daily_payload.get("meta"), dict) else None,
+            ok=False,
+        )
     result = save_daily_journal(daily_payload)
     return envelope(
         command="journal.save",
@@ -9828,6 +9851,21 @@ def handle_journal_save(
         source=daily_payload.get("meta", {}).get("source") if isinstance(daily_payload.get("meta"), dict) else None,
         ok=bool(result.get("saved")),
     )
+
+
+def runtime_profile_is_sample(profile: Dict[str, object]) -> bool:
+    sample_datasets = profile.get("sample_datasets", []) if isinstance(profile.get("sample_datasets"), list) else []
+    return profile.get("mode") == "sample" or bool(sample_datasets)
+
+
+def sample_runtime_import_commands() -> List[str]:
+    return [
+        "market-intel sync quotes",
+        "market-intel import holdings <holdings.csv> --runtime",
+        "market-intel import universe <a_share_universe.csv> --runtime --dry-run --json",
+        "market-intel import research <research_notes.csv> --runtime --dry-run --json",
+        "market-intel status runtime --text",
+    ]
 
 
 def handle_journal_list(limit: int = 10) -> Dict[str, Any]:
