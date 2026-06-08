@@ -22,6 +22,7 @@ def render_review_html(payload: Dict[str, Any]) -> str:
     sections.append(_render_watchlist(data))
     sections.append(_render_portfolio(data))
     sections.append(_render_validation(data))
+    sections.append(_render_command_queue(data))
     sections.append(_render_footer(data))
 
     body = "\n".join(sections)
@@ -377,6 +378,41 @@ def _render_validation(data: Dict[str, Any]) -> str:
         lines.append(' 告警 %d' % warn_count)
     if error_count:
         lines.append(' 错误 %d' % error_count)
+    lines.append("</div>")
+    return "\n".join(lines)
+
+
+def _render_command_queue(data: Dict[str, Any]) -> str:
+    queue = data.get("command_queue", []) if isinstance(data.get("command_queue"), list) else []
+    if queue:
+        lines = ["<h2>下一步</h2>", "<table>"]
+        lines.append("<tr><th>#</th><th>状态</th><th>命令</th><th>JSON</th><th>完成标准</th></tr>")
+        for item in queue[:8]:
+            if not isinstance(item, dict):
+                continue
+            state = str(item.get("state_effect") or "read_only")
+            badge_class = "badge-dim" if state == "read_only" else "badge-yellow"
+            lines.append(
+                "<tr><td>%s</td><td><span class='badge %s'>%s</span></td>"
+                "<td>%s</td><td>%s</td><td>%s</td></tr>"
+                % (
+                    _esc(str(item.get("rank", ""))),
+                    badge_class,
+                    _esc(_label(state)),
+                    _esc(str(item.get("command", ""))),
+                    _esc(str(item.get("json_command", ""))),
+                    _esc(str(item.get("done_when", ""))),
+                )
+            )
+        lines.append("</table>")
+        return "\n".join(lines)
+
+    commands = data.get("next_commands", []) if isinstance(data.get("next_commands"), list) else []
+    if not commands:
+        return ""
+    lines = ["<h2>下一步</h2>", '<div class="card">']
+    for command in commands[:8]:
+        lines.append('<div><span class="badge badge-dim">命令</span> %s</div>' % _esc(str(command)))
     lines.append("</div>")
     return "\n".join(lines)
 

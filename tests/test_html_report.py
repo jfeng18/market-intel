@@ -110,7 +110,25 @@ def _mock_review_payload():
             "validation": {"ok": True, "summary": {}, "warnings": [], "errors": []},
             "journal_saved": True,
             "journal_entry": {"id": "2026-06-08_review", "trade_date": "2026-06-08"},
-            "next_commands": ["market-intel review --window week --text"],
+            "next_commands": ["market-intel review --window week --no-sync --no-save --text"],
+            "command_queue": [
+                {
+                    "rank": 1,
+                    "command": "market-intel review --window week --no-sync --no-save --text",
+                    "json_command": "market-intel review --window week --no-sync --no-save --json",
+                    "state_effect": "read_only",
+                    "runnable": True,
+                    "done_when": "已读取 data.changes、data.daily_summary、data.journal_status 和 data.command_queue。",
+                },
+                {
+                    "rank": 2,
+                    "command": "market-intel journal save --runtime --json",
+                    "json_command": "market-intel journal save --runtime --json",
+                    "state_effect": "writes_journal",
+                    "runnable": True,
+                    "done_when": "data.saved 为 true。",
+                },
+            ],
             "warnings": [],
             "errors": [],
         },
@@ -136,6 +154,7 @@ def test_html_report_contains_key_sections():
     assert "热点板块" in html
     assert "观察清单" in html
     assert "持仓复核" in html
+    assert "下一步" in html
 
 
 def test_html_report_contains_change_badges():
@@ -168,6 +187,24 @@ def test_html_report_contains_portfolio_data():
     assert "追高风险" in html
 
 
+def test_html_report_contains_command_queue():
+    html = render_review_html(_mock_review_payload())
+    assert "market-intel review --window week --no-sync --no-save --text" in html
+    assert "market-intel review --window week --no-sync --no-save --json" in html
+    assert "只读" in html
+    assert "写入留档" in html
+    assert "已读取 data.changes" in html
+
+
+def test_html_report_falls_back_to_next_commands():
+    payload = _mock_review_payload()
+    payload["data"]["command_queue"] = []
+    payload["data"]["next_commands"] = ["market-intel journal timeline --text"]
+    html = render_review_html(payload)
+    assert "下一步" in html
+    assert "market-intel journal timeline --text" in html
+
+
 def test_html_report_no_trading_advice():
     html = render_review_html(_mock_review_payload())
     assert "不产生交易指令" in html
@@ -185,9 +222,11 @@ def test_html_report_self_contained():
 def test_html_report_escapes_user_data():
     payload = _mock_review_payload()
     payload["data"]["daily_summary"] = '<script>alert("xss")</script>'
+    payload["data"]["command_queue"][0]["command"] = '<script>alert("cmd")</script>'
     html = render_review_html(payload)
     assert "<script>alert" not in html
     assert "&lt;script&gt;" in html
+    assert "&lt;script&gt;alert(&quot;cmd&quot;)&lt;/script&gt;" in html
 
 
 def test_html_report_handles_empty_data():
