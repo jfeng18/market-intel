@@ -143,11 +143,9 @@ def _transform_quotes(
             is_limit_up = change_pct >= limit_pct
 
         fade_pct = 0.0
-        if high is not None and last_price is not None and high > 0 and open_price is not None:
-            if high > open_price and high != 0:
+        if high is not None and last_price is not None and high > 0:
+            if high > last_price:
                 fade_pct = round((high - last_price) / high * 100, 2)
-                if fade_pct < 0:
-                    fade_pct = 0.0
 
         records.append({
             "symbol": symbol,
@@ -230,7 +228,7 @@ def _safe_float(value: Any, default: Optional[float] = None) -> Optional[float]:
         return default
     try:
         result = float(value)
-        if result != result:  # NaN check
+        if result != result or result == float("inf") or result == float("-inf"):
             return default
         return result
     except (ValueError, TypeError):
@@ -247,12 +245,12 @@ def _limit_up_threshold(symbol: str, is_st: bool) -> float:
 
     Main board (000/001/002/003/600/601/603/605): 10% normal, 5% ST
     ChiNext (300) and STAR Market (688): 20% (ST same since 2020 reform)
-    BSE (8xxxxx): 30% (ST same)
+    BSE (4xxxxx/8xxxxx): 30% (ST same)
     """
     prefix = symbol[:3]
     if prefix == "300" or prefix == "688":
         return 19.9
-    if symbol.startswith("8"):
+    if symbol.startswith("8") or symbol.startswith("4"):
         return 29.9
     return 4.9 if is_st else 9.9
 

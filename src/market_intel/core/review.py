@@ -133,8 +133,6 @@ def _find_entry_in_window(entries: List[Dict[str, Any]], max_days: int) -> Optio
             continue
 
     if not candidates:
-        if entries:
-            return entries[-1]
         return None
 
     candidates.sort(key=lambda x: x[0])

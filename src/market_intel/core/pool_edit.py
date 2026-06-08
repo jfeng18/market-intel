@@ -77,7 +77,6 @@ def pool_remove(
 
     path = runtime_universe_path()
     existing = _read_universe(path)
-    before_count = len(existing)
     removed_record = None
 
     for record in existing:

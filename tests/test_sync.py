@@ -254,8 +254,7 @@ def test_sync_quotes_intraday_fade_calculation(tmp_path, monkeypatch):
         result = sync_quotes(dry_run=True, trade_date="20260608")
 
     by_sym = _records_by_symbol(result)
-    expected = round((1820.0 - 1800.0) / 1820.0 * 100, 2)
-    assert by_sym["600519"]["intraday_fade_pct"] == expected
+    assert by_sym["600519"]["intraday_fade_pct"] == 1.1
 
 
 def test_sync_quotes_next_commands_dry_run(tmp_path, monkeypatch):
@@ -389,6 +388,8 @@ def test_safe_float():
     assert _safe_float(None, 0.0) == 0.0
     assert _safe_float("abc", 0.0) == 0.0
     assert _safe_float(float("nan"), 0.0) == 0.0
+    assert _safe_float(float("inf"), 0.0) == 0.0
+    assert _safe_float(float("-inf"), 0.0) == 0.0
 
 
 def test_is_st():
@@ -405,4 +406,5 @@ def test_limit_up_threshold():
     assert _limit_up_threshold("300750", True) == 19.9    # ChiNext ST (same since 2020)
     assert _limit_up_threshold("688001", False) == 19.9   # STAR Market
     assert _limit_up_threshold("688001", True) == 19.9    # STAR Market ST
-    assert _limit_up_threshold("830001", False) == 29.9   # BSE
+    assert _limit_up_threshold("830001", False) == 29.9   # BSE 8xxxxx
+    assert _limit_up_threshold("430047", False) == 29.9   # BSE 43xxxx

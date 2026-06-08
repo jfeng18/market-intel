@@ -106,6 +106,29 @@ def test_review_report_with_journal_history(tmp_path, monkeypatch):
     assert "量比异常" in risk_changes.get("removed", [])
 
 
+def test_review_window_returns_unavailable_when_no_entries_in_range(tmp_path, monkeypatch):
+    """When all journal entries are older than the window, changes should be unavailable."""
+    monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(tmp_path / "runtime"))
+
+    old_payload = _mock_daily_payload()
+    old_payload["meta"]["generated_at"] = "2025-01-01T16:00:00+08:00"
+    build_review_report(
+        sync_result=_mock_sync_result(),
+        daily_payload=old_payload,
+        window="day",
+        save_journal=True,
+    )
+
+    result = build_review_report(
+        sync_result=_mock_sync_result(),
+        daily_payload=_mock_daily_payload(),
+        window="day",
+        save_journal=False,
+    )
+
+    assert result["changes"]["available"] is False
+
+
 def test_review_report_sync_error_propagated(tmp_path, monkeypatch):
     monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(tmp_path / "runtime"))
 

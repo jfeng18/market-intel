@@ -185,9 +185,9 @@ def _render_sync_status(data: Dict[str, Any]) -> str:
 %s 标的 %s &middot; 涨停 %s &middot; 阶段新高 %s
 </div>""" % (
         status_badge,
-        sync.get("record_count", 0),
-        summary.get("limit_up", 0),
-        summary.get("stage_high", 0),
+        _esc(str(sync.get("record_count", 0))),
+        _esc(str(summary.get("limit_up", 0))),
+        _esc(str(summary.get("stage_high", 0))),
     )
 
 
@@ -226,7 +226,7 @@ def _render_hotspots(data: Dict[str, Any]) -> str:
         heat_color = _score_color(score)
         leaders = hs.get("leaders", []) if isinstance(hs.get("leaders"), list) else []
         leader_text = ", ".join(
-            _esc(str(l.get("name", l.get("symbol", "")))) for l in leaders[:3] if isinstance(l, dict)
+            _esc(str(ldr.get("name", ldr.get("symbol", "")))) for ldr in leaders[:3] if isinstance(ldr, dict)
         ) or "-"
         signals = hs.get("signals", []) if isinstance(hs.get("signals"), list) else []
         signal_text = ", ".join(_esc(str(s)) for s in signals[:3]) or "-"
@@ -242,8 +242,8 @@ def _render_hotspots(data: Dict[str, Any]) -> str:
                 _esc(str(hs.get("sub_sector", ""))),
                 _esc(str(hs.get("layer", ""))),
                 _score_bar_class(score), bar_width, score,
-                hs.get("active_member_count", 0),
-                hs.get("member_count", 0),
+                _esc(str(hs.get("active_member_count", 0))),
+                _esc(str(hs.get("member_count", 0))),
                 leader_text,
                 signal_text,
             )
@@ -259,7 +259,8 @@ def _render_watchlist(data: Dict[str, Any]) -> str:
     if not items:
         return ""
 
-    lines = ["<h2>观察清单 (%d)</h2>" % watchlist.get("count", len(items)), "<table>"]
+    count = _safe_int(watchlist.get("count", len(items)))
+    lines = ["<h2>观察清单 (%s)</h2>" % _esc(str(count)), "<table>"]
     lines.append("<tr><th>代码</th><th>名称</th><th>板块</th>"
                  "<th class='num'>涨跌幅</th><th class='num'>量比</th>"
                  "<th class='num'>热点</th><th>持仓</th><th>聚焦</th></tr>")
@@ -303,7 +304,8 @@ def _render_portfolio(data: Dict[str, Any]) -> str:
         return ""
 
     summary = _esc(str(portfolio.get("summary", "")))
-    lines = ["<h2>持仓复核 (%d)</h2>" % portfolio.get("review_count", len(items))]
+    review_count = _safe_int(portfolio.get("review_count", len(items)))
+    lines = ["<h2>持仓复核 (%s)</h2>" % _esc(str(review_count))]
     if summary:
         lines.append('<div class="card">%s</div>' % summary)
     lines.append("<table>")
@@ -419,12 +421,21 @@ def _priority_badge_class(priority: str) -> str:
     return "badge-dim"
 
 
+def _safe_int(value: Any, default: int = 0) -> int:
+    try:
+        return int(float(value))
+    except (ValueError, TypeError):
+        return default
+
+
 def _safe_float(value: Any, default: float = 0.0) -> float:
     if value is None:
         return default
     try:
         result = float(value)
-        return default if result != result else result
+        if result != result or result == float("inf") or result == float("-inf"):
+            return default
+        return result
     except (ValueError, TypeError):
         return default
 
