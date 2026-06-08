@@ -4,6 +4,8 @@ import html
 import json
 from typing import Any, Dict, List, Optional
 
+from .text_report import LABELS
+
 
 def render_review_html(payload: Dict[str, Any]) -> str:
     """Render a complete self-contained HTML report from a review envelope."""
@@ -204,7 +206,7 @@ def _render_risk_flags(data: Dict[str, Any]) -> str:
         return ""
     lines = ["<h2>风险标记</h2>", "<div>"]
     for flag in flags:
-        lines.append('<span class="badge badge-red">%s</span>' % _esc(str(flag)))
+        lines.append('<span class="badge badge-red">%s</span>' % _esc(_label(str(flag))))
     lines.append("</div>")
     return "\n".join(lines)
 
@@ -229,7 +231,7 @@ def _render_hotspots(data: Dict[str, Any]) -> str:
             _esc(str(ldr.get("name", ldr.get("symbol", "")))) for ldr in leaders[:3] if isinstance(ldr, dict)
         ) or "-"
         signals = hs.get("signals", []) if isinstance(hs.get("signals"), list) else []
-        signal_text = ", ".join(_esc(str(s)) for s in signals[:3]) or "-"
+        signal_text = ", ".join(_esc(_label(str(s))) for s in signals[:3]) or "-"
 
         bar_width = max(2, min(80, int(score * 0.8)))
         lines.append(
@@ -289,7 +291,7 @@ def _render_watchlist(data: Dict[str, Any]) -> str:
                 amount_ratio,
                 hotspot_score,
                 holding_badge,
-                _esc(str(item.get("focus", item.get("reason", "")))[:40]),
+                _esc(_label(str(item.get("focus", item.get("reason", ""))))[:40]),
             )
         )
 
@@ -325,7 +327,7 @@ def _render_portfolio(data: Dict[str, Any]) -> str:
         review_points = item.get("review_points", []) if isinstance(item.get("review_points"), list) else []
 
         risk_badges = " ".join(
-            '<span class="badge badge-red">%s</span>' % _esc(str(r)) for r in risk_flags[:3]
+            '<span class="badge badge-red">%s</span>' % _esc(_label(str(r))) for r in risk_flags[:3]
         )
         review_text = _esc("; ".join(str(p) for p in review_points[:2])[:60])
 
@@ -438,6 +440,10 @@ def _safe_float(value: Any, default: float = 0.0) -> float:
         return result
     except (ValueError, TypeError):
         return default
+
+
+def _label(key: str) -> str:
+    return LABELS.get(key, key)
 
 
 def _esc(text: str) -> str:

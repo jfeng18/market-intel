@@ -229,14 +229,41 @@ def test_handle_review_envelope(tmp_path, monkeypatch):
     assert payload["data"]["window"] == "day"
 
 
-def test_render_review_text(tmp_path, monkeypatch):
-    """Text renderer produces valid output."""
+def test_render_review_text_error_shows_guidance(tmp_path, monkeypatch):
+    """Text renderer shows clear guidance when runtime is missing."""
     monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(tmp_path / "runtime"))
 
     from market_intel.cli import handle_review
     from market_intel.core.text_report import render_review_text
 
     payload = handle_review(no_sync=True, no_save=True)
+    text = render_review_text(payload)
+
+    assert "market-intel review" in text
+    assert "错误" in text
+    assert "RUNTIME" in text
+    assert "init runtime" in text
+    assert "sync quotes" in text
+
+
+def test_render_review_text_success(tmp_path, monkeypatch):
+    """Text renderer produces full output with valid data."""
+    monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(tmp_path / "runtime"))
+
+    from market_intel.core.text_report import render_review_text
+
+    payload = {
+        "ok": True,
+        "command": "review",
+        "data": build_review_report(
+            sync_result=_mock_sync_result(),
+            daily_payload=_mock_daily_payload(),
+            window="day",
+            save_journal=False,
+        ),
+        "errors": [],
+        "warnings": [],
+    }
     text = render_review_text(payload)
 
     assert "market-intel review" in text

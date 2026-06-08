@@ -615,6 +615,31 @@ def render_review_text(payload: Dict[str, object]) -> str:
     if not isinstance(data, dict):
         return "market-intel review\n\n无数据。"
 
+    top_errors = payload.get("errors", []) if isinstance(payload.get("errors"), list) else []
+    if top_errors:
+        lines = ["market-intel review", "", "错误"]
+        for err in top_errors:
+            if isinstance(err, dict):
+                lines.append("- [%s] %s" % (err.get("code", "?"), err.get("message", "")))
+        lines.extend(["", "解决步骤"])
+        has_runtime_error = any(
+            isinstance(e, dict) and str(e.get("code", "")).startswith("RUNTIME")
+            for e in top_errors
+        )
+        if has_runtime_error:
+            lines.extend([
+                "1. market-intel init runtime",
+                "2. market-intel sync quotes",
+                "3. market-intel import holdings <holdings.csv> --runtime",
+                "4. market-intel review --text",
+            ])
+        else:
+            lines.extend([
+                "- 请根据上述错误修复后重试。",
+                "- market-intel status runtime --text",
+            ])
+        return "\n".join(lines)
+
     lines = ["market-intel review"]
 
     changes = data.get("changes", {}) if isinstance(data.get("changes"), dict) else {}
