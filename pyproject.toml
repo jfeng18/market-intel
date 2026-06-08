@@ -3,7 +3,7 @@ name = "market-intel"
 version = "0.1.0"
 description = "Market intelligence radar for macro, industry, company, news, and capital-flow signals."
 requires-python = ">=3.10"
-dependencies = []
+dependencies = ["akshare>=1.14"]
 
 [project.scripts]
 market-intel = "market_intel.cli:main"

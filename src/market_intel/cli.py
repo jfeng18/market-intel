@@ -51,6 +51,7 @@ from .core.scan import build_market_scan
 from .core.scoring import calculate_hotspots
 from .core.status import build_runtime_status
 from .core.symbols import normalize_symbol_input
+from .core.sync import sync_quotes
 from .core.text_report import (
     render_brief_text,
     render_agent_briefing_text,
@@ -78,6 +79,7 @@ from .core.text_report import (
     render_portfolio_review_text,
     render_runtime_status_text,
     render_scan_text,
+    render_sync_text,
     render_watchlist_text,
 )
 from .core.validation import validate_runtime
@@ -262,6 +264,15 @@ def build_parser() -> argparse.ArgumentParser:
     focus_parser.add_argument("--pool", default=DEFAULT_POOL)
     focus_parser.add_argument("--json", action="store_true", dest="as_json")
     focus_parser.add_argument("--text", action="store_true")
+
+    sync_parser = subparsers.add_parser("sync")
+    sync_subparsers = sync_parser.add_subparsers(dest="action")
+    sync_quotes_parser = sync_subparsers.add_parser("quotes")
+    sync_quotes_parser.add_argument("--dry-run", action="store_true")
+    sync_quotes_parser.add_argument("--symbols", nargs="*")
+    sync_quotes_parser.add_argument("--trade-date")
+    sync_quotes_parser.add_argument("--json", action="store_true", dest="as_json")
+    sync_quotes_parser.add_argument("--text", action="store_true")
 
     import_parser = subparsers.add_parser("import")
     import_subparsers = import_parser.add_subparsers(dest="action")
@@ -612,6 +623,15 @@ def main(argv: Optional[List[str]] = None) -> int:
             )
             if args.text:
                 print(render_import_text(result))
+                return 0 if result["ok"] else 1
+        elif args.resource == "sync" and args.action == "quotes":
+            result = handle_sync_quotes(
+                args.dry_run,
+                args.symbols,
+                args.trade_date,
+            )
+            if args.text:
+                print(render_sync_text(result))
                 return 0 if result["ok"] else 1
         elif args.resource == "init" and args.action == "runtime":
             result = handle_init_runtime(args.force)
@@ -1840,6 +1860,23 @@ def handle_focus(
         data=data,
         warnings=daily_payload.get("warnings", []) if isinstance(daily_payload.get("warnings"), list) else [],
         source=daily_payload.get("meta", {}).get("source") if isinstance(daily_payload.get("meta"), dict) else None,
+    )
+
+
+def handle_sync_quotes(
+    dry_run: bool = False,
+    symbols: Optional[List[str]] = None,
+    trade_date: Optional[str] = None,
+) -> Dict[str, Any]:
+    data = sync_quotes(dry_run=dry_run, symbols=symbols, trade_date=trade_date)
+    errors = data.get("errors", [])
+    return envelope(
+        command="sync.quotes",
+        data=data,
+        warnings=data.get("warnings", []),
+        errors=errors if isinstance(errors, list) else [],
+        source="sync:akshare",
+        ok=not bool(errors),
     )
 
 

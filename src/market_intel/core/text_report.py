@@ -610,6 +610,35 @@ def render_import_universe_text(payload: Dict[str, object]) -> str:
     return "\n".join(lines)
 
 
+def render_sync_text(payload: Dict[str, object]) -> str:
+    data = payload.get("data", {})
+    if not isinstance(data, dict):
+        return "market-intel sync quotes\n\n无数据。"
+    summary = data.get("summary", {}) if isinstance(data.get("summary"), dict) else {}
+    lines = [
+        "market-intel sync quotes",
+        "",
+        "状态",
+        "- 来源 akshare (东方财富) | 日期 %s | dry_run %s | written %s"
+        % (data.get("trade_date", "-"), data.get("dry_run"), data.get("written")),
+        "- 标的 %s | 涨停 %s | 阶段新高 %s"
+        % (summary.get("total", 0), summary.get("limit_up", 0), summary.get("stage_high", 0)),
+        "",
+        "预览",
+    ]
+    lines.extend(render_import_preview(data.get("preview", []), "quotes"))
+    error_list = payload.get("errors", []) if isinstance(payload.get("errors"), list) else []
+    warning_list = payload.get("warnings", []) if isinstance(payload.get("warnings"), list) else []
+    issues = error_list + warning_list
+    if issues:
+        lines.extend(["", "告警/错误"])
+        lines.extend(render_scan_errors(issues))
+    lines.extend(["", "下一步"])
+    lines.extend(render_command_list(data.get("next_commands", [])))
+    lines.extend(["", "边界", "- dry-run 不写入 runtime。", "- 写入后建议运行 status runtime 复验新鲜度。"])
+    return "\n".join(lines)
+
+
 def render_import_text(payload: Dict[str, object]) -> str:
     data = payload.get("data", {})
     kind = str(data.get("kind") or "") if isinstance(data, dict) else ""
