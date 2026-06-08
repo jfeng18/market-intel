@@ -45,6 +45,7 @@ from .core.json_output import envelope, error
 from .core.map_view import build_market_map
 from .core.models import Holding, PoolItem
 from .core.normalize import explain_pool_item, find_pool_item
+from .core.pool_edit import pool_add, pool_remove
 from .core.pool_loader import DEFAULT_POOL, default_pool_path, list_pools, load_pool
 from .core.review import build_review_report
 from .core.portfolio import build_portfolio_explain, build_portfolio_review
@@ -156,6 +157,19 @@ def build_parser() -> argparse.ArgumentParser:
     explain_parser.add_argument("--pool", default=DEFAULT_POOL)
     explain_parser.add_argument("--json", action="store_true", dest="as_json")
     explain_parser.add_argument("--text", action="store_true")
+
+    add_parser = pool_subparsers.add_parser("add")
+    add_parser.add_argument("symbol")
+    add_parser.add_argument("--name", default="")
+    add_parser.add_argument("--layer", default="")
+    add_parser.add_argument("--industry", default="")
+    add_parser.add_argument("--dry-run", action="store_true")
+    add_parser.add_argument("--json", action="store_true", dest="as_json")
+
+    remove_parser = pool_subparsers.add_parser("remove")
+    remove_parser.add_argument("symbol")
+    remove_parser.add_argument("--dry-run", action="store_true")
+    remove_parser.add_argument("--json", action="store_true", dest="as_json")
 
     hotspots_parser = subparsers.add_parser("hotspots")
     hotspots_parser.add_argument("--mock", action="store_true")
@@ -487,6 +501,10 @@ def main(argv: Optional[List[str]] = None) -> int:
             if args.text and result["ok"]:
                 print(render_pool_explain_text(result))
                 return 0
+        elif args.resource == "pool" and args.action == "add":
+            result = handle_pool_add(args.symbol, args.name, args.layer, args.industry, args.dry_run)
+        elif args.resource == "pool" and args.action == "remove":
+            result = handle_pool_remove(args.symbol, args.dry_run)
         elif args.resource == "hotspots":
             result = handle_hotspots(args.pool, args.mock, args.top, args.quotes_file, args.runtime)
         elif args.resource == "scan":
@@ -1929,6 +1947,41 @@ def handle_review(
         warnings=data.get("warnings", []),
         errors=errors if isinstance(errors, list) else [],
         source="review",
+        ok=not bool(errors),
+    )
+
+
+def handle_pool_add(
+    symbol: str,
+    name: str = "",
+    layer: str = "",
+    industry: str = "",
+    dry_run: bool = False,
+) -> Dict[str, Any]:
+    data = pool_add(symbol, name=name, layer=layer, industry=industry, dry_run=dry_run)
+    errors = data.get("errors", [])
+    return envelope(
+        command="pool.add",
+        data=data,
+        warnings=data.get("warnings", []),
+        errors=errors if isinstance(errors, list) else [],
+        source="pool_edit",
+        ok=not bool(errors),
+    )
+
+
+def handle_pool_remove(
+    symbol: str,
+    dry_run: bool = False,
+) -> Dict[str, Any]:
+    data = pool_remove(symbol, dry_run=dry_run)
+    errors = data.get("errors", [])
+    return envelope(
+        command="pool.remove",
+        data=data,
+        warnings=data.get("warnings", []),
+        errors=errors if isinstance(errors, list) else [],
+        source="pool_edit",
         ok=not bool(errors),
     )
 
