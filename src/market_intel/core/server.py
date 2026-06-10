@@ -110,7 +110,11 @@ def start_server(
     ReviewHandler._cached_html = ""
     ReviewHandler._cached_payload = {}
 
-    server = HTTPServer((host, port), ReviewHandler)
+    try:
+        server = HTTPServer((host, port), ReviewHandler)
+    except OSError:
+        print("端口 %d 已被占用，请关闭占用进程或使用 --port 指定其他端口。" % port)
+        return
     url = "http://127.0.0.1:%d" % port
 
     print("复盘工作台已启动: %s" % url)
@@ -139,4 +143,3 @@ def _get_lan_ip() -> Optional[str]:
         return ip
     except Exception:
         return None
-        server.shutdown()

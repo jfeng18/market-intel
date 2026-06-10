@@ -100,7 +100,7 @@ def merge_pool_items(items: List[PoolItem]) -> List[PoolItem]:
     merged = {}
     order = []
     for item in items:
-        key = item.symbol if item.symbol else "__row_%s" % item.raw.get("raw_row")
+        key = item.symbol if item.symbol else "__row_%s_%s" % (item.raw.get("pool_source_file", ""), item.raw.get("raw_row"))
         if key not in merged:
             merged[key] = item
             order.append(key)

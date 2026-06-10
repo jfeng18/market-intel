@@ -541,7 +541,7 @@ def _priority_badge_class(priority: str) -> str:
 def _safe_int(value: Any, default: int = 0) -> int:
     try:
         return int(float(value))
-    except (ValueError, TypeError):
+    except (ValueError, TypeError, OverflowError):
         return default
 
 
@@ -576,12 +576,17 @@ def _svg_change_bar(change_pct: float) -> str:
     mid = width / 2
     clamped = max(-10.0, min(10.0, change_pct))
     bar_len = abs(clamped) / 10.0 * mid
-    bar_len = max(1, bar_len)
 
-    if clamped >= 0:
+    if clamped == 0:
+        color = "var(--text-dim)"
+        bar_len = 1
+        x = mid
+    elif clamped > 0:
+        bar_len = max(1, bar_len)
         color = "var(--red)"
         x = mid
     else:
+        bar_len = max(1, bar_len)
         color = "var(--green)"
         x = mid - bar_len
 

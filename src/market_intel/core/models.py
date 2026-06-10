@@ -84,7 +84,7 @@ class Quote:
             last_price=optional_float(value.get("last_price")),
             change_pct=float(value.get("change_pct") or 0),
             amount=float(value.get("amount") or 0),
-            amount_ratio=float(value.get("amount_ratio") or 0),
+            amount_ratio=float(value.get("amount_ratio") or 1),
             turnover_rate=float(value.get("turnover_rate") or 0),
             amplitude_pct=float(value.get("amplitude_pct") or 0),
             is_limit_up=parse_bool(value.get("is_limit_up")),
@@ -171,7 +171,13 @@ class Holding:
 def optional_float(value: Any) -> Optional[float]:
     if value is None or value == "":
         return None
-    return float(value)
+    try:
+        result = float(value)
+        if result != result or result == float("inf") or result == float("-inf"):
+            return None
+        return result
+    except (ValueError, TypeError):
+        return None
 
 
 def parse_bool(value: Any) -> bool:

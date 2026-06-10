@@ -337,11 +337,10 @@ class TestSvgChangeBar:
         # bar_len = 5/10 * 30 = 15, so x = 30 - 15 = 15
         assert 'x="15.0"' in svg
 
-    def test_zero_produces_minimal_bar(self):
+    def test_zero_produces_neutral_bar(self):
         svg = _svg_change_bar(0.0)
-        # Zero gets clamped to bar_len=max(1, 0)=1, red side
         assert 'width="1' in svg
-        assert 'fill="var(--red)"' in svg
+        assert 'fill="var(--text-dim)"' in svg
 
     def test_large_positive_clamped_to_max(self):
         svg = _svg_change_bar(20.0)

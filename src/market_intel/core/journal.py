@@ -963,8 +963,8 @@ def compare_hotspots(base_data: Dict[str, object], current_data: Dict[str, objec
         "base_count": len(base_items),
         "current_count": len(current_items),
         "top": {
-            "base": first_or_none(sorted(base_items.values(), key=lambda item: int(item.get("rank") or 9999))),
-            "current": first_or_none(sorted(current_items.values(), key=lambda item: int(item.get("rank") or 9999))),
+            "base": first_or_none(sorted(base_items.values(), key=lambda item: int_value(item.get("rank"), 9999))),
+            "current": first_or_none(sorted(current_items.values(), key=lambda item: int_value(item.get("rank"), 9999))),
         },
         "added": [current_items[key] for key in added_keys],
         "removed": [base_items[key] for key in removed_keys],
