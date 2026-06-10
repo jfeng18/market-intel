@@ -26,7 +26,8 @@ market-intel init runtime
 # 2. 同步今日行情（从东方财富拉取全 A 数据）
 market-intel sync quotes
 
-# 3. 导入持仓（从券商软件导出 CSV）
+# 3. 导入持仓（从券商软件导出 CSV，支持 UTF-8/GBK 自动检测）
+#    可选列：成本价（用于盈亏计算）
 market-intel import holdings holdings.csv --runtime
 
 # 4. 启动浏览器复盘工作台（推荐）
@@ -72,22 +73,28 @@ market-intel pool remove 600519
 market-intel pool coverage --runtime --text
 ```
 
-## 进阶命令
+## 所有命令
 
 | 命令 | 说明 |
 |------|------|
-| `review` | 一键复盘（同步+报告+变化追踪+留档） |
 | `serve` | 启动浏览器复盘工作台 |
+| `review` | 一键复盘（同步+报告+变化追踪+留档） |
 | `sync quotes` | 同步全 A 行情（akshare/东方财富） |
-| `pool add/remove` | 添加/移除观察池标的 |
+| `pool add/remove` | 添加/移除覆盖池标的 |
+| `pool list/coverage/explain` | 查看覆盖池、覆盖率、标的详情 |
 | `scan` | 全市场扫描 |
 | `daily` | 每日综合报告 |
+| `brief` | 每日简报 |
 | `watchlist` | 观察清单 |
-| `portfolio review` | 持仓复核 |
+| `map` | 产业链地图 |
 | `hotspots` | 热点板块排名 |
-| `journal save/list/compare` | 日报留档与对比 |
-| `import quotes/holdings` | CSV 数据导入 |
+| `portfolio review/explain` | 持仓复核 |
+| `focus` | 聚焦视图 |
+| `dashboard` | 一屏工作台 |
+| `journal save/list/show/compare/timeline/note` | 日报留档全链路 |
+| `import schema/quotes/holdings/universe/research` | CSV 数据导入（支持 GBK 自动检测） |
 | `status runtime` | 运行时状态诊断 |
+| `agent plan/briefing/run/next` | Agent 工作流 |
 
 运行 `market-intel --help` 查看所有命令。
 

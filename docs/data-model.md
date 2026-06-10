@@ -27,39 +27,69 @@
 - `draft`：候选或待确认补池行。
 - `missing`：持仓或行情标的不在复盘池/基础清单。
 - `blocked`：数据错误导致无法可信复盘。
+- `quote_only`：有行情数据但不在复盘池或基础清单中。
 
 ## 核心对象
 
-- `PoolItem`：证券、链路、角色、`exposures[]`、`raw`、`data_quality_flags`。
-- `Quote`：`symbol/trade_date/last_price/change_pct/amount/...`；字符串布尔必须显式解析。
-- `Holding`：按 distinct symbol 计数，重复 exposure 不制造重复持仓。
-- `research_notes_v1`：`symbol/name/status/thesis/evidence/invalidation/updated_at/source`。
-- `journal`：日报、假设、补充笔记和对比结果。
+### PoolItem
+
+`symbol, name, market, instrument_type, priority, tradable, primary_layer, primary_sub_sector, primary_role, logic, exposures[], raw, data_quality_flags`
+
+### Exposure
+
+`layer, sub_sector, section, role, priority, logic, raw_row`
+
+### Quote
+
+`symbol, name, trade_date, last_price, change_pct, amount, amount_ratio, turnover_rate, amplitude_pct, is_limit_up, is_stage_high, intraday_fade_pct, source`
+
+字符串布尔必须显式解析（是/否/涨停/√）。
+
+### Holding
+
+`symbol, name, quantity, cost_price, source`
+
+`quantity` 和 `cost_price` 均为 `Optional[float]`。`cost_price` 用于 HTML 报告计算浮动盈亏。
+
+### Hotspot
+
+`layer, sub_sector, score, member_count, active_member_count, leaders[], score_breakdown, signals[], risks[], explain`
+
+`score_breakdown` 含六个维度：`avg_change_score, turnover_expansion_score, strong_member_score, leader_strength_score, persistence_score, intraday_fade_penalty`。
+
+### research_notes_v1
+
+`symbol, name, status, thesis, evidence, invalidation, updated_at, source`
+
+### journal
+
+日报留档、假设跟踪、补充笔记和对比结果。支持 save/list/latest/show/compare/timeline/note/notes。
 
 ## Dashboard
 
 Agent 优先读：
 
 - `data.action_summary.decision_card`：今日动作卡。
-- `decision_card.json_command`：下一条可执行命令。
-- `decision_card.why`：为什么先做这项。
-- `decision_card.done_when`：完成标准。
-- `decision_card.next_json_command`：接力命令。
-- `decision_card.check_status/check_done_when`：留档前门槛。
 - `data.coverage_context`、`data.market_pulse`、`data.portfolio_pulse`、`data.evidence_gaps`：上下文。
 - `data.review_plan.items[]`：完整接力队列。
 
 ## Review
 
-- `data.next_commands[]`：给人看的后续命令，保留兼容。
+- `data.changes`：与历史日报的变化对比（日/周/月窗口）。
 - `data.command_queue[]`：agent 接力队列；每项包含 `command/json_command/state_effect/runnable/done_when`。
-- 复盘后的周/月级变化追踪 follow-up 默认带 `--no-sync --no-save`，只读对比，不重复同步或留档。
-- `state_effect=read_only` 才适合自动只读执行；`writes_runtime`、`writes_journal`、`writes_runtime_journal` 需人工确认或专门写入流程。
+- `state_effect=read_only` 才适合自动执行；`writes_runtime`、`writes_journal`、`writes_runtime_journal` 需人工确认。
+- 复盘后的 follow-up 命令默认带 `--no-sync --no-save`，只读对比。
 
 ## CSV 口径
 
-- Universe：`symbol,name,industry,concepts,index_membership,listing_status,source`
-- Research：`symbol,name,status,thesis,evidence,invalidation,updated_at,source`
+| 数据 | 字段 |
+|------|------|
+| Quote | `symbol, name, trade_date, last_price, change_pct, amount, amount_ratio, turnover_rate, amplitude_pct, is_limit_up, is_stage_high, intraday_fade_pct, source` |
+| Holding | `symbol, name, quantity, cost_price, source` |
+| Universe | `symbol, name, industry, concepts, index_membership, listing_status, source` |
+| Research | `symbol, name, status, thesis, evidence, invalidation, updated_at, source` |
+
+所有 CSV 支持 UTF-8/GBK/GB18030 编码自动检测。列名支持中英文别名。
 
 `status=reviewed` 时必须补齐 `thesis/evidence/invalidation`。
 

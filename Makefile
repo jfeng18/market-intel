@@ -20,7 +20,10 @@ test:
 smoke:
 	$(PYTHON) -m market_intel.cli --help >/dev/null
 	$(PYTHON) -m market_intel.cli pool --help >/dev/null
+	$(PYTHON) -m market_intel.cli serve --help >/dev/null
 	$(PYTHON) -m market_intel.cli pool explain 002837 --json >/dev/null
+	$(PYTHON) -m market_intel.cli pool add 000001 --dry-run --json >/dev/null
+	$(PYTHON) -m market_intel.cli pool remove 000001 --dry-run --json >/dev/null
 	$(PYTHON) -m market_intel.cli pool quality invalid_symbol --json >/dev/null
 	$(PYTHON) -m market_intel.cli scan --mock --text >/dev/null
 	$(PYTHON) -m market_intel.cli daily --mock --text >/dev/null
@@ -31,7 +34,7 @@ smoke:
 console-smoke:
 	$(CLI) --help >/dev/null
 
-privacy-scan:
+privacy-scan: check-python
 	$(PYTHON) scripts/privacy_scan.py
 
 ci: install test smoke console-smoke privacy-scan
