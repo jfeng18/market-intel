@@ -3,7 +3,7 @@
 import json
 from datetime import date, datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 from .runtime import (
     display_path,
@@ -17,11 +17,13 @@ def sync_quotes(
     dry_run: bool = False,
     symbols: Optional[List[str]] = None,
     trade_date: Optional[str] = None,
+    progress_fn: Optional[Callable[[str], None]] = None,
 ) -> Dict[str, Any]:
     """Fetch all A-share quotes via akshare and write to runtime.
 
     Returns a result dict compatible with the project's envelope pattern.
     """
+    _progress = progress_fn or (lambda _msg: None)
     warnings: List[Dict[str, Any]] = []
     errors: List[Dict[str, Any]] = []
     api_date, quote_date, date_error = _resolve_trade_dates(trade_date)
@@ -29,7 +31,17 @@ def sync_quotes(
         errors.append(date_error)
         return _build_result([], dry_run, False, str(trade_date or ""), warnings, errors)
 
-    spot_df, zt_codes, high_codes, fetch_errors = _fetch_market_data(api_date)
+    # Weekend detection
+    try:
+        parsed_date = datetime.strptime(api_date, "%Y%m%d").date()
+        if parsed_date.weekday() >= 5:  # 5=Saturday, 6=Sunday
+            _progress("今日非交易日（周末），数据为最近交易日行情。")
+    except ValueError:
+        pass
+
+    spot_df, zt_codes, high_codes, fetch_errors = _fetch_market_data(
+        api_date, progress_fn=progress_fn,
+    )
     errors.extend(fetch_errors)
 
     if errors:
@@ -66,8 +78,10 @@ def sync_quotes(
 
 def _fetch_market_data(
     date_str: str,
+    progress_fn: Optional[Callable[[str], None]] = None,
 ) -> Tuple[Any, Set[str], Set[str], List[Dict[str, Any]]]:
     """Call akshare APIs, return (spot_df, zt_codes, high_codes, errors)."""
+    _progress = progress_fn or (lambda _msg: None)
     errors: List[Dict[str, Any]] = []
 
     try:
@@ -82,6 +96,7 @@ def _fetch_market_data(
 
     spot_df = None
     try:
+        _progress("正在从东方财富获取全 A 行情...")
         spot_df = ak.stock_zh_a_spot_em()
     except Exception as exc:
         errors.append(_issue(
@@ -99,8 +114,11 @@ def _fetch_market_data(
         ))
         return None, set(), set(), errors
 
+    _progress("已获取 %d 条行情记录。" % len(spot_df))
+
     zt_codes: Set[str] = set()
     try:
+        _progress("正在获取涨停板数据...")
         zt_df = ak.stock_zt_pool_em(date=date_str)
         if zt_df is not None and not zt_df.empty and "代码" in zt_df.columns:
             zt_codes = set(zt_df["代码"].astype(str))
@@ -109,6 +127,7 @@ def _fetch_market_data(
 
     high_codes: Set[str] = set()
     try:
+        _progress("正在获取强势股数据...")
         strong_df = ak.stock_zt_pool_strong_em(date=date_str)
         if strong_df is not None and not strong_df.empty and "代码" in strong_df.columns:
             if "是否新高" in strong_df.columns:

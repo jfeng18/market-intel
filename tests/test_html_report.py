@@ -9,6 +9,8 @@ from market_intel.core.html_report import (
     _svg_volume_dot,
     _svg_score_bar,
     _svg_radar,
+    _RADAR_AXIS_KEYS,
+    _RADAR_AXIS_LABELS,
 )
 
 
@@ -62,6 +64,14 @@ def _mock_review_payload():
                         ],
                         "signals": ["放量突破", "龙头效应"],
                         "risks": [],
+                        "breakdown": {
+                            "avg_change_score": 0.9,
+                            "turnover_expansion_score": 0.7,
+                            "strong_member_score": 0.6,
+                            "leader_strength_score": 0.8,
+                            "persistence_score": 0.5,
+                            "intraday_fade_penalty": 0.2,
+                        },
                     },
                     {
                         "layer": "运力",
@@ -477,22 +487,22 @@ class TestSvgRadar:
         svg = _svg_radar(breakdown)
         assert svg.startswith("<svg")
         assert svg.endswith("</svg>")
-        # All values should be clamped to [0, 1], so max radius is 14
-        # Points should not exceed cx+14=32 or go below cx-14=4
+        # All values should be clamped to [0, 1], so max radius is 25
+        # Points should not exceed cx+25=65 or go below cx-25=15
         import re
         data_match = re.findall(r'<polygon points="([^"]+)"', svg)
         assert len(data_match) == 2
         data_points_str = data_match[1]
         for pair in data_points_str.split():
             x, y = pair.split(",")
-            assert 4.0 <= float(x) <= 32.0
-            assert 4.0 <= float(y) <= 32.0
+            assert 15.0 <= float(x) <= 65.0
+            assert 15.0 <= float(y) <= 65.0
 
     def test_all_zeros_collapses_to_center(self):
         breakdown = {"a": 0, "b": 0, "c": 0, "d": 0, "e": 0, "f": 0}
         svg = _svg_radar(breakdown)
-        # All points should be at center (18.0, 18.0)
-        assert "18.0,18.0" in svg
+        # All points should be at center (40.0, 40.0)
+        assert "40.0,40.0" in svg
 
     def test_fewer_than_six_keys_pads_with_zero(self):
         breakdown = {"a": 0.5, "b": 0.8}
@@ -504,6 +514,42 @@ class TestSvgRadar:
         data_match = re.findall(r'<polygon points="([^"]+)"', svg)
         data_points = data_match[1].split()
         assert len(data_points) == 6
+
+    def test_canonical_keys_produce_text_labels(self):
+        breakdown = {
+            "avg_change_score": 0.8,
+            "turnover_expansion_score": 0.6,
+            "strong_member_score": 0.5,
+            "leader_strength_score": 0.7,
+            "persistence_score": 0.4,
+            "intraday_fade_penalty": 0.3,
+        }
+        svg = _svg_radar(breakdown)
+        assert "<text" in svg
+        assert "</text>" in svg
+        # All six labels should be present
+        for label in ["涨幅", "量能", "强势", "龙头", "持续", "回落"]:
+            assert label in svg
+
+    def test_canonical_keys_label_attributes(self):
+        breakdown = {k: 0.5 for k in _RADAR_AXIS_KEYS}
+        svg = _svg_radar(breakdown)
+        assert 'font-size="8"' in svg
+        assert 'fill="var(--text-muted)"' in svg
+        assert 'text-anchor="middle"' in svg  # top axis
+        assert 'text-anchor="end"' in svg  # left axes
+        assert 'text-anchor="start"' in svg  # right axes
+
+    def test_non_canonical_keys_no_labels(self):
+        breakdown = {"a": 0.5, "b": 0.6, "c": 0.7, "d": 0.3, "e": 0.4, "f": 0.2}
+        svg = _svg_radar(breakdown)
+        assert "<text" not in svg
+
+    def test_svg_size_is_80(self):
+        breakdown = {k: 0.5 for k in _RADAR_AXIS_KEYS}
+        svg = _svg_radar(breakdown)
+        assert 'width="80"' in svg
+        assert 'height="80"' in svg
 
 
 # ---------------------------------------------------------------------------
@@ -546,6 +592,18 @@ class TestSvgSparklineIntegration:
         # Hotspots have score_bar and radar SVGs
         assert "<svg" in hotspot_section
         assert "<polygon" in hotspot_section  # radar chart
+
+    def test_radar_labels_in_hotspot_table(self):
+        html_out = render_review_html(_mock_review_payload())
+        hotspot_start = html_out.index("热点板块")
+        try:
+            hotspot_end = html_out.index("<h2>", hotspot_start + 1)
+        except ValueError:
+            hotspot_end = len(html_out)
+        hotspot_section = html_out[hotspot_start:hotspot_end]
+        # Radar chart should contain text elements with Chinese labels
+        assert "<text" in hotspot_section
+        assert "涨幅" in hotspot_section
 
     def test_sparklines_in_portfolio_table(self):
         html_out = render_review_html(_mock_review_payload())

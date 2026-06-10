@@ -145,6 +145,7 @@ class Holding:
     symbol: str
     name: str
     quantity: Optional[float] = None
+    cost_price: Optional[float] = None
     source: str = "mock"
 
     @classmethod
@@ -153,6 +154,7 @@ class Holding:
             symbol=normalize_symbol_text(value["symbol"]),
             name=str(value.get("name") or ""),
             quantity=optional_float(value.get("quantity")),
+            cost_price=optional_float(value.get("cost_price")),
             source=str(value.get("source") or "mock"),
         )
 
@@ -161,6 +163,7 @@ class Holding:
             "symbol": self.symbol,
             "name": self.name,
             "quantity": self.quantity,
+            "cost_price": self.cost_price,
             "source": self.source,
         }
 

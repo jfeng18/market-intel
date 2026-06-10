@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional
 from .text_report import LABELS
 
 
-def render_review_html(payload: Dict[str, Any]) -> str:
+def render_review_html(payload: Dict[str, Any], serve_mode: bool = False) -> str:
     """Render a complete self-contained HTML report from a review envelope."""
     data = payload.get("data", {}) if isinstance(payload.get("data"), dict) else {}
     meta = payload.get("meta", {}) if isinstance(payload.get("meta"), dict) else {}
@@ -23,7 +23,7 @@ def render_review_html(payload: Dict[str, Any]) -> str:
     sections.append(_render_watchlist(data))
     sections.append(_render_portfolio(data))
     sections.append(_render_validation(data))
-    sections.append(_render_command_queue(data))
+    sections.append(_render_command_queue(data, serve_mode=serve_mode))
     sections.append(_render_footer(data))
 
     body = "\n".join(sections)
@@ -346,6 +346,7 @@ def _render_portfolio(data: Dict[str, Any]) -> str:
     lines.append("<table>")
     lines.append("<tr><th>代码</th><th>名称</th><th>优先级</th>"
                  "<th class='num'>涨跌幅</th><th class='num'>量比</th>"
+                 "<th class='num'>盈亏</th>"
                  "<th>风险</th><th>复核要点</th></tr>")
 
     for item in items[:20]:
@@ -367,11 +368,30 @@ def _render_portfolio(data: Dict[str, Any]) -> str:
         change_bar = _svg_change_bar(change_pct)
         volume_dot = _svg_volume_dot(amount_ratio)
 
+        # P&L calculation: cost_price from item or nested holding
+        last_price = _safe_float(quote.get("last_price"), None) if quote.get("last_price") is not None else None
+        cost_price = None
+        if item.get("cost_price") is not None:
+            cost_price = _safe_float(item.get("cost_price"), None)
+        else:
+            holding = item.get("holding", {}) if isinstance(item.get("holding"), dict) else {}
+            if holding.get("cost_price") is not None:
+                cost_price = _safe_float(holding.get("cost_price"), None)
+
+        pnl_cell = "-"
+        if last_price is not None and cost_price is not None and cost_price > 0:
+            pnl_pct = (last_price - cost_price) / cost_price * 100
+            # China convention: red for profit, green for loss
+            pnl_class = "pos" if pnl_pct > 0 else "neg" if pnl_pct < 0 else ""
+            pnl_sign = "+" if pnl_pct > 0 else ""
+            pnl_cell = '<span class="%s">%s%.2f%%</span>' % (pnl_class, pnl_sign, pnl_pct)
+
         lines.append(
             "<tr><td>%s</td><td>%s</td>"
             '<td><span class="badge %s">%s</span></td>'
             "<td class='num %s'>%s <span>%s%.2f%%</span></td>"
             "<td class='num'>%s <span>%.1f</span></td>"
+            "<td class='num'>%s</td>"
             "<td>%s</td><td>%s</td></tr>"
             % (
                 _esc(str(item.get("symbol", ""))),
@@ -383,6 +403,7 @@ def _render_portfolio(data: Dict[str, Any]) -> str:
                 change_pct,
                 volume_dot,
                 amount_ratio,
+                pnl_cell,
                 risk_badges or "-",
                 review_text or "-",
             )
@@ -416,19 +437,36 @@ def _render_validation(data: Dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _render_command_queue(data: Dict[str, Any]) -> str:
+def _render_command_queue(data: Dict[str, Any], serve_mode: bool = False) -> str:
     queue = data.get("command_queue", []) if isinstance(data.get("command_queue"), list) else []
     if queue:
         lines = ["<h2>下一步</h2>", "<table>"]
-        lines.append("<tr><th>#</th><th>状态</th><th>命令</th><th>JSON</th><th>完成标准</th></tr>")
+        header = "<tr><th>#</th><th>状态</th><th>命令</th><th>JSON</th><th>完成标准</th>"
+        if serve_mode:
+            header += "<th></th>"
+        header += "</tr>"
+        lines.append(header)
         for item in queue[:8]:
             if not isinstance(item, dict):
                 continue
             state = str(item.get("state_effect") or "read_only")
             badge_class = "badge-dim" if state == "read_only" else "badge-yellow"
+            run_cell = ""
+            if serve_mode:
+                if item.get("runnable", True):
+                    cmd = _esc(str(item.get("command", "")))
+                    run_cell = (
+                        '<td><form method="POST" action="/api/run" style="display:inline">'
+                        '<input type="hidden" name="command" value="%s">'
+                        '<button type="submit" class="badge badge-blue" '
+                        'style="cursor:pointer;border:none">执行</button>'
+                        '</form></td>' % cmd
+                    )
+                else:
+                    run_cell = "<td></td>"
             lines.append(
                 "<tr><td>%s</td><td><span class='badge %s'>%s</span></td>"
-                "<td>%s</td><td>%s</td><td>%s</td></tr>"
+                "<td>%s</td><td>%s</td><td>%s</td>%s</tr>"
                 % (
                     _esc(str(item.get("rank", ""))),
                     badge_class,
@@ -436,6 +474,7 @@ def _render_command_queue(data: Dict[str, Any]) -> str:
                     _esc(str(item.get("command", ""))),
                     _esc(str(item.get("json_command", ""))),
                     _esc(str(item.get("done_when", ""))),
+                    run_cell,
                 )
             )
         lines.append("</table>")
@@ -604,24 +643,58 @@ def _svg_score_bar(score: float, max_score: float = 100) -> str:
     ) % (width, height, width, height, fill_w, height, color)
 
 
+_RADAR_AXIS_KEYS = [
+    "avg_change_score",
+    "turnover_expansion_score",
+    "strong_member_score",
+    "leader_strength_score",
+    "persistence_score",
+    "intraday_fade_penalty",
+]
+
+_RADAR_AXIS_LABELS = {
+    "avg_change_score": "涨幅",
+    "turnover_expansion_score": "量能",
+    "strong_member_score": "强势",
+    "leader_strength_score": "龙头",
+    "persistence_score": "持续",
+    "intraday_fade_penalty": "回落",
+}
+
+
 def _svg_radar(breakdown: dict) -> str:
-    """6-point radar chart, 36x36px.
+    """6-point radar chart, 80x80px with axis labels.
 
     Each axis 0-1 normalized from breakdown dict values.
     Fill: semi-transparent blue. Stroke: theme blue.
+    Labels placed slightly outside each hexagon vertex.
     """
-    size = 36
+    size = 80
     cx = size / 2
     cy = size / 2
-    max_r = 14  # max radius for points
+    max_r = 25  # max radius for data points
+    label_r = 33  # radius for label text placement
 
-    # Take up to 6 values, pad with 0 if fewer
+    # Extract values in canonical key order when recognised keys present,
+    # otherwise fall back to raw dict order for backward compat.
     values: List[float] = []
+    keys: List[str] = []
     if isinstance(breakdown, dict):
-        for v in list(breakdown.values())[:6]:
-            values.append(max(0.0, min(1.0, _safe_float(v, 0))))
+        if any(k in breakdown for k in _RADAR_AXIS_KEYS):
+            for k in _RADAR_AXIS_KEYS:
+                values.append(max(0.0, min(1.0, _safe_float(breakdown.get(k, 0), 0))))
+                keys.append(k)
+        else:
+            for k, v in list(breakdown.items())[:6]:
+                values.append(max(0.0, min(1.0, _safe_float(v, 0))))
+                keys.append(k)
     while len(values) < 6:
         values.append(0.0)
+    while len(keys) < 6:
+        keys.append("")
+
+    # text-anchor per axis: top/bottom=middle, left=end, right=start
+    text_anchors = ["middle", "end", "end", "middle", "start", "start"]
 
     # Compute polygon points
     points = []
@@ -640,12 +713,30 @@ def _svg_radar(breakdown: dict) -> str:
         py = cy - max_r * math.sin(angle)
         guide_points.append("%.1f,%.1f" % (px, py))
 
+    # Label text elements positioned just outside the hexagon
+    label_parts: List[str] = []
+    for i in range(6):
+        label = _RADAR_AXIS_LABELS.get(keys[i], "")
+        if not label:
+            continue
+        angle = math.pi / 2 + i * (2 * math.pi / 6)
+        lx = cx + label_r * math.cos(angle)
+        ly = cy - label_r * math.sin(angle)
+        label_parts.append(
+            '<text x="%.1f" y="%.1f" dy="0.35em" '
+            'text-anchor="%s" font-size="8" '
+            'fill="var(--text-muted)">%s</text>'
+            % (lx, ly, text_anchors[i], _esc(label))
+        )
+    labels_svg = "".join(label_parts)
+
     return (
         '<svg width="%d" height="%d" style="vertical-align:middle">'
         '<polygon points="%s" fill="none" stroke="var(--text-dim)" stroke-width="0.5" opacity="0.4"/>'
         '<polygon points="%s" fill="var(--blue)" fill-opacity="0.25" stroke="var(--blue)" stroke-width="1"/>'
+        '%s'
         "</svg>"
-    ) % (size, size, " ".join(guide_points), " ".join(points))
+    ) % (size, size, " ".join(guide_points), " ".join(points), labels_svg)
 
 
 def _esc(text: str) -> str:

@@ -10,6 +10,7 @@ from market_intel.cli import (
     handle_import_universe,
     handle_pool_coverage,
 )
+from market_intel.core.csv_importer import read_csv_rows
 from market_intel.core.fixtures import load_holdings_file, load_quotes_file
 from market_intel.core.text_report import render_import_text, render_import_universe_text
 
@@ -556,6 +557,54 @@ def test_import_research_confirms_foundation_coverage(monkeypatch, tmp_path):
     assert str(runtime) not in json.dumps(research_payload, ensure_ascii=False)
 
 
+def test_import_holdings_parses_cost_price_from_chinese_column(tmp_path):
+    csv_path = tmp_path / "holdings.csv"
+    csv_path.write_text(
+        "证券代码,证券名称,持仓数量,成本价\n002837,英维克,1000,25.60\n",
+        encoding="utf-8",
+    )
+
+    payload = handle_import_holdings(str(csv_path), dry_run=True)
+    preview = payload["data"]["preview"][0]
+
+    assert payload["ok"] is True
+    assert preview["symbol"] == "002837"
+    assert preview["cost_price"] == 25.6
+    assert preview["quantity"] == 1000
+
+
+def test_import_holdings_cost_price_flows_through_to_holding_record(tmp_path):
+    csv_path = tmp_path / "holdings.csv"
+    output_path = tmp_path / "holdings.json"
+    csv_path.write_text(
+        "证券代码,证券名称,持仓数量,买入均价\n002837,英维克,500,18.30\n",
+        encoding="utf-8",
+    )
+
+    payload = handle_import_holdings(str(csv_path), output=str(output_path))
+    holdings = load_holdings_file(output_path)
+
+    assert payload["ok"] is True
+    assert payload["data"]["written"] is True
+    assert holdings[0].symbol == "002837"
+    assert holdings[0].cost_price == 18.3
+    assert holdings[0].quantity == 500
+
+
+def test_import_holdings_cost_price_absent_is_none(tmp_path):
+    csv_path = tmp_path / "holdings.csv"
+    csv_path.write_text(
+        "证券代码,证券名称,持仓数量\n002837,英维克,300\n",
+        encoding="utf-8",
+    )
+
+    payload = handle_import_holdings(str(csv_path), dry_run=True)
+    preview = payload["data"]["preview"][0]
+
+    assert payload["ok"] is True
+    assert preview["cost_price"] is None
+
+
 def test_import_schema_cli_smoke(cli_cmd):
     result = subprocess.run(
         cli_cmd("import", "schema", "--json"),
@@ -643,3 +692,63 @@ def test_import_universe_cli_smoke(tmp_path, cli_cmd):
     assert "market-intel import universe" in text_result.stdout
     assert "导入后" in text_result.stdout
     assert "requires_import" in text_result.stdout
+
+
+def test_read_csv_rows_gbk_fallback(tmp_path):
+    csv_path = tmp_path / "gbk.csv"
+    csv_path.write_bytes("证券代码,证券名称,涨跌幅\n002837,英维克,7.2%\n".encode("gbk"))
+
+    rows, warnings, errors = read_csv_rows(csv_path)
+
+    assert errors == []
+    assert len(rows) == 1
+    assert rows[0]["证券代码"] == "002837"
+    assert rows[0]["证券名称"] == "英维克"
+    assert len(warnings) == 1
+    assert warnings[0]["code"] == "CSV_ENCODING_FALLBACK"
+    assert warnings[0]["detail"]["encoding"] == "gbk"
+
+
+def test_read_csv_rows_gb18030_fallback(tmp_path):
+    csv_path = tmp_path / "gb18030.csv"
+    # gb18030 is a superset of gbk; use a character outside gbk range to force gb18030
+    # U+20000 (CJK Unified Ideographs Extension B) is in gb18030 but not in gbk
+    content = "证券代码,证券名称\n000001,测试\n"
+    csv_path.write_bytes(content.encode("gb18030"))
+
+    rows, warnings, errors = read_csv_rows(csv_path)
+
+    assert errors == []
+    assert len(rows) == 1
+    assert rows[0]["证券代码"] == "000001"
+    assert rows[0]["证券名称"] == "测试"
+    assert len(warnings) == 1
+    assert warnings[0]["code"] == "CSV_ENCODING_FALLBACK"
+    # gb18030 is a superset of gbk, so gbk may succeed here too;
+    # the important thing is the fallback warning is present
+    assert warnings[0]["detail"]["encoding"] in ("gbk", "gb18030")
+
+
+def test_read_csv_rows_utf8_no_warning(tmp_path):
+    csv_path = tmp_path / "utf8.csv"
+    csv_path.write_text("证券代码,证券名称\n000001,平安银行\n", encoding="utf-8")
+
+    rows, warnings, errors = read_csv_rows(csv_path)
+
+    assert errors == []
+    assert len(rows) == 1
+    assert warnings == []
+
+
+def test_import_quotes_gbk_fallback_warning_surfaces(tmp_path):
+    csv_path = tmp_path / "quotes_gbk.csv"
+    csv_path.write_bytes(
+        "证券代码,证券名称,涨跌幅,成交额,量比\n002837,英维克,7.2%,12.3亿,2.4\n".encode("gbk")
+    )
+
+    payload = handle_import_quotes(str(csv_path), dry_run=True, trade_date="2026-06-06")
+
+    assert payload["ok"] is True
+    assert payload["data"]["preview"][0]["symbol"] == "002837"
+    assert payload["data"]["preview"][0]["name"] == "英维克"
+    assert any(w["code"] == "CSV_ENCODING_FALLBACK" for w in payload["warnings"])

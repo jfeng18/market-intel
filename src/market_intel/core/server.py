@@ -6,13 +6,16 @@ import threading
 import webbrowser
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from typing import Any, Callable, Dict, Optional
+from urllib.parse import parse_qs
+
+from .agent import command_state_effect
 
 
 class ReviewHandler(BaseHTTPRequestHandler):
     """Serve the HTML review report with a refresh mechanism."""
 
     review_fn: Optional[Callable[[], Dict[str, Any]]] = None
-    html_fn: Optional[Callable[[Dict[str, Any]], str]] = None
+    html_fn: Optional[Callable[..., str]] = None
     _cached_html: str = ""
     _cached_payload: Dict[str, Any] = {}
 
@@ -25,6 +28,30 @@ class ReviewHandler(BaseHTTPRequestHandler):
             self._serve_json()
         else:
             self.send_error(404)
+
+    def do_POST(self) -> None:
+        if self.path == "/api/run":
+            self._handle_run()
+        else:
+            self.send_error(404)
+
+    def _handle_run(self) -> None:
+        length = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(length).decode("utf-8")
+        params = parse_qs(body)
+        command = params.get("command", [""])[0]
+        if not command:
+            self.send_error(400)
+            return
+        effect = command_state_effect(command)
+        if effect != "read_only":
+            msg = "写入操作需要在命令行执行。".encode("utf-8")
+            self._respond(403, "text/plain; charset=utf-8", msg)
+            return
+        self._do_refresh()
+        self.send_response(302)
+        self.send_header("Location", "/")
+        self.end_headers()
 
     def _serve_report(self) -> None:
         if not self.__class__._cached_html:
@@ -48,7 +75,7 @@ class ReviewHandler(BaseHTTPRequestHandler):
         if self.__class__.review_fn and self.__class__.html_fn:
             payload = self.__class__.review_fn()
             self.__class__._cached_payload = payload
-            self.__class__._cached_html = self.__class__.html_fn(payload)
+            self.__class__._cached_html = self.__class__.html_fn(payload, serve_mode=True)
 
     def _inject_controls(self, html: str) -> str:
         controls = """<div style="position:fixed;top:12px;right:12px;z-index:999">
@@ -72,7 +99,7 @@ text-decoration:none;font-size:0.85em;font-weight:600">刷新复盘</a>
 
 def start_server(
     review_fn: Callable[[], Dict[str, Any]],
-    html_fn: Callable[[Dict[str, Any]], str],
+    html_fn: Callable[..., str],
     host: str = "127.0.0.1",
     port: int = 8080,
     open_browser: bool = True,

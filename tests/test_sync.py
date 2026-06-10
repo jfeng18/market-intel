@@ -437,3 +437,52 @@ def test_limit_up_threshold():
     assert _limit_up_threshold("830001", False) == 29.9   # BSE 8xxxxx
     assert _limit_up_threshold("430047", False) == 29.9   # BSE 43xxxx
     assert _limit_up_threshold("920118", False) == 29.9   # BSE 920xxx
+
+
+def test_sync_quotes_progress_fn_called(tmp_path, monkeypatch):
+    """progress_fn receives expected messages during sync."""
+    monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(tmp_path / "runtime"))
+    messages = []
+
+    with patch.dict("sys.modules", {"akshare": _setup_mock_ak()}):
+        sync_quotes(dry_run=True, trade_date="20260608", progress_fn=messages.append)
+
+    assert any("东方财富" in m for m in messages)
+    assert any("行情记录" in m for m in messages)
+    assert any("涨停板" in m for m in messages)
+    assert any("强势股" in m for m in messages)
+
+
+def test_sync_quotes_progress_fn_none_is_silent(tmp_path, monkeypatch):
+    """progress_fn=None (default) does not raise."""
+    monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(tmp_path / "runtime"))
+
+    with patch.dict("sys.modules", {"akshare": _setup_mock_ak()}):
+        result = sync_quotes(dry_run=True, trade_date="20260608", progress_fn=None)
+
+    assert not result["errors"]
+    assert result["record_count"] == 5
+
+
+def test_sync_quotes_weekend_warning(tmp_path, monkeypatch):
+    """Weekend trade_date triggers a non-trading-day progress message."""
+    monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(tmp_path / "runtime"))
+    messages = []
+
+    # 2026-06-13 is a Saturday
+    with patch.dict("sys.modules", {"akshare": _setup_mock_ak()}):
+        sync_quotes(dry_run=True, trade_date="20260613", progress_fn=messages.append)
+
+    assert any("非交易日" in m and "周末" in m for m in messages)
+
+
+def test_sync_quotes_weekday_no_weekend_warning(tmp_path, monkeypatch):
+    """Weekday trade_date does NOT emit the weekend warning."""
+    monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(tmp_path / "runtime"))
+    messages = []
+
+    # 2026-06-08 is a Monday
+    with patch.dict("sys.modules", {"akshare": _setup_mock_ak()}):
+        sync_quotes(dry_run=True, trade_date="20260608", progress_fn=messages.append)
+
+    assert not any("非交易日" in m for m in messages)

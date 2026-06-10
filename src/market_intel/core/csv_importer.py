@@ -29,6 +29,8 @@ HOLDING_ALIASES = {
     "symbol": ["symbol", "code", "ticker", "stock_code", "证券代码", "股票代码", "代码", "标的代码"],
     "name": ["name", "证券名称", "股票名称", "名称", "持仓名称"],
     "quantity": ["quantity", "qty", "shares", "持仓数量", "持股数量", "数量", "可用数量"],
+    "cost_price": ["cost_price", "cost", "成本价", "买入均价", "持仓成本", "成本"],
+    "market_value": ["market_value", "市值", "持仓市值"],
     "source": ["source", "来源", "数据源"],
 }
 
@@ -61,8 +63,8 @@ def import_quotes_csv(
     default_trade_date: Optional[str] = None,
     runtime: bool = False,
 ) -> Dict[str, object]:
-    rows, read_errors = read_csv_rows(csv_path)
-    warnings: List[Dict[str, object]] = []
+    rows, read_warnings, read_errors = read_csv_rows(csv_path)
+    warnings: List[Dict[str, object]] = list(read_warnings)
     errors: List[Dict[str, object]] = list(read_errors)
     records: List[Dict[str, object]] = []
     trade_date = default_trade_date or datetime.now().astimezone().date().isoformat()
@@ -104,8 +106,8 @@ def import_holdings_csv(
     dry_run: bool = False,
     runtime: bool = False,
 ) -> Dict[str, object]:
-    rows, read_errors = read_csv_rows(csv_path)
-    warnings: List[Dict[str, object]] = []
+    rows, read_warnings, read_errors = read_csv_rows(csv_path)
+    warnings: List[Dict[str, object]] = list(read_warnings)
     errors: List[Dict[str, object]] = list(read_errors)
     records: List[Dict[str, object]] = []
 
@@ -147,8 +149,8 @@ def import_universe_csv(
     runtime: bool = False,
     merge: bool = False,
 ) -> Dict[str, object]:
-    rows, read_errors = read_csv_rows(csv_path)
-    warnings: List[Dict[str, object]] = []
+    rows, read_warnings, read_errors = read_csv_rows(csv_path)
+    warnings: List[Dict[str, object]] = list(read_warnings)
     errors: List[Dict[str, object]] = list(read_errors)
     records: List[Dict[str, object]] = []
 
@@ -200,8 +202,8 @@ def import_research_csv(
     dry_run: bool = False,
     runtime: bool = False,
 ) -> Dict[str, object]:
-    rows, read_errors = read_csv_rows(csv_path)
-    warnings: List[Dict[str, object]] = []
+    rows, read_warnings, read_errors = read_csv_rows(csv_path)
+    warnings: List[Dict[str, object]] = list(read_warnings)
     errors: List[Dict[str, object]] = list(read_errors)
     records: List[Dict[str, object]] = []
 
@@ -438,6 +440,7 @@ def parse_holding_row(
         name = symbol
         warnings.append(default_warning("HOLDING_NAME_DEFAULTED", index, symbol, "name", name))
     quantity = optional_numeric_field(row, HOLDING_ALIASES["quantity"], "quantity", index, symbol, errors)
+    cost_price = optional_numeric_field(row, HOLDING_ALIASES["cost_price"], "cost_price", index, symbol, errors)
 
     if errors:
         return None, warnings, errors
@@ -446,6 +449,7 @@ def parse_holding_row(
         "symbol": symbol,
         "name": str(name),
         "quantity": quantity,
+        "cost_price": cost_price,
         "source": get_value(row, HOLDING_ALIASES["source"]) or "csv:%s" % csv_path.name,
     }, warnings, errors
 
@@ -546,17 +550,32 @@ def normalize_research_status(value: Optional[str]) -> str:
     return "draft"
 
 
-def read_csv_rows(path: Path) -> Tuple[List[Dict[str, str]], List[Dict[str, object]]]:
+def read_csv_rows(path: Path) -> Tuple[List[Dict[str, str]], List[Dict[str, object]], List[Dict[str, object]]]:
     if not path.exists():
-        return [], [issue("CSV_FILE_NOT_FOUND", "CSV 文件不存在。", {"path": command_path(path)})]
-    try:
-        with path.open(encoding="utf-8-sig", newline="") as handle:
-            reader = csv.DictReader(handle)
-            if not reader.fieldnames:
-                return [], [issue("CSV_HEADER_MISSING", "CSV 缺少表头。", {"path": command_path(path)})]
-            return list(reader), []
-    except Exception as exc:
-        return [], [issue("CSV_READ_ERROR", str(exc), {"path": command_path(path)})]
+        return [], [], [issue("CSV_FILE_NOT_FOUND", "CSV 文件不存在。", {"path": command_path(path)})]
+    encodings = ["utf-8-sig", "gbk", "gb18030"]
+    last_unicode_error: Optional[Exception] = None
+    for encoding in encodings:
+        try:
+            with path.open(encoding=encoding, newline="") as handle:
+                reader = csv.DictReader(handle)
+                if not reader.fieldnames:
+                    return [], [], [issue("CSV_HEADER_MISSING", "CSV 缺少表头。", {"path": command_path(path)})]
+                rows = list(reader)
+                read_warnings: List[Dict[str, object]] = []
+                if encoding != "utf-8-sig":
+                    read_warnings.append(issue(
+                        "CSV_ENCODING_FALLBACK",
+                        "CSV 文件不是 UTF-8 编码，已使用 %s 解码。" % encoding,
+                        {"path": command_path(path), "encoding": encoding},
+                    ))
+                return rows, read_warnings, []
+        except UnicodeDecodeError as exc:
+            last_unicode_error = exc
+            continue
+        except Exception as exc:
+            return [], [], [issue("CSV_READ_ERROR", str(exc), {"path": command_path(path)})]
+    return [], [], [issue("CSV_READ_ERROR", str(last_unicode_error), {"path": command_path(path)})]
 
 
 def write_json_records(path: Path, key: str, records: List[Dict[str, object]]) -> None:
@@ -736,7 +755,7 @@ def empty_universe_coverage_delta(output_path: Optional[Path], merge: bool = Fal
 def read_existing_universe_records(output_path: Optional[Path]) -> List[Dict[str, object]]:
     if output_path is None or not output_path.exists():
         return []
-    rows, errors = read_csv_rows(output_path)
+    rows, _read_warnings, errors = read_csv_rows(output_path)
     if errors:
         return []
     records = []
@@ -987,6 +1006,8 @@ def holding_schema() -> List[Dict[str, object]]:
         {"field": "symbol", "type": "string", "required": True},
         {"field": "name", "type": "string", "required": True},
         {"field": "quantity", "type": "number|null", "required": False},
+        {"field": "cost_price", "type": "number|null", "required": False},
+        {"field": "market_value", "type": "number|null", "required": False},
         {"field": "source", "type": "string", "required": False},
     ]
 

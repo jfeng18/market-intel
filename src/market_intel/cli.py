@@ -622,6 +622,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                 print(render_focus_text(result))
                 return 0 if result["ok"] else 1
         elif args.resource == "review":
+            _review_progress = print if (args.text or args.html) else None
             result = handle_review(
                 args.pool,
                 args.window,
@@ -629,6 +630,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                 args.map_top,
                 args.no_sync,
                 args.no_save,
+                progress_fn=_review_progress,
             )
             if args.html:
                 html_content = render_review_html(result)
@@ -646,6 +648,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                     window=args.window,
                     no_sync=False,
                     no_save=False,
+                    progress_fn=print,
                 )
             start_server(
                 review_fn=_review_for_serve,
@@ -700,10 +703,12 @@ def main(argv: Optional[List[str]] = None) -> int:
                 print(render_import_text(result))
                 return 0 if result["ok"] else 1
         elif args.resource == "sync" and args.action == "quotes":
+            _sync_progress = print if args.text else None
             result = handle_sync_quotes(
                 args.dry_run,
                 args.symbols,
                 args.trade_date,
+                progress_fn=_sync_progress,
             )
             if args.text:
                 print(render_sync_text(result))
@@ -1945,6 +1950,7 @@ def handle_review(
     map_top: int = 2,
     no_sync: bool = False,
     no_save: bool = False,
+    progress_fn=None,
 ) -> Dict[str, Any]:
     sync_result: Dict[str, Any] = {
         "record_count": 0,
@@ -1955,7 +1961,7 @@ def handle_review(
         "warnings": [],
     }
     if not no_sync:
-        sync_result = sync_quotes(dry_run=False)
+        sync_result = sync_quotes(dry_run=False, progress_fn=progress_fn)
 
     daily_payload = handle_daily(
         pool=pool,
@@ -2022,8 +2028,9 @@ def handle_sync_quotes(
     dry_run: bool = False,
     symbols: Optional[List[str]] = None,
     trade_date: Optional[str] = None,
+    progress_fn=None,
 ) -> Dict[str, Any]:
-    data = sync_quotes(dry_run=dry_run, symbols=symbols, trade_date=trade_date)
+    data = sync_quotes(dry_run=dry_run, symbols=symbols, trade_date=trade_date, progress_fn=progress_fn)
     errors = data.get("errors", [])
     return envelope(
         command="sync.quotes",
