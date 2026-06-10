@@ -111,7 +111,7 @@ def list_journal_entries(limit: int = 10) -> Dict[str, object]:
                         "detail": {"path": display_path(path)},
                     }
                 )
-    entries.sort(key=lambda entry: (str(entry.get("generated_at") or ""), str(entry.get("id") or "")), reverse=True)
+    entries.sort(key=lambda entry: _parse_timestamp(entry.get("generated_at")), reverse=True)
     limited = entries[:limit]
     return {
         "journal_dir": display_path(directory),
@@ -877,7 +877,7 @@ def journal_timeline_contract() -> Dict[str, object]:
 
 def timeline_record_sort_key(record: Dict[str, object]) -> object:
     entry = record.get("entry", {}) if isinstance(record.get("entry"), dict) else {}
-    return (str(entry.get("generated_at") or ""), str(entry.get("id") or ""))
+    return _parse_timestamp(entry.get("generated_at"))
 
 
 def compare_daily_payloads(base_payload: Dict[str, object], current_payload: Dict[str, object]) -> Dict[str, object]:
@@ -1350,12 +1350,15 @@ def empty_compare_result(
     }
 
 
+def _empty_text_set() -> Dict[str, object]:
+    return {"base_count": 0, "current_count": 0, "added": [], "removed": [], "unchanged": []}
+
+
 def empty_changes() -> Dict[str, object]:
-    empty_set = {"base_count": 0, "current_count": 0, "added": [], "removed": [], "unchanged": []}
     return {
         "trade_date": {"base": None, "current": None},
         "daily_summary": {"base": None, "current": None},
-        "risk_flags": empty_set,
+        "risk_flags": _empty_text_set(),
         "watchlist": {
             "base_count": 0,
             "current_count": 0,
@@ -1386,8 +1389,8 @@ def empty_changes() -> Dict[str, object]:
             "base": {"ok": None, "summary": {}, "warning_codes": [], "error_codes": []},
             "current": {"ok": None, "summary": {}, "warning_codes": [], "error_codes": []},
             "summary_delta": {},
-            "warning_codes": empty_set,
-            "error_codes": empty_set,
+            "warning_codes": _empty_text_set(),
+            "error_codes": _empty_text_set(),
         },
     }
 
@@ -1527,6 +1530,15 @@ def next_commands_for_entries(entries: List[Dict[str, object]]) -> List[str]:
     if not entries:
         return ["market-intel daily --runtime --json", "market-intel journal save --runtime --json"]
     return ["market-intel journal latest --text", "market-intel journal show %s --json" % entries[0]["id"]]
+
+
+def _parse_timestamp(value: object) -> datetime:
+    if not value:
+        return datetime.min
+    try:
+        return datetime.fromisoformat(str(value))
+    except (ValueError, TypeError):
+        return datetime.min
 
 
 def safe_id(value: str) -> str:

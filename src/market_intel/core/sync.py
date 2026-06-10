@@ -149,7 +149,7 @@ def _transform_quotes(
     """Convert akshare DataFrame rows to our Quote dict format."""
     records: List[Dict[str, Any]] = []
 
-    for _, row in spot_df.iterrows():
+    for row in spot_df.to_dict("records"):
         symbol = str(row.get("代码", "")).strip()
         if not symbol or len(symbol) != 6:
             continue

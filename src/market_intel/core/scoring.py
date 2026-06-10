@@ -51,10 +51,10 @@ def build_hotspot(layer: str, sub_sector: str, members: List[Tuple[PoolItem, Quo
         "intraday_fade_penalty": clamp(avg_fade * 12),
     }
     score = clamp(
-        breakdown["avg_change_score"] * 0.20
-        + breakdown["turnover_expansion_score"] * 0.20
-        + breakdown["strong_member_score"] * 0.20
-        + breakdown["leader_strength_score"] * 0.20
+        breakdown["avg_change_score"] * 0.225
+        + breakdown["turnover_expansion_score"] * 0.225
+        + breakdown["strong_member_score"] * 0.225
+        + breakdown["leader_strength_score"] * 0.225
         + breakdown["persistence_score"] * 0.10
         - breakdown["intraday_fade_penalty"] * 0.10
     )
