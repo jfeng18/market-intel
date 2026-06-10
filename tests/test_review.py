@@ -141,8 +141,14 @@ def test_review_report_with_journal_history(tmp_path, monkeypatch):
     """When there's a prior journal entry, changes should be available."""
     monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(tmp_path / "runtime"))
 
+    from datetime import datetime, timedelta
+    now = datetime.now().astimezone()
+    recent = (now - timedelta(hours=1)).isoformat()
+    recent2 = now.isoformat()
+
     first_payload = _mock_daily_payload()
     first_payload["data"]["risk_flags"] = ["量比异常"]
+    first_payload["meta"]["generated_at"] = recent
     build_review_report(
         sync_result=_mock_sync_result(),
         daily_payload=first_payload,
@@ -152,7 +158,7 @@ def test_review_report_with_journal_history(tmp_path, monkeypatch):
 
     second_payload = _mock_daily_payload()
     second_payload["data"]["risk_flags"] = ["持仓集中度偏高"]
-    second_payload["meta"]["generated_at"] = "2026-06-08T17:00:00+08:00"
+    second_payload["meta"]["generated_at"] = recent2
 
     result = build_review_report(
         sync_result=_mock_sync_result(),
