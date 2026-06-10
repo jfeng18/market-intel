@@ -46,6 +46,7 @@ from .core.map_view import build_market_map
 from .core.models import Holding, PoolItem
 from .core.normalize import explain_pool_item, find_pool_item
 from .core.pool_edit import pool_add, pool_remove
+from .core.server import start_server
 from .core.pool_loader import DEFAULT_POOL, default_pool_path, list_pools, load_pool
 from .core.review import build_review_report
 from .core.portfolio import build_portfolio_explain, build_portfolio_review
@@ -293,6 +294,12 @@ def build_parser() -> argparse.ArgumentParser:
     review_parser.add_argument("--output", help="HTML output file path")
     review_parser.add_argument("--json", action="store_true", dest="as_json")
     review_parser.add_argument("--text", action="store_true")
+
+    serve_parser = subparsers.add_parser("serve", help="启动本地复盘工作台（浏览器访问）")
+    serve_parser.add_argument("--port", type=int, default=8080)
+    serve_parser.add_argument("--no-open", action="store_true", help="不自动打开浏览器")
+    serve_parser.add_argument("--pool", default=DEFAULT_POOL)
+    serve_parser.add_argument("--window", choices=["day", "week", "month"], default="day")
 
     sync_parser = subparsers.add_parser("sync", help="数据同步")
     sync_subparsers = sync_parser.add_subparsers(dest="action")
@@ -631,6 +638,21 @@ def main(argv: Optional[List[str]] = None) -> int:
             if args.text:
                 print(render_review_text(result))
                 return 0 if result["ok"] else 1
+        elif args.resource == "serve":
+            def _review_for_serve():
+                return handle_review(
+                    pool=args.pool,
+                    window=args.window,
+                    no_sync=False,
+                    no_save=False,
+                )
+            start_server(
+                review_fn=_review_for_serve,
+                html_fn=render_review_html,
+                port=args.port,
+                open_browser=not args.no_open,
+            )
+            return 0
         elif args.resource == "import" and args.action == "schema":
             result = handle_import_schema()
         elif args.resource == "import" and args.action == "quotes":
