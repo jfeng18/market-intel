@@ -1,6 +1,7 @@
 """Local HTTP server for the review HTML report."""
 
 import json
+import socket
 import threading
 import webbrowser
 from http.server import HTTPServer, BaseHTTPRequestHandler
@@ -72,6 +73,7 @@ text-decoration:none;font-size:0.85em;font-weight:600">刷新复盘</a>
 def start_server(
     review_fn: Callable[[], Dict[str, Any]],
     html_fn: Callable[[Dict[str, Any]], str],
+    host: str = "127.0.0.1",
     port: int = 8080,
     open_browser: bool = True,
 ) -> None:
@@ -81,11 +83,15 @@ def start_server(
     ReviewHandler._cached_html = ""
     ReviewHandler._cached_payload = {}
 
-    server = HTTPServer(("127.0.0.1", port), ReviewHandler)
+    server = HTTPServer((host, port), ReviewHandler)
     url = "http://127.0.0.1:%d" % port
 
     print("复盘工作台已启动: %s" % url)
-    print("按 Ctrl+C 停止。")
+    if host == "0.0.0.0":
+        lan_ip = _get_lan_ip()
+        if lan_ip:
+            print("手机访问（同一 WiFi）: http://%s:%d" % (lan_ip, port))
+    print("请保持此窗口打开。关闭将停止服务。")
 
     if open_browser:
         threading.Timer(0.5, lambda: webbrowser.open(url)).start()
@@ -94,4 +100,16 @@ def start_server(
         server.serve_forever()
     except KeyboardInterrupt:
         print("\n已停止。")
+        server.shutdown()
+
+
+def _get_lan_ip() -> Optional[str]:
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        return None
         server.shutdown()

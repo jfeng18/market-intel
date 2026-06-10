@@ -88,6 +88,21 @@ tr:hover { background: rgba(88,166,255,0.04); }
 .guardrails { color: var(--text-dim); font-size: 0.8em;
               margin-top: 24px; padding-top: 8px;
               border-top: 1px solid var(--border); }
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #ffffff; --surface: #f6f8fa; --border: #d0d7de;
+    --text: #1f2328; --text-muted: #656d76; --text-dim: #8c959f;
+    --red: #cf222e; --green: #1a7f37; --yellow: #9a6700;
+    --blue: #0969da; --purple: #8250df; --orange: #bc4c00;
+  }
+  .badge-red { background: rgba(207,34,46,0.1); }
+  .badge-green { background: rgba(26,127,55,0.1); }
+  .badge-yellow { background: rgba(154,103,0,0.1); }
+  .badge-blue { background: rgba(9,105,218,0.1); }
+  .badge-purple { background: rgba(130,80,223,0.1); }
+  .badge-dim { background: rgba(140,149,159,0.15); }
+  tr:hover { background: rgba(9,105,218,0.04); }
+}
 </style>
 </head>
 <body>
@@ -303,7 +318,7 @@ def _render_watchlist(data: Dict[str, Any]) -> str:
                 _esc(str(item.get("sub_sector", item.get("layer", "")))),
                 "pos" if change_pct > 0 else "neg" if change_pct < 0 else "",
                 change_bar,
-                "+" if change_pct > 0 else "",
+                "↑+" if change_pct > 0 else "↓" if change_pct < 0 else "",
                 change_pct,
                 volume_dot,
                 amount_ratio,
@@ -364,7 +379,7 @@ def _render_portfolio(data: Dict[str, Any]) -> str:
                 priority_class, _esc(priority),
                 "pos" if change_pct > 0 else "neg" if change_pct < 0 else "",
                 change_bar,
-                "+" if change_pct > 0 else "",
+                "↑+" if change_pct > 0 else "↓" if change_pct < 0 else "",
                 change_pct,
                 volume_dot,
                 amount_ratio,

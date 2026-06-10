@@ -1616,7 +1616,7 @@ def test_dashboard_mock_returns_demo_workbench_without_runtime(monkeypatch, tmp_
     assert "个人复盘操作系统" in text
     assert "候选:" in text
     assert "先看:" in text
-    assert "原因: 300308 中际旭创 | 复核多链路或主题重叠是否导致同涨同跌暴露。 | 风险 追高风险、多链路暴露、主题重叠" in text
+    assert "原因: 300308 中际旭创 | 复核多链路或主题重叠是否导致同涨同跌暴露。 | 风险 追高风险、多板块持仓重叠、主题重叠" in text
     assert "压力: 链路 运力/CPO / 硅光 | 持仓 2；主题 光通信 | 持仓 2" in text
     assert "首项: 300499 高澜股份 | 缺 行业/主题链路、公司角色、研究证据 | 已补齐或记录缺失原因" in text
     assert "命令: market-intel pool explain 300499 --json" in text

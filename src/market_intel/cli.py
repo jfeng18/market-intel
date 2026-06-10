@@ -296,6 +296,7 @@ def build_parser() -> argparse.ArgumentParser:
     review_parser.add_argument("--text", action="store_true")
 
     serve_parser = subparsers.add_parser("serve", help="启动本地复盘工作台（浏览器访问）")
+    serve_parser.add_argument("--host", default="127.0.0.1", help="绑定地址（0.0.0.0 允许手机访问）")
     serve_parser.add_argument("--port", type=int, default=8080)
     serve_parser.add_argument("--no-open", action="store_true", help="不自动打开浏览器")
     serve_parser.add_argument("--pool", default=DEFAULT_POOL)
@@ -649,6 +650,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             start_server(
                 review_fn=_review_for_serve,
                 html_fn=render_review_html,
+                host=args.host,
                 port=args.port,
                 open_browser=not args.no_open,
             )

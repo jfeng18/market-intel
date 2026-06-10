@@ -2327,13 +2327,23 @@ def command_state_effect(command: str) -> str:
         return "writes_journal"
     if " import schema " in padded:
         return "read_only"
-    if " import " in padded and " --dry-run " not in padded:
-        return "writes_runtime"
+    if " import " in padded:
+        return "read_only" if " --dry-run " in padded else "writes_runtime"
     if " init runtime" in command:
         return "writes_runtime"
     if " pool add " in padded or " pool remove " in padded:
         return "read_only" if " --dry-run " in padded else "writes_runtime"
-    return "read_only"
+    for known_read in [" scan ", " daily ", " brief ", " watchlist ", " map ",
+                        " hotspots ", " focus ", " dashboard ", " status ",
+                        " validate ", " pool list ", " pool coverage ",
+                        " pool quality ", " pool explain ", " pool expansion ",
+                        " pool research ", " pool universe ", " agent ",
+                        " journal list ", " journal latest ", " journal show ",
+                        " journal compare ", " journal timeline ", " journal notes ",
+                        " holdings impact ", " portfolio review ", " portfolio explain "]:
+        if known_read in padded:
+            return "read_only"
+    return "unknown"
 
 
 def command_input_context(command: str) -> List[str]:
