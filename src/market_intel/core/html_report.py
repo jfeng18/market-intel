@@ -2,6 +2,7 @@
 
 import html
 import json
+import math
 from typing import Any, Dict, List, Optional
 
 from .text_report import LABELS
@@ -226,7 +227,7 @@ def _render_hotspots(data: Dict[str, Any]) -> str:
 
     lines = ["<h2>热点板块</h2>", "<table>"]
     lines.append("<tr><th></th><th>板块</th><th>层级</th><th class='num'>评分</th>"
-                 "<th class='num'>活跃</th><th>龙头</th><th>信号</th></tr>")
+                 "<th>雷达</th><th class='num'>活跃</th><th>龙头</th><th>信号</th></tr>")
 
     for i, hs in enumerate(hotspots[:8]):
         if not isinstance(hs, dict):
@@ -240,17 +241,22 @@ def _render_hotspots(data: Dict[str, Any]) -> str:
         signals = hs.get("signals", []) if isinstance(hs.get("signals"), list) else []
         signal_text = ", ".join(_esc(_label(str(s))) for s in signals[:3]) or "-"
 
-        bar_width = max(2, min(80, int(score * 0.8)))
+        score_bar = _svg_score_bar(score)
+        breakdown = hs.get("breakdown", {}) if isinstance(hs.get("breakdown"), dict) else {}
+        radar = _svg_radar(breakdown)
+
         lines.append(
             "<tr><td><span class='heat' style='background:%s'></span></td>"
             "<td>%s</td><td>%s</td>"
-            "<td class='num'><span class='bar bar-%s' style='width:%dpx'></span> %.1f</td>"
+            "<td class='num'>%s <span>%.1f</span></td>"
+            "<td>%s</td>"
             "<td class='num'>%s/%s</td><td>%s</td><td>%s</td></tr>"
             % (
                 heat_color,
                 _esc(str(hs.get("sub_sector", ""))),
                 _esc(str(hs.get("layer", ""))),
-                _score_bar_class(score), bar_width, score,
+                score_bar, score,
+                radar,
                 _esc(str(hs.get("active_member_count", 0))),
                 _esc(str(hs.get("member_count", 0))),
                 leader_text,
@@ -282,10 +288,13 @@ def _render_watchlist(data: Dict[str, Any]) -> str:
         hotspot_score = _safe_float(item.get("hotspot_score"), 0)
         holding_badge = '<span class="badge badge-purple">持仓</span>' if item.get("is_holding") else ""
 
+        change_bar = _svg_change_bar(change_pct)
+        volume_dot = _svg_volume_dot(amount_ratio)
+
         lines.append(
             "<tr><td>%s</td><td>%s</td><td>%s</td>"
-            "<td class='num %s'>%s%.2f%%</td>"
-            "<td class='num'>%.1f</td>"
+            "<td class='num %s'>%s <span>%s%.2f%%</span></td>"
+            "<td class='num'>%s <span>%.1f</span></td>"
             "<td class='num'>%.0f</td>"
             "<td>%s</td><td>%s</td></tr>"
             % (
@@ -293,8 +302,10 @@ def _render_watchlist(data: Dict[str, Any]) -> str:
                 _esc(str(item.get("name", ""))),
                 _esc(str(item.get("sub_sector", item.get("layer", "")))),
                 "pos" if change_pct > 0 else "neg" if change_pct < 0 else "",
+                change_bar,
                 "+" if change_pct > 0 else "",
                 change_pct,
+                volume_dot,
                 amount_ratio,
                 hotspot_score,
                 holding_badge,
@@ -338,19 +349,24 @@ def _render_portfolio(data: Dict[str, Any]) -> str:
         )
         review_text = _esc("; ".join(str(p) for p in review_points[:2])[:60])
 
+        change_bar = _svg_change_bar(change_pct)
+        volume_dot = _svg_volume_dot(amount_ratio)
+
         lines.append(
             "<tr><td>%s</td><td>%s</td>"
             '<td><span class="badge %s">%s</span></td>'
-            "<td class='num %s'>%s%.2f%%</td>"
-            "<td class='num'>%.1f</td>"
+            "<td class='num %s'>%s <span>%s%.2f%%</span></td>"
+            "<td class='num'>%s <span>%.1f</span></td>"
             "<td>%s</td><td>%s</td></tr>"
             % (
                 _esc(str(item.get("symbol", ""))),
                 _esc(str(item.get("name", ""))),
                 priority_class, _esc(priority),
                 "pos" if change_pct > 0 else "neg" if change_pct < 0 else "",
+                change_bar,
                 "+" if change_pct > 0 else "",
                 change_pct,
+                volume_dot,
                 amount_ratio,
                 risk_badges or "-",
                 review_text or "-",
@@ -489,6 +505,132 @@ def _safe_float(value: Any, default: float = 0.0) -> float:
 
 def _label(key: str) -> str:
     return LABELS.get(key, key)
+
+
+# ---------------------------------------------------------------------------
+# Inline SVG sparkline generators
+# ---------------------------------------------------------------------------
+
+
+def _svg_change_bar(change_pct: float) -> str:
+    """Horizontal bar centered at midpoint. Red right (positive), green left (negative).
+
+    Max width 60px, height 14px. 10% = full half-width (30px).
+    """
+    width = 60
+    height = 14
+    mid = width / 2
+    clamped = max(-10.0, min(10.0, change_pct))
+    bar_len = abs(clamped) / 10.0 * mid
+    bar_len = max(1, bar_len)
+
+    if clamped >= 0:
+        color = "var(--red)"
+        x = mid
+    else:
+        color = "var(--green)"
+        x = mid - bar_len
+
+    return (
+        '<svg width="%d" height="%d" style="vertical-align:middle">'
+        '<rect x="%.1f" y="3" width="%.1f" height="8" rx="1" fill="%s" opacity="0.85"/>'
+        '<line x1="%.1f" y1="1" x2="%.1f" y2="13" stroke="var(--text-dim)" stroke-width="0.5"/>'
+        "</svg>"
+    ) % (width, height, x, bar_len, color, mid, mid)
+
+
+def _svg_volume_dot(amount_ratio: float) -> str:
+    """Circle with radius proportional to amount_ratio.
+
+    Min radius 3px, max 8px. Color: blue (<1.5), yellow (1.5-3), orange (>3).
+    SVG canvas 18x18px.
+    """
+    size = 18
+    clamped = max(0.0, min(5.0, amount_ratio))
+    radius = 3 + (clamped / 5.0) * 5  # 3..8
+    radius = max(3.0, min(8.0, radius))
+
+    if amount_ratio > 3:
+        color = "var(--orange)"
+    elif amount_ratio >= 1.5:
+        color = "var(--yellow)"
+    else:
+        color = "var(--blue)"
+
+    return (
+        '<svg width="%d" height="%d" style="vertical-align:middle">'
+        '<circle cx="9" cy="9" r="%.1f" fill="%s" opacity="0.8"/>'
+        "</svg>"
+    ) % (size, size, radius, color)
+
+
+def _svg_score_bar(score: float, max_score: float = 100) -> str:
+    """Thin horizontal progress bar. Width 50px, height 8px.
+
+    Background dim. Fill colored by score: red >70, yellow >50, blue <=50.
+    """
+    width = 50
+    height = 8
+    ratio = max(0.0, min(1.0, score / max_score)) if max_score > 0 else 0
+    fill_w = ratio * width
+
+    if score > 70:
+        color = "var(--red)"
+    elif score > 50:
+        color = "var(--yellow)"
+    else:
+        color = "var(--blue)"
+
+    return (
+        '<svg width="%d" height="%d" style="vertical-align:middle">'
+        '<rect x="0" y="0" width="%d" height="%d" rx="2" fill="var(--text-dim)" opacity="0.3"/>'
+        '<rect x="0" y="0" width="%.1f" height="%d" rx="2" fill="%s" opacity="0.8"/>'
+        "</svg>"
+    ) % (width, height, width, height, fill_w, height, color)
+
+
+def _svg_radar(breakdown: dict) -> str:
+    """6-point radar chart, 36x36px.
+
+    Each axis 0-1 normalized from breakdown dict values.
+    Fill: semi-transparent blue. Stroke: theme blue.
+    """
+    size = 36
+    cx = size / 2
+    cy = size / 2
+    max_r = 14  # max radius for points
+
+    # Take up to 6 values, pad with 0 if fewer
+    values: List[float] = []
+    if isinstance(breakdown, dict):
+        for v in list(breakdown.values())[:6]:
+            values.append(max(0.0, min(1.0, _safe_float(v, 0))))
+    while len(values) < 6:
+        values.append(0.0)
+
+    # Compute polygon points
+    points = []
+    for i in range(6):
+        angle = math.pi / 2 + i * (2 * math.pi / 6)
+        r = values[i] * max_r
+        px = cx + r * math.cos(angle)
+        py = cy - r * math.sin(angle)
+        points.append("%.1f,%.1f" % (px, py))
+
+    # Background hexagon (guides)
+    guide_points = []
+    for i in range(6):
+        angle = math.pi / 2 + i * (2 * math.pi / 6)
+        px = cx + max_r * math.cos(angle)
+        py = cy - max_r * math.sin(angle)
+        guide_points.append("%.1f,%.1f" % (px, py))
+
+    return (
+        '<svg width="%d" height="%d" style="vertical-align:middle">'
+        '<polygon points="%s" fill="none" stroke="var(--text-dim)" stroke-width="0.5" opacity="0.4"/>'
+        '<polygon points="%s" fill="var(--blue)" fill-opacity="0.25" stroke="var(--blue)" stroke-width="1"/>'
+        "</svg>"
+    ) % (size, size, " ".join(guide_points), " ".join(points))
 
 
 def _esc(text: str) -> str:

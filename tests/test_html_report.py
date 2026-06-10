@@ -1,6 +1,15 @@
 import json
 
-from market_intel.core.html_report import render_review_html, _score_color, _priority_badge_class, _esc
+from market_intel.core.html_report import (
+    render_review_html,
+    _score_color,
+    _priority_badge_class,
+    _esc,
+    _svg_change_bar,
+    _svg_volume_dot,
+    _svg_score_bar,
+    _svg_radar,
+)
 
 
 def _mock_review_payload():
@@ -295,3 +304,258 @@ def test_html_cli_flag(tmp_path, monkeypatch):
     content = output_path.read_text(encoding="utf-8")
     assert "<!DOCTYPE html>" in content
     assert "复盘报告" in content
+
+
+# ---------------------------------------------------------------------------
+# SVG sparkline unit tests
+# ---------------------------------------------------------------------------
+
+
+class TestSvgChangeBar:
+    """Tests for _svg_change_bar."""
+
+    def test_positive_produces_red_fill_right_side(self):
+        svg = _svg_change_bar(5.0)
+        assert 'fill="var(--red)"' in svg
+        # x should be at midpoint (30.0) for positive values
+        assert 'x="30.0"' in svg
+
+    def test_negative_produces_green_fill_left_side(self):
+        svg = _svg_change_bar(-5.0)
+        assert 'fill="var(--green)"' in svg
+        # x should be less than midpoint for negative values
+        # bar_len = 5/10 * 30 = 15, so x = 30 - 15 = 15
+        assert 'x="15.0"' in svg
+
+    def test_zero_produces_minimal_bar(self):
+        svg = _svg_change_bar(0.0)
+        # Zero gets clamped to bar_len=max(1, 0)=1, red side
+        assert 'width="1' in svg
+        assert 'fill="var(--red)"' in svg
+
+    def test_large_positive_clamped_to_max(self):
+        svg = _svg_change_bar(20.0)
+        # Clamped to 10, bar_len = 10/10 * 30 = 30
+        assert 'width="30.0"' in svg
+        # x starts at midpoint
+        assert 'x="30.0"' in svg
+
+    def test_large_negative_clamped_to_max(self):
+        svg = _svg_change_bar(-20.0)
+        # Clamped to -10, bar_len = 10/10 * 30 = 30
+        assert 'width="30.0"' in svg
+        # x = 30 - 30 = 0
+        assert 'x="0.0"' in svg
+
+    def test_returns_valid_svg(self):
+        svg = _svg_change_bar(3.0)
+        assert svg.startswith("<svg")
+        assert svg.endswith("</svg>")
+
+    def test_bar_does_not_exceed_container(self):
+        """Even with extreme values, rect stays within 60px width."""
+        for val in [-100, -10, 0, 10, 100]:
+            svg = _svg_change_bar(val)
+            # Extract x and width from rect; x + width should not exceed 60
+            import re
+            match = re.search(r'<rect x="([0-9.]+)" y="3" width="([0-9.]+)"', svg)
+            assert match is not None
+            x = float(match.group(1))
+            w = float(match.group(2))
+            assert x + w <= 60.0
+
+
+class TestSvgVolumeDot:
+    """Tests for _svg_volume_dot."""
+
+    def test_low_ratio_produces_blue(self):
+        svg = _svg_volume_dot(1.0)
+        assert 'fill="var(--blue)"' in svg
+
+    def test_medium_ratio_produces_yellow(self):
+        svg = _svg_volume_dot(2.0)
+        assert 'fill="var(--yellow)"' in svg
+
+    def test_high_ratio_produces_orange(self):
+        svg = _svg_volume_dot(4.0)
+        assert 'fill="var(--orange)"' in svg
+
+    def test_boundary_1_5_is_yellow(self):
+        svg = _svg_volume_dot(1.5)
+        assert 'fill="var(--yellow)"' in svg
+
+    def test_boundary_3_0_is_yellow(self):
+        """Exactly 3.0 is still in the 1.5-3 range (not >3)."""
+        svg = _svg_volume_dot(3.0)
+        assert 'fill="var(--yellow)"' in svg
+
+    def test_just_above_3_is_orange(self):
+        svg = _svg_volume_dot(3.01)
+        assert 'fill="var(--orange)"' in svg
+
+    def test_returns_valid_svg(self):
+        svg = _svg_volume_dot(2.5)
+        assert svg.startswith("<svg")
+        assert svg.endswith("</svg>")
+
+    def test_zero_ratio_produces_blue_min_radius(self):
+        svg = _svg_volume_dot(0.0)
+        assert 'fill="var(--blue)"' in svg
+        assert 'r="3.0"' in svg
+
+
+class TestSvgScoreBar:
+    """Tests for _svg_score_bar."""
+
+    def test_score_zero_produces_minimal_fill(self):
+        svg = _svg_score_bar(0)
+        # ratio = 0/100 = 0, fill_w = 0.0
+        assert 'width="0.0"' in svg
+
+    def test_score_100_produces_full_fill(self):
+        svg = _svg_score_bar(100)
+        # ratio = 1.0, fill_w = 50.0
+        assert 'width="50.0"' in svg
+
+    def test_score_above_70_is_red(self):
+        svg = _svg_score_bar(85)
+        assert 'fill="var(--red)"' in svg
+
+    def test_score_above_50_is_yellow(self):
+        svg = _svg_score_bar(60)
+        assert 'fill="var(--yellow)"' in svg
+
+    def test_score_at_50_is_blue(self):
+        svg = _svg_score_bar(50)
+        assert 'fill="var(--blue)"' in svg
+
+    def test_score_below_50_is_blue(self):
+        svg = _svg_score_bar(30)
+        assert 'fill="var(--blue)"' in svg
+
+    def test_score_at_70_boundary_is_yellow(self):
+        """Score exactly 70 is not >70, so yellow."""
+        svg = _svg_score_bar(70)
+        assert 'fill="var(--yellow)"' in svg
+
+    def test_returns_valid_svg(self):
+        svg = _svg_score_bar(50)
+        assert svg.startswith("<svg")
+        assert svg.endswith("</svg>")
+
+    def test_has_background_rect(self):
+        svg = _svg_score_bar(50)
+        assert 'fill="var(--text-dim)"' in svg
+
+
+class TestSvgRadar:
+    """Tests for _svg_radar."""
+
+    def test_empty_dict_produces_valid_svg(self):
+        svg = _svg_radar({})
+        assert svg.startswith("<svg")
+        assert svg.endswith("</svg>")
+        # Should have two polygon elements (guide + data)
+        assert svg.count("<polygon") == 2
+
+    def test_dict_with_six_keys_produces_polygon(self):
+        breakdown = {
+            "momentum": 0.8,
+            "volume": 0.6,
+            "leaders": 0.9,
+            "breadth": 0.4,
+            "sentiment": 0.5,
+            "structure": 0.7,
+        }
+        svg = _svg_radar(breakdown)
+        assert "<polygon" in svg
+        # Data polygon should have non-center points
+        assert 'stroke="var(--blue)"' in svg
+
+    def test_values_clamped_above_one(self):
+        breakdown = {"a": 2.0, "b": 1.5, "c": 3.0, "d": 0.5, "e": 10.0, "f": -1.0}
+        svg = _svg_radar(breakdown)
+        assert svg.startswith("<svg")
+        assert svg.endswith("</svg>")
+        # All values should be clamped to [0, 1], so max radius is 14
+        # Points should not exceed cx+14=32 or go below cx-14=4
+        import re
+        data_match = re.findall(r'<polygon points="([^"]+)"', svg)
+        assert len(data_match) == 2
+        data_points_str = data_match[1]
+        for pair in data_points_str.split():
+            x, y = pair.split(",")
+            assert 4.0 <= float(x) <= 32.0
+            assert 4.0 <= float(y) <= 32.0
+
+    def test_all_zeros_collapses_to_center(self):
+        breakdown = {"a": 0, "b": 0, "c": 0, "d": 0, "e": 0, "f": 0}
+        svg = _svg_radar(breakdown)
+        # All points should be at center (18.0, 18.0)
+        assert "18.0,18.0" in svg
+
+    def test_fewer_than_six_keys_pads_with_zero(self):
+        breakdown = {"a": 0.5, "b": 0.8}
+        svg = _svg_radar(breakdown)
+        assert svg.startswith("<svg")
+        assert svg.endswith("</svg>")
+        # Should still produce valid polygon (6 points)
+        import re
+        data_match = re.findall(r'<polygon points="([^"]+)"', svg)
+        data_points = data_match[1].split()
+        assert len(data_points) == 6
+
+
+# ---------------------------------------------------------------------------
+# SVG sparkline integration tests
+# ---------------------------------------------------------------------------
+
+
+class TestSvgSparklineIntegration:
+    """Integration tests: SVG sparklines appear in the full HTML report."""
+
+    def test_html_report_contains_svg_elements(self):
+        html_out = render_review_html(_mock_review_payload())
+        assert "<svg" in html_out
+        assert "</svg>" in html_out
+
+    def test_sparklines_in_watchlist_table(self):
+        html_out = render_review_html(_mock_review_payload())
+        # Watchlist items have change_pct and amount_ratio, so SVGs should appear
+        # The watchlist section should contain change_bar and volume_dot SVGs
+        watchlist_start = html_out.index("观察清单")
+        # Find next section or end
+        try:
+            watchlist_end = html_out.index("<h2>", watchlist_start + 1)
+        except ValueError:
+            watchlist_end = len(html_out)
+        watchlist_section = html_out[watchlist_start:watchlist_end]
+        assert "<svg" in watchlist_section
+        # Should have both change_bar (rect with red/green) and volume_dot (circle)
+        assert "<rect" in watchlist_section
+        assert "<circle" in watchlist_section
+
+    def test_sparklines_in_hotspot_table(self):
+        html_out = render_review_html(_mock_review_payload())
+        hotspot_start = html_out.index("热点板块")
+        try:
+            hotspot_end = html_out.index("<h2>", hotspot_start + 1)
+        except ValueError:
+            hotspot_end = len(html_out)
+        hotspot_section = html_out[hotspot_start:hotspot_end]
+        # Hotspots have score_bar and radar SVGs
+        assert "<svg" in hotspot_section
+        assert "<polygon" in hotspot_section  # radar chart
+
+    def test_sparklines_in_portfolio_table(self):
+        html_out = render_review_html(_mock_review_payload())
+        portfolio_start = html_out.index("持仓复核")
+        try:
+            portfolio_end = html_out.index("<h2>", portfolio_start + 1)
+        except ValueError:
+            portfolio_end = len(html_out)
+        portfolio_section = html_out[portfolio_start:portfolio_end]
+        # Portfolio items have change_bar and volume_dot
+        assert "<svg" in portfolio_section
+        assert "<rect" in portfolio_section
+        assert "<circle" in portfolio_section
