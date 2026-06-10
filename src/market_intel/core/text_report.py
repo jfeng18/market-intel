@@ -641,9 +641,11 @@ def render_review_text(payload: Dict[str, object]) -> str:
             ])
         return "\n".join(lines)
 
-    lines = ["market-intel review"]
-
+    sync = data.get("sync", {}) if isinstance(data.get("sync"), dict) else {}
     changes = data.get("changes", {}) if isinstance(data.get("changes"), dict) else {}
+    window_label = changes.get("window_label", "日级")
+    trade_date = sync.get("trade_date", "")
+    lines = ["market-intel review（%s | %s）" % (window_label, trade_date or "-")]
     if changes.get("available"):
         lines.extend([
             "",
@@ -678,7 +680,7 @@ def render_review_text(payload: Dict[str, object]) -> str:
     if risk_flags:
         lines.extend(["", "风险标记"])
         for flag in risk_flags[:8]:
-            lines.append("- %s" % flag)
+            lines.append("- %s" % LABELS.get(str(flag), str(flag)))
 
     journal = data.get("journal_entry", {}) if isinstance(data.get("journal_entry"), dict) else {}
     journal_status = data.get("journal_status", {}) if isinstance(data.get("journal_status"), dict) else {}

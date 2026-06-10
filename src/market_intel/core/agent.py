@@ -2331,6 +2331,8 @@ def command_state_effect(command: str) -> str:
         return "writes_runtime"
     if " init runtime" in command:
         return "writes_runtime"
+    if " pool add " in padded or " pool remove " in padded:
+        return "read_only" if " --dry-run " in padded else "writes_runtime"
     return "read_only"
 
 

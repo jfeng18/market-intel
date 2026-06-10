@@ -626,7 +626,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                 html_content = render_review_html(result)
                 output_path = args.output or "review.html"
                 Path(output_path).write_text(html_content, encoding="utf-8")
-                print("HTML report written to: %s" % output_path)
+                print("HTML 报告已写入: %s" % output_path)
                 return 0 if result["ok"] else 1
             if args.text:
                 print(render_review_text(result))

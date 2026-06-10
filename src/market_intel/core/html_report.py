@@ -97,14 +97,17 @@ tr:hover { background: rgba(88,166,255,0.04); }
 
 def _render_header(data: Dict[str, Any], meta: Dict[str, Any]) -> str:
     sync = data.get("sync", {}) if isinstance(data.get("sync"), dict) else {}
+    changes = data.get("changes", {}) if isinstance(data.get("changes"), dict) else {}
     generated = _esc(str(meta.get("generated_at", ""))[:19])
     trade_date = _esc(str(sync.get("trade_date", "")))
+    window_label = _esc(str(changes.get("window_label", "")))
 
     return """<h1>复盘报告</h1>
-<div class="subtitle">%s &middot; 行情日期 %s &middot; 标的 %s</div>""" % (
+<div class="subtitle">%s &middot; %s &middot; 行情日期 %s &middot; 标的 %s</div>""" % (
         generated or "-",
+        window_label or "日级",
         trade_date or "-",
-        sync.get("record_count", 0),
+        _esc(str(sync.get("record_count", 0))),
     )
 
 
