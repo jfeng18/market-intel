@@ -94,6 +94,24 @@ def test_command_contract_describes_runtime_imports():
     assert research_dry_run["runnable"] is False
 
 
+def test_command_contract_marks_pool_add_remove_as_writes():
+    add_item = command_queue_item("market-intel pool add 600519 --name 贵州茅台", 1, [])
+    assert add_item["state_effect"] == "writes_runtime"
+    assert add_item["mutates_state"] is True
+
+    add_dry = command_queue_item("market-intel pool add 600519 --dry-run", 2, [])
+    assert add_dry["state_effect"] == "read_only"
+    assert add_dry["mutates_state"] is False
+
+    remove_item = command_queue_item("market-intel pool remove 600519", 3, [])
+    assert remove_item["state_effect"] == "writes_runtime"
+    assert remove_item["mutates_state"] is True
+
+    remove_dry = command_queue_item("market-intel pool remove 600519 --dry-run", 4, [])
+    assert remove_dry["state_effect"] == "read_only"
+    assert remove_dry["mutates_state"] is False
+
+
 def import_runtime_with_many_holdings(monkeypatch, tmp_path):
     monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(tmp_path / "runtime"))
     handle_import_quotes("examples/quotes.csv.example", use_runtime=True)
