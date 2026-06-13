@@ -53,7 +53,7 @@ def test_command_contract_marks_review_and_sync_state_effects():
     assert sync_item["state_effect"] == "writes_runtime"
     assert sync_item["mutates_state"] is True
     assert "data.record_count" in sync_item["read_fields"]
-    assert sync_item["input_context"] == ["akshare_or_trade_date", "runtime_quotes"]
+    assert sync_item["input_context"] == ["quote_provider_or_trade_date", "runtime_quotes"]
     assert "行情" in sync_item["done_when"]
 
     dry_run_sync = command_queue_item("market-intel sync quotes --dry-run", 4, [])
@@ -92,6 +92,12 @@ def test_command_contract_describes_runtime_imports():
     assert research_dry_run["input_context"] == ["research_notes_csv", "runtime_research_notes"]
     assert "reviewed" in research_dry_run["done_when"]
     assert research_dry_run["runnable"] is False
+
+    tradegov = command_queue_item("market-intel import holdings --from-tradegov --runtime --dry-run --json", 4, [])
+    assert tradegov["state_effect"] == "read_only"
+    assert tradegov["input_context"] == ["tradegov_status_current", "runtime_holdings"]
+    assert "data.read_only_source" in tradegov["read_fields"]
+    assert "tradegov" in tradegov["output_use"]
 
 
 def test_command_contract_marks_pool_add_remove_as_writes():
@@ -476,6 +482,11 @@ def test_agent_briefing_ready_without_journal(monkeypatch, tmp_path):
     assert data["daily"]["security_review_queue"][0]["note_command"].startswith("market-intel journal note --section security_review")
     assert data["daily"]["security_review_queue"][0]["note_prerequisite"]["requires_journal_entry"] is True
     assert data["daily"]["security_review_queue"][0]["note_prerequisite"]["archive_runnable"] is True
+    assert data["daily"]["evidence_gaps"]["items"]
+    first_gap = data["daily"]["evidence_gaps"]["items"][0]
+    assert first_gap["symbol"]
+    assert first_gap["missing_evidence"]
+    assert first_gap["handoff_commands"][0].startswith("market-intel portfolio explain")
     assert data["daily"]["journal_actions"]
     assert data["daily"]["journal_actions"][0]["command"].startswith("market-intel journal save")
     assert data["daily"]["command_queue"]
@@ -565,6 +576,28 @@ def test_agent_briefing_ready_without_journal(monkeypatch, tmp_path):
     assert "data.command_queue[].state_effect" in data["agent_contract"]["stable_fields"]
     assert "data.security_review_queue" in data["agent_contract"]["stable_fields"]
     assert "data.history.latest_entry.latest_note" in data["agent_contract"]["stable_fields"]
+
+
+def test_agent_briefing_livermore_profile_is_review_checklist(monkeypatch, tmp_path):
+    import_runtime_examples(monkeypatch, tmp_path)
+
+    payload = handle_agent_briefing("ai-energy", max_quote_age_days=9999, profile="livermore")
+    data = payload["data"]
+    profile = data["livermore_profile"]
+
+    assert payload["ok"] is True
+    assert data["profile"] == "livermore"
+    assert profile["mode"] == "checklist_review_only"
+    assert profile["market_structure"]["available"] is True
+    assert profile["portfolio_relative_position"]["holding_count"] >= 1
+    assert profile["evidence_gaps"]["items"]
+    assert profile["next_command_queue"]
+    assert "trade_signal" in profile["guardrails"]["forbidden_outputs"]
+    assert profile["boundary"] == "Checklist/review only; not a trade signal."
+    assert "data.livermore_profile.evidence_gaps" in data["agent_contract"]["stable_fields"]
+    text = render_agent_briefing_text(payload)
+    assert "Livermore" in text
+    assert "checklist/review only" in text
 
 
 def test_agent_briefing_surfaces_all_a_sector_profile(monkeypatch, tmp_path):

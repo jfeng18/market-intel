@@ -30,6 +30,7 @@ def build_daily_report(
     risk_register = build_risk_register(brief, watchlist, portfolio_review, validation)
     review_tasks = build_review_tasks(brief, market_map, watchlist, portfolio_review, validation)
     security_review_queue = build_daily_security_queue(watchlist, portfolio_review)
+    evidence_gaps = build_evidence_gaps(watchlist, portfolio_review)
 
     return {
         "summary": build_report_summary(brief, market_map, watchlist, portfolio_review, validation, risks),
@@ -47,6 +48,7 @@ def build_daily_report(
         "next_questions": build_next_questions(brief, market_map, portfolio_review, validation),
         "review_tasks": review_tasks,
         "security_review_queue": security_review_queue,
+        "evidence_gaps": evidence_gaps,
         "agent_contract": daily_contract(),
         "guardrails": [
             "这是复盘报告，不是交易指令。",
@@ -104,6 +106,10 @@ def daily_contract() -> Dict[str, object]:
             "data.security_review_queue[].commands",
             "data.security_review_queue[].note_command",
             "data.security_review_queue[].note_prerequisite",
+            "data.evidence_gaps",
+            "data.evidence_gaps.items",
+            "data.evidence_gaps.items[].missing_evidence",
+            "data.evidence_gaps.items[].handoff_commands",
             "data.journal_actions",
             "data.journal_actions[].command",
             "data.command_queue",
@@ -1055,6 +1061,88 @@ def watchlist_security_context(item: Dict[str, object]) -> Dict[str, object]:
         "sub_sector": item.get("sub_sector"),
         "hotspot_score": item.get("hotspot_score"),
     }
+
+
+def build_evidence_gaps(
+    watchlist: Dict[str, object],
+    portfolio_review: Dict[str, object],
+) -> Dict[str, object]:
+    rows: Dict[str, Dict[str, object]] = {}
+    portfolio_items = portfolio_review.get("items", []) if isinstance(portfolio_review.get("items"), list) else []
+    for item in portfolio_items:
+        if isinstance(item, dict):
+            upsert_evidence_gap(rows, item, source="holding")
+    watch_items = watchlist.get("items", []) if isinstance(watchlist.get("items"), list) else []
+    for item in watch_items:
+        if isinstance(item, dict) and item.get("is_holding"):
+            upsert_evidence_gap(rows, item, source="watchlist_holding")
+    items = sorted(rows.values(), key=evidence_gap_sort_key)
+    return {
+        "summary": evidence_gap_summary(items),
+        "item_count": len(items),
+        "items": items[:12],
+        "source": "daily.portfolio_review+watchlist",
+        "guardrail": "证据缺口只生成复核队列，不生成交易建议。",
+    }
+
+
+def upsert_evidence_gap(rows: Dict[str, Dict[str, object]], item: Dict[str, object], source: str) -> None:
+    symbol = str(item.get("symbol") or "").strip()
+    if not symbol:
+        return
+    research = item.get("research_status", {}) if isinstance(item.get("research_status"), dict) else {}
+    coverage_state = str(item.get("coverage_state") or "")
+    missing = evidence_gap_missing_fields(research, coverage_state, item)
+    if not missing:
+        return
+    row = rows.get(symbol)
+    if row is None:
+        row = {
+            "symbol": symbol,
+            "name": item.get("name") or symbol,
+            "sources": [],
+            "coverage_state": coverage_state or None,
+            "research_status": research.get("status") or "missing",
+            "missing_evidence": [],
+            "handoff_commands": evidence_gap_commands(symbol),
+            "done_when": "已从 researchgov/companygov 或 reviewed research_notes 补齐缺口，并重新运行 agent briefing。",
+        }
+        rows[symbol] = row
+    row["sources"] = sorted(set(list(row.get("sources", [])) + [source]))
+    row["missing_evidence"] = sorted(set(list(row.get("missing_evidence", [])) + missing))
+
+
+def evidence_gap_missing_fields(research: Dict[str, object], coverage_state: str, item: Dict[str, object]) -> List[str]:
+    missing = []
+    status = str(research.get("status") or "missing")
+    if status == "missing" or not research.get("available"):
+        missing.extend(["researchgov:claim_or_report", "companygov:company_dossier"])
+    for field in research.get("missing_fields", []) if isinstance(research.get("missing_fields"), list) else []:
+        missing.append("research_notes:%s" % field)
+    if coverage_state in {"foundation", "draft", "missing"}:
+        missing.append("companygov:coverage_context")
+    if not item.get("hotspot_context") and item.get("has_quote"):
+        missing.append("market_structure:sector_context")
+    return missing
+
+
+def evidence_gap_commands(symbol: str) -> List[str]:
+    return [
+        "market-intel portfolio explain %s --runtime --json" % symbol,
+        "market-intel pool explain %s --runtime --json" % symbol,
+        "market-intel pool research --runtime --dry-run --json",
+    ]
+
+
+def evidence_gap_sort_key(item: Dict[str, object]) -> tuple:
+    missing = item.get("missing_evidence", []) if isinstance(item.get("missing_evidence"), list) else []
+    return (-len(missing), str(item.get("symbol") or ""))
+
+
+def evidence_gap_summary(items: List[Dict[str, object]]) -> str:
+    if not items:
+        return "持仓/观察标的暂无显式证据缺口。"
+    return "证据缺口 %s 个标的；优先补 researchgov/companygov 或 reviewed research_notes。" % len(items)
 
 
 def review_task(

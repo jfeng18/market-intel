@@ -1,4 +1,4 @@
-PYTHON ?= python3
+PYTHON ?= $(if $(wildcard .venv/bin/python),.venv/bin/python,python3)
 PIP := $(PYTHON) -m pip
 PYTEST := $(PYTHON) -m pytest
 CLI ?= market-intel
@@ -25,10 +25,13 @@ smoke:
 	$(PYTHON) -m market_intel.cli pool add 000001 --dry-run --json >/dev/null
 	$(PYTHON) -m market_intel.cli pool remove 000001 --dry-run --json >/dev/null
 	$(PYTHON) -m market_intel.cli pool quality invalid_symbol --json >/dev/null
+	$(PYTHON) -m market_intel.cli provider health --json >/dev/null || true
+	$(PYTHON) -m market_intel.cli sync quotes --provider tencent-batch --symbols 000001 --dry-run --json >/dev/null || true
 	$(PYTHON) -m market_intel.cli scan --mock --text >/dev/null
 	$(PYTHON) -m market_intel.cli daily --mock --text >/dev/null
 	$(PYTHON) -m market_intel.cli focus --mock --text >/dev/null || true
 	$(PYTHON) -m market_intel.cli dashboard --mock --text >/dev/null
+	$(PYTHON) -m market_intel.cli agent briefing --profile livermore --json >/dev/null || true
 	$(PYTHON) -m market_intel.cli review --no-sync --no-save --text >/dev/null 2>&1 || true
 
 console-smoke:

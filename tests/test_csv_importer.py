@@ -13,6 +13,7 @@ from market_intel.cli import (
 from market_intel.core.csv_importer import read_csv_rows
 from market_intel.core.fixtures import load_holdings_file, load_quotes_file
 from market_intel.core.text_report import render_import_text, render_import_universe_text
+from market_intel.core.tradegov import import_tradegov_holdings
 
 
 def test_import_schema_is_agent_friendly():
@@ -144,6 +145,102 @@ def test_import_holdings_writes_output(tmp_path):
     assert payload["data"]["written"] is True
     assert holdings[0].symbol == "002837"
     assert holdings[0].quantity == 1000
+
+
+def test_import_tradegov_holdings_dry_run_is_read_only(monkeypatch, tmp_path):
+    runtime = tmp_path / "runtime"
+    monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(runtime))
+
+    payload = {
+        "data": {
+            "positions": [
+                {"symbol": "SZ:000001", "name": "平安银行", "quantity": "100", "cost_price": "11.2"},
+                {"code": "600519", "security_name": "贵州茅台", "shares": 2},
+            ]
+        }
+    }
+    data = import_tradegov_holdings(runtime / "holdings.json", dry_run=True, runtime=True, raw_payload=payload)
+
+    assert data["errors"] == []
+    assert data["read_only_source"] is True
+    assert data["tradegov_written"] is False
+    assert data["record_count"] == 2
+    assert data["preview"][0]["symbol"] == "000001"
+    assert data["preview"][0]["source"] == "tradegov:status-current"
+    assert not (runtime / "holdings.json").exists()
+    assert data["next_commands"][0] == "market-intel import holdings --from-tradegov --runtime --json"
+
+
+def test_handle_import_holdings_from_tradegov_writes_market_intel_runtime(monkeypatch, tmp_path):
+    runtime = tmp_path / "runtime"
+    monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(runtime))
+    payload = {
+        "data": {
+            "holdings": [
+                {"symbol": "000001", "name": "平安银行", "quantity": 100},
+            ]
+        }
+    }
+
+    monkeypatch.setattr(
+        "market_intel.core.tradegov.read_tradegov_status",
+        lambda _command: (payload, []),
+    )
+
+    result = handle_import_holdings(None, use_runtime=True, from_tradegov=True)
+
+    assert result["ok"] is True
+    assert result["data"]["source_kind"] == "tradegov.status_current"
+    assert result["data"]["read_only_source"] is True
+    assert result["data"]["written"] is True
+    assert result["data"]["tradegov_written"] is False
+    assert result["data"]["source_metadata"]["read_only"] is True
+    assert load_holdings_file(runtime / "holdings.json")[0].symbol == "000001"
+    manifest = json.loads((runtime / "runtime_manifest.json").read_text(encoding="utf-8"))
+    assert manifest["source"] == "import.holdings"
+
+
+def test_import_holdings_from_tradegov_missing_command_is_clean_error(monkeypatch, tmp_path):
+    runtime = tmp_path / "runtime"
+    monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(runtime))
+    monkeypatch.setattr("market_intel.core.tradegov.shutil.which", lambda _name: None)
+    monkeypatch.setattr("market_intel.core.tradegov.TRADEGOV_REPO", tmp_path / "missing-tradegov")
+
+    result = handle_import_holdings(None, use_runtime=True, dry_run=True, from_tradegov=True)
+
+    assert result["ok"] is False
+    assert result["errors"][0]["code"] == "TRADEGOV_NOT_FOUND"
+    assert not (runtime / "holdings.json").exists()
+
+
+def test_import_holdings_from_tradegov_falls_back_to_module_command(monkeypatch, tmp_path):
+    runtime = tmp_path / "runtime"
+    repo = tmp_path / "tradegov"
+    repo.mkdir()
+    monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(runtime))
+    monkeypatch.setattr("market_intel.core.tradegov.shutil.which", lambda _name: None)
+    monkeypatch.setattr("market_intel.core.tradegov.TRADEGOV_REPO", repo)
+
+    seen = {}
+
+    class Completed:
+        returncode = 0
+        stdout = json.dumps({"data": {"positions": [{"symbol": "002261", "name": "拓维信息", "quantity": 100}]}})
+
+    def fake_run(command, **kwargs):
+        seen["command"] = command
+        seen["cwd"] = kwargs.get("cwd")
+        return Completed()
+
+    monkeypatch.setattr("market_intel.core.tradegov.subprocess.run", fake_run)
+
+    result = handle_import_holdings(None, use_runtime=True, dry_run=True, from_tradegov=True)
+
+    assert result["ok"] is True
+    assert seen["cwd"] == str(repo)
+    assert seen["command"][-4:] == ["-m", "tradegov.cli", "status-current", "--json"]
+    assert result["data"]["preview"][0]["symbol"] == "002261"
+    assert result["data"]["tradegov_written"] is False
 
 
 def test_import_universe_dry_run_normalizes_chinese_csv(tmp_path):

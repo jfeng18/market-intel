@@ -79,7 +79,8 @@ market-intel pool coverage --runtime --text
 |------|------|
 | `serve` | 启动浏览器复盘工作台 |
 | `review` | 一键复盘（同步+报告+变化追踪+留档） |
-| `sync quotes` | 同步全 A 行情（akshare/东方财富） |
+| `provider health` | 小样本检查行情 provider readiness |
+| `sync quotes` | 同步全 A/降级行情（akshare/Eastmoney/Tencent） |
 | `pool add/remove` | 添加/移除覆盖池标的 |
 | `pool list/coverage/explain` | 查看覆盖池、覆盖率、标的详情 |
 | `scan` | 全市场扫描 |
@@ -93,8 +94,9 @@ market-intel pool coverage --runtime --text
 | `dashboard` | 一屏工作台 |
 | `journal save/list/show/compare/timeline/note` | 日报留档全链路 |
 | `import schema/quotes/holdings/universe/research` | CSV 数据导入（支持 GBK 自动检测） |
+| `import holdings --from-tradegov` | 只读读取 tradegov 当前持仓 |
 | `status runtime` | 运行时状态诊断 |
-| `agent plan/briefing/run/next` | Agent 工作流 |
+| `agent plan/briefing/run/next` | Agent 工作流，支持 `briefing --profile livermore` |
 
 运行 `market-intel --help` 查看所有命令。
 
@@ -109,7 +111,11 @@ AI agent 集成请参考 [AGENTS.md](AGENTS.md)。
 ## 文档
 
 - `docs/product.md`：产品边界。
+- `docs/requirements.md`：需求、非目标、JSON 合同、验收标准。
+- `docs/DEVELOPER_CONTEXT.md`：开发者/agent 修改仓库前的上下文。
+- `docs/LIVERMORE_WORKFLOW_INTEGRATION.md`：Livermore 盘后复盘工作流接入口径。
 - `docs/data-model.md`：稳定 JSON 口径。
+- `docs/design.md`：核心架构与流程；当前仓库的 CLI_DESIGN_STANDARD 入口。
 - `docs/review.md`：验收清单。
 
 ## 验证

@@ -112,6 +112,7 @@ def compact_daily_payload(payload: Optional[Dict[str, object]]) -> Dict[str, obj
             "next_questions": [],
             "review_tasks": [],
             "security_review_queue": [],
+            "evidence_gaps": {"summary": "runtime 暂不可生成证据缺口。", "item_count": 0, "items": []},
             "security_risk_profile": [],
             "journal_actions": [],
             "command_queue": [],
@@ -157,6 +158,7 @@ def compact_daily_payload(payload: Optional[Dict[str, object]]) -> Dict[str, obj
         "next_questions": list(data.get("next_questions", [])) if isinstance(data.get("next_questions"), list) else [],
         "review_tasks": compact_daily_review_tasks(data.get("review_tasks", [])),
         "security_review_queue": compact_daily_security_queue(data.get("security_review_queue", [])),
+        "evidence_gaps": compact_evidence_gaps(data.get("evidence_gaps", {})),
         "security_risk_profile": compact_security_risk_profile(data.get("security_risk_profile", [])),
         "journal_actions": compact_daily_journal_actions(data.get("journal_actions", [])),
         "command_queue": compact_command_queue(data.get("command_queue", [])),
@@ -583,6 +585,30 @@ def compact_daily_security_queue(value: object) -> List[Dict[str, object]]:
             }
         )
     return rows
+
+
+def compact_evidence_gaps(value: object) -> Dict[str, object]:
+    gaps = value if isinstance(value, dict) else {}
+    items = gaps.get("items", []) if isinstance(gaps.get("items"), list) else []
+    return {
+        "summary": gaps.get("summary"),
+        "item_count": gaps.get("item_count", len(items)),
+        "items": [
+            {
+                "symbol": item.get("symbol"),
+                "name": item.get("name"),
+                "sources": list(item.get("sources", []))[:4] if isinstance(item.get("sources"), list) else [],
+                "coverage_state": item.get("coverage_state"),
+                "research_status": item.get("research_status"),
+                "missing_evidence": list(item.get("missing_evidence", []))[:6] if isinstance(item.get("missing_evidence"), list) else [],
+                "handoff_commands": list(item.get("handoff_commands", []))[:4] if isinstance(item.get("handoff_commands"), list) else [],
+                "done_when": item.get("done_when"),
+            }
+            for item in items[:8]
+            if isinstance(item, dict)
+        ],
+        "guardrail": gaps.get("guardrail"),
+    }
 
 
 def compact_security_risk_profile(value: object, limit: int = 8) -> List[Dict[str, object]]:
@@ -1538,6 +1564,10 @@ def agent_briefing_contract(max_quote_age_days: int) -> Dict[str, object]:
             "data.daily.security_review_queue",
             "data.daily.security_review_queue[].note_command",
             "data.daily.security_review_queue[].note_prerequisite",
+            "data.daily.evidence_gaps",
+            "data.daily.evidence_gaps.items",
+            "data.daily.evidence_gaps.items[].missing_evidence",
+            "data.daily.evidence_gaps.items[].handoff_commands",
             "data.daily.security_risk_profile",
             "data.daily.security_risk_profile[].risk_ids",
             "data.daily.security_risk_profile[].commands",
@@ -2323,6 +2353,8 @@ def command_state_effect(command: str) -> str:
         return "writes_runtime_journal"
     if text.startswith("market-intel sync quotes"):
         return "read_only" if " --dry-run " in padded else "writes_runtime"
+    if text.startswith("market-intel provider health"):
+        return "read_only"
     if " journal save " in padded or " journal note " in padded:
         return "writes_journal"
     if " import schema " in padded:
@@ -2351,10 +2383,14 @@ def command_input_context(command: str) -> List[str]:
     if text.startswith("market-intel review"):
         return ["runtime_quotes", "runtime_holdings", "journal_entries", "pool"]
     if text.startswith("market-intel sync quotes"):
-        return ["akshare_or_trade_date", "runtime_quotes"]
+        return ["quote_provider_or_trade_date", "runtime_quotes"]
+    if text.startswith("market-intel provider health"):
+        return ["provider_samples", "network_status"]
     if " import quotes " in " %s " % command:
         return ["quotes_csv", "runtime_quotes"]
     if " import holdings " in " %s " % command:
+        if " --from-tradegov " in " %s " % command:
+            return ["tradegov_status_current", "runtime_holdings"]
         return ["holdings_csv", "runtime_holdings"]
     if " import universe " in " %s " % command:
         return ["a_share_universe_csv", "runtime_universe"]
@@ -2399,9 +2435,13 @@ def command_output_use(command: str) -> str:
         return "生成一键复盘结果，读取变化追踪、同步状态、留档状态和下一步队列。"
     if text.startswith("market-intel sync quotes"):
         return "更新或预检 runtime 行情，让正式复盘摆脱样例 quotes。"
+    if text.startswith("market-intel provider health"):
+        return "小样本检查行情 provider 就绪度、推荐 provider 和失败 reason_code。"
     if " import quotes " in " %s " % command:
         return "导入或 dry-run 真实行情 CSV，确认字段和记录数。"
     if " import holdings " in " %s " % command:
+        if " --from-tradegov " in " %s " % command:
+            return "从 tradegov status-current 只读导入当前持仓到 market-intel runtime。"
         return "导入或 dry-run 真实持仓 CSV，确认持仓进入复盘上下文。"
     if " import universe " in " %s " % command:
         return "导入或 dry-run A 股基础清单，确认覆盖变化和字段质量。"
@@ -2456,9 +2496,13 @@ def command_done_when(command: str) -> str:
         if " --dry-run " in " %s " % command:
             return "dry-run 无 errors，已确认 record_count、trade_date 和 preview。"
         return "行情已写入 runtime，且 data.record_count、data.trade_date 可用于 status runtime 复验。"
+    if text.startswith("market-intel provider health"):
+        return "已读取 data.status、data.recommended_provider 和 providers[].reason_code。"
     if " import quotes " in " %s " % command:
         return "导入结果 ok=true；若是 dry-run，确认 errors 为空后再去掉 --dry-run 写入 runtime。"
     if " import holdings " in " %s " % command:
+        if " --from-tradegov " in " %s " % command:
+            return "tradegov 只读读取成功；dry-run 无 errors 后再去掉 --dry-run 写入 market-intel runtime。"
         return "导入结果 ok=true，真实持仓已进入 runtime 或 dry-run 已确认可写入。"
     if " import universe " in " %s " % command:
         return "coverage_delta 已确认；dry-run 无 errors 后再决定是否写入 runtime。"
@@ -2514,8 +2558,13 @@ def command_read_contract(command: str) -> tuple:
         )
     if text.startswith("market-intel sync quotes"):
         return (
-            ["data.record_count", "data.trade_date", "data.summary", "errors", "warnings"],
+            ["data.record_count", "data.trade_date", "data.summary", "data.coverage", "errors", "warnings"],
             "同步或预检全 A 行情。",
+        )
+    if text.startswith("market-intel provider health"):
+        return (
+            ["data.status", "data.recommended_provider", "data.providers[].ready", "data.providers[].reason_code"],
+            "读取 provider 小样本健康状态。",
         )
     if " import quotes " in " %s " % command:
         return (
@@ -2523,6 +2572,11 @@ def command_read_contract(command: str) -> tuple:
             "导入或预检行情 CSV。",
         )
     if " import holdings " in " %s " % command:
+        if " --from-tradegov " in " %s " % command:
+            return (
+                ["data.record_count", "data.source_metadata", "data.read_only_source", "errors", "warnings"],
+                "从 tradegov status-current 读取当前持仓，不写 tradegov。",
+            )
         return (
             ["data.record_count", "data.preview", "data.next_commands", "errors", "warnings"],
             "导入或预检持仓 CSV。",

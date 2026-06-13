@@ -86,6 +86,7 @@ def build_review_report(
         "brief": daily_data.get("brief"),
         "watchlist": daily_data.get("watchlist"),
         "portfolio_review": daily_data.get("portfolio_review"),
+        "evidence_gaps": daily_data.get("evidence_gaps"),
         "validation": daily_data.get("validation"),
         "journal_saved": journal_entry is not None,
         "journal_entry": _compact_journal_entry(journal_entry) if journal_entry else None,
@@ -351,6 +352,9 @@ def _agent_contract() -> Dict[str, Any]:
             "data.command_queue[].runnable",
             "data.command_queue[].state_effect",
             "data.command_queue[].done_when",
+            "data.evidence_gaps",
+            "data.evidence_gaps.items[].missing_evidence",
+            "data.evidence_gaps.items[].handoff_commands",
         ],
         "boundary": "不产生交易指令、目标价或仓位建议。",
         "read_order": [

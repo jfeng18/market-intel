@@ -89,6 +89,10 @@ def test_daily_mock_shape():
     assert data["security_review_queue"][0]["note_command"].startswith("market-intel journal note --section security_review")
     assert data["security_review_queue"][0]["note_prerequisite"]["requires_journal_entry"] is True
     assert data["security_review_queue"][0]["note_prerequisite"]["archive_runnable"] is False
+    assert "data.evidence_gaps" in data["agent_contract"]["stable_fields"]
+    assert "data.evidence_gaps.items[].missing_evidence" in data["agent_contract"]["stable_fields"]
+    assert data["evidence_gaps"]["items"]
+    assert data["evidence_gaps"]["items"][0]["handoff_commands"][0].startswith("market-intel portfolio explain")
     assert "data.journal_actions" in data["agent_contract"]["stable_fields"]
     assert data["journal_actions"][0]["id"] == "archive_current"
     assert data["journal_actions"][0]["runnable"] is False
@@ -107,6 +111,8 @@ def test_daily_mock_shape():
     assert note_item["requires_prior_command"] == archive_item["command"]
     assert note_item["run_after_rank"] == archive_item["rank"]
     assert note_item["json_command"].endswith(" --json")
+    text = render_daily_report_text(payload)
+    assert "证据缺口" in text
 
 
 def test_daily_requires_source():

@@ -55,7 +55,8 @@ from .core.scan import build_market_scan
 from .core.scoring import calculate_hotspots
 from .core.status import build_runtime_status
 from .core.symbols import normalize_symbol_input
-from .core.sync import sync_quotes
+from .core.sync import provider_health, sync_quotes
+from .core.tradegov import import_tradegov_holdings
 from .core.text_report import (
     render_brief_text,
     render_agent_briefing_text,
@@ -84,6 +85,7 @@ from .core.text_report import (
     render_runtime_status_text,
     render_review_text,
     render_scan_text,
+    render_provider_health_text,
     render_sync_text,
     render_watchlist_text,
 )
@@ -290,6 +292,7 @@ def build_parser() -> argparse.ArgumentParser:
     review_parser.add_argument("--map-top", type=int, default=2)
     review_parser.add_argument("--no-sync", action="store_true")
     review_parser.add_argument("--no-save", action="store_true")
+    review_parser.add_argument("--provider", choices=["akshare", "eastmoney", "tencent", "tencent-batch", "auto"], default="auto")
     review_parser.add_argument("--html", action="store_true")
     review_parser.add_argument("--output", help="HTML output file path")
     review_parser.add_argument("--json", action="store_true", dest="as_json")
@@ -301,15 +304,24 @@ def build_parser() -> argparse.ArgumentParser:
     serve_parser.add_argument("--no-open", action="store_true", help="不自动打开浏览器")
     serve_parser.add_argument("--pool", default=DEFAULT_POOL)
     serve_parser.add_argument("--window", choices=["day", "week", "month"], default="day")
+    serve_parser.add_argument("--provider", choices=["akshare", "eastmoney", "tencent", "tencent-batch", "auto"], default="auto")
 
     sync_parser = subparsers.add_parser("sync", help="数据同步")
     sync_subparsers = sync_parser.add_subparsers(dest="action")
-    sync_quotes_parser = sync_subparsers.add_parser("quotes", help="同步全 A 行情（akshare）")
+    sync_quotes_parser = sync_subparsers.add_parser("quotes", help="同步行情（akshare 全 A 或腾讯精选标的）")
     sync_quotes_parser.add_argument("--dry-run", action="store_true")
+    sync_quotes_parser.add_argument("--provider", choices=["akshare", "eastmoney", "tencent", "tencent-batch", "auto"], default="akshare")
     sync_quotes_parser.add_argument("--symbols", nargs="*")
     sync_quotes_parser.add_argument("--trade-date")
     sync_quotes_parser.add_argument("--json", action="store_true", dest="as_json")
     sync_quotes_parser.add_argument("--text", action="store_true")
+
+    provider_parser = subparsers.add_parser("provider", help="行情 provider 诊断")
+    provider_subparsers = provider_parser.add_subparsers(dest="action")
+    provider_health_parser = provider_subparsers.add_parser("health", help="provider 小样本健康检查")
+    provider_health_parser.add_argument("--symbol", default="000001")
+    provider_health_parser.add_argument("--json", action="store_true", dest="as_json")
+    provider_health_parser.add_argument("--text", action="store_true")
 
     import_parser = subparsers.add_parser("import", help="CSV 数据导入")
     import_subparsers = import_parser.add_subparsers(dest="action")
@@ -326,7 +338,8 @@ def build_parser() -> argparse.ArgumentParser:
     import_quotes_parser.add_argument("--text", action="store_true")
 
     import_holdings_parser = import_subparsers.add_parser("holdings", help="导入持仓 CSV")
-    import_holdings_parser.add_argument("csv_path")
+    import_holdings_parser.add_argument("csv_path", nargs="?")
+    import_holdings_parser.add_argument("--from-tradegov", action="store_true")
     import_holdings_parser.add_argument("--runtime", action="store_true")
     import_holdings_parser.add_argument("--output")
     import_holdings_parser.add_argument("--dry-run", action="store_true")
@@ -382,6 +395,7 @@ def build_parser() -> argparse.ArgumentParser:
     agent_briefing_parser.add_argument("--top", type=int, default=5)
     agent_briefing_parser.add_argument("--map-top", type=int, default=2)
     agent_briefing_parser.add_argument("--max-quote-age-days", type=int, default=3)
+    agent_briefing_parser.add_argument("--profile", choices=["default", "livermore"], default="default")
     agent_briefing_parser.add_argument("--json", action="store_true", dest="as_json")
     agent_briefing_parser.add_argument("--text", action="store_true")
     agent_run_parser = agent_subparsers.add_parser("run", help="Agent 自动执行")
@@ -630,6 +644,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                 args.map_top,
                 args.no_sync,
                 args.no_save,
+                args.provider,
                 progress_fn=_review_progress,
             )
             if args.html:
@@ -648,6 +663,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                     window=args.window,
                     no_sync=False,
                     no_save=False,
+                    provider=args.provider,
                     progress_fn=print,
                 )
             start_server(
@@ -677,6 +693,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                 args.runtime,
                 args.output,
                 args.dry_run,
+                from_tradegov=args.from_tradegov,
             )
             if args.text:
                 print(render_import_text(result))
@@ -705,13 +722,19 @@ def main(argv: Optional[List[str]] = None) -> int:
         elif args.resource == "sync" and args.action == "quotes":
             _sync_progress = print if args.text else None
             result = handle_sync_quotes(
-                args.dry_run,
-                args.symbols,
-                args.trade_date,
+                dry_run=args.dry_run,
+                symbols=args.symbols,
+                trade_date=args.trade_date,
+                provider=args.provider,
                 progress_fn=_sync_progress,
             )
             if args.text:
                 print(render_sync_text(result))
+                return 0 if result["ok"] else 1
+        elif args.resource == "provider" and args.action == "health":
+            result = handle_provider_health(args.symbol)
+            if args.text:
+                print(render_provider_health_text(result))
                 return 0 if result["ok"] else 1
         elif args.resource == "init" and args.action == "runtime":
             result = handle_init_runtime(args.force)
@@ -728,7 +751,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                 print(render_agent_plan_text(result))
                 return 0
         elif args.resource == "agent" and args.action == "briefing":
-            result = handle_agent_briefing(args.pool, args.top, args.map_top, args.max_quote_age_days)
+            result = handle_agent_briefing(args.pool, args.top, args.map_top, args.max_quote_age_days, args.profile)
             if args.text and result["ok"]:
                 print(render_agent_briefing_text(result))
                 return 0
@@ -1950,6 +1973,7 @@ def handle_review(
     map_top: int = 2,
     no_sync: bool = False,
     no_save: bool = False,
+    provider: str = "auto",
     progress_fn=None,
 ) -> Dict[str, Any]:
     sync_result: Dict[str, Any] = {
@@ -1961,7 +1985,7 @@ def handle_review(
         "warnings": [],
     }
     if not no_sync:
-        sync_result = sync_quotes(dry_run=False, progress_fn=progress_fn)
+        sync_result = sync_quotes(dry_run=False, progress_fn=progress_fn, provider=provider, pool=pool)
 
     daily_payload = handle_daily(
         pool=pool,
@@ -2028,17 +2052,38 @@ def handle_sync_quotes(
     dry_run: bool = False,
     symbols: Optional[List[str]] = None,
     trade_date: Optional[str] = None,
+    provider: str = "akshare",
+    pool: str = DEFAULT_POOL,
     progress_fn=None,
 ) -> Dict[str, Any]:
-    data = sync_quotes(dry_run=dry_run, symbols=symbols, trade_date=trade_date, progress_fn=progress_fn)
+    data = sync_quotes(
+        dry_run=dry_run,
+        symbols=symbols,
+        trade_date=trade_date,
+        provider=provider,
+        pool=pool,
+        progress_fn=progress_fn,
+    )
     errors = data.get("errors", [])
     return envelope(
         command="sync.quotes",
         data=data,
         warnings=data.get("warnings", []),
         errors=errors if isinstance(errors, list) else [],
-        source="sync:akshare",
+        source="sync:%s" % data.get("source", provider),
         ok=not bool(errors),
+    )
+
+
+def handle_provider_health(symbol: str = "000001") -> Dict[str, Any]:
+    data = provider_health(symbol=symbol)
+    return envelope(
+        command="provider.health",
+        data=data,
+        warnings=[],
+        errors=[],
+        source="provider.health",
+        ok=True,
     )
 
 
@@ -2072,20 +2117,44 @@ def handle_import_quotes(
 
 
 def handle_import_holdings(
-    csv_path: str,
+    csv_path: Optional[str],
     use_runtime: bool = False,
     output: Optional[str] = None,
     dry_run: bool = False,
+    from_tradegov: bool = False,
 ) -> Dict[str, Any]:
     target = resolve_import_output("holdings", use_runtime, output, dry_run)
     if target.get("error"):
-        return import_config_error("import.holdings", target["error"], csv_path)
-    data = import_holdings_csv(
-        Path(csv_path),
-        target["path"],
-        dry_run=dry_run,
-        runtime=use_runtime,
-    )
+        return import_config_error("import.holdings", target["error"], csv_path or "holdings")
+    if from_tradegov:
+        if csv_path:
+            return import_config_error(
+                "import.holdings",
+                error(
+                    "IMPORT_HOLDINGS_SOURCE_CONFLICT",
+                    "Use either csv_path or --from-tradegov, not both.",
+                    {},
+                ),
+                csv_path,
+            )
+        data = import_tradegov_holdings(target["path"], dry_run=dry_run, runtime=use_runtime)
+    else:
+        if not csv_path:
+            return import_config_error(
+                "import.holdings",
+                error(
+                    "IMPORT_HOLDINGS_INPUT_REQUIRED",
+                    "Import holdings requires csv_path or --from-tradegov.",
+                    {},
+                ),
+                "holdings",
+            )
+        data = import_holdings_csv(
+            Path(csv_path),
+            target["path"],
+            dry_run=dry_run,
+            runtime=use_runtime,
+        )
     mark_runtime_import_if_written("holdings", data, use_runtime, dry_run)
     return import_envelope("import.holdings", data)
 
@@ -2288,6 +2357,7 @@ def handle_agent_briefing(
     top: int = 5,
     map_top: int = 2,
     max_quote_age_days: int = 3,
+    profile: str = "default",
 ) -> Dict[str, Any]:
     items = load_pool(pool)
     status_data = build_runtime_status(items, max_quote_age_days=max_quote_age_days, pool=pool)
@@ -2330,6 +2400,27 @@ def handle_agent_briefing(
         current_compare_data,
         max_quote_age_days=max_quote_age_days,
     )
+    if profile == "livermore":
+        data["profile"] = "livermore"
+        data["livermore_profile"] = build_livermore_profile(data, status_data)
+        contract = data.get("agent_contract", {}) if isinstance(data.get("agent_contract"), dict) else {}
+        fields = contract.get("stable_fields", []) if isinstance(contract.get("stable_fields"), list) else []
+        contract["stable_fields"] = fields + [
+            "data.profile",
+            "data.livermore_profile",
+            "data.livermore_profile.mode",
+            "data.livermore_profile.checklist",
+            "data.livermore_profile.market_structure",
+            "data.livermore_profile.portfolio_relative_position",
+            "data.livermore_profile.data_quality",
+            "data.livermore_profile.evidence_gaps",
+            "data.livermore_profile.next_command_queue",
+            "data.livermore_profile.guardrails",
+        ]
+        contract["boundary"] = "Livermore profile 是 checklist/review only，不生成交易信号、目标价或仓位建议。"
+        data["agent_contract"] = contract
+    else:
+        data["profile"] = "default"
     warnings = status_warnings(status_data)
     warnings.extend(timeline_data.get("warnings", []) if isinstance(timeline_data.get("warnings"), list) else [])
     if isinstance(compare_data, dict):
@@ -2347,6 +2438,70 @@ def handle_agent_briefing(
         source="%s;%s" % (status_data["files"]["quotes"]["path"], status_data["files"]["holdings"]["path"]),
         ok=True,
     )
+
+
+def build_livermore_profile(data: Dict[str, Any], status_data: Dict[str, object]) -> Dict[str, object]:
+    daily = data.get("daily", {}) if isinstance(data.get("daily"), dict) else {}
+    market_scan = data.get("market_scan", {}) if isinstance(data.get("market_scan"), dict) else {}
+    runtime = data.get("runtime", {}) if isinstance(data.get("runtime"), dict) else {}
+    portfolio = daily.get("portfolio_review", {}) if isinstance(daily.get("portfolio_review"), dict) else {}
+    exposure = daily.get("portfolio_exposure", {}) if isinstance(daily.get("portfolio_exposure"), dict) else {}
+    evidence = daily.get("evidence_gaps", {}) if isinstance(daily.get("evidence_gaps"), dict) else {}
+    readiness = runtime.get("readiness", {}) if isinstance(runtime.get("readiness"), dict) else {}
+    validation = runtime.get("validation", {}) if isinstance(runtime.get("validation"), dict) else {}
+    freshness = runtime.get("freshness", {}) if isinstance(runtime.get("freshness"), dict) else {}
+    queue = data.get("command_queue", []) if isinstance(data.get("command_queue"), list) else []
+    next_queue = [item for item in queue if isinstance(item, dict)][:8]
+    return {
+        "mode": "checklist_review_only",
+        "summary": "Livermore 盘后雷达：市场结构、组合映射、证据缺口、下一检查队列。",
+        "checklist": [
+            "确认 runtime 是否 ready/degraded/blocked。",
+            "读取 market_structure 判断热点是否有足够样本支撑。",
+            "读取 portfolio_relative_position 判断持仓相对市场结构的位置。",
+            "读取 evidence_gaps，将缺口交给 researchgov/companygov 或 reviewed research_notes。",
+            "按 next_command_queue 继续只读复核。",
+        ],
+        "market_structure": {
+            "available": bool(market_scan.get("available")),
+            "summary": market_scan.get("summary"),
+            "scan_mode": market_scan.get("scan_mode"),
+            "market_breadth": market_scan.get("market_breadth"),
+            "sector_groups": market_scan.get("sector_groups", [])[:5] if isinstance(market_scan.get("sector_groups"), list) else [],
+        },
+        "portfolio_relative_position": {
+            "available": bool(daily.get("available")),
+            "holding_count": portfolio.get("count", 0),
+            "high_review_count": portfolio.get("high_review_count", 0),
+            "top_items": portfolio.get("top_items", [])[:5] if isinstance(portfolio.get("top_items"), list) else [],
+            "portfolio_exposure": exposure,
+        },
+        "data_quality": {
+            "readiness": readiness,
+            "validation": validation,
+            "freshness": freshness,
+            "status": status_data.get("status") if isinstance(status_data, dict) else None,
+        },
+        "evidence_gaps": evidence,
+        "next_command_queue": next_queue,
+        "boundary": "Checklist/review only; not a trade signal.",
+        "guardrails": {
+            "allowed_outputs": [
+                "market_structure",
+                "portfolio_relative_position",
+                "data_quality",
+                "evidence_gaps",
+                "next_command_queue",
+            ],
+            "forbidden_outputs": [
+                "trade_signal",
+                "buy_or_sell_advice",
+                "price_target",
+                "position_sizing",
+            ],
+            "fallback_policy": "Interpret fallback quotes by coverage; selected/watchlist data is not full-A breadth.",
+        },
+    }
 
 
 def handle_agent_run(

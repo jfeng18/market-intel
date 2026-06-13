@@ -682,6 +682,11 @@ def render_review_text(payload: Dict[str, object]) -> str:
         for flag in risk_flags[:8]:
             lines.append("- %s" % LABELS.get(str(flag), str(flag)))
 
+    evidence = data.get("evidence_gaps", {}) if isinstance(data.get("evidence_gaps"), dict) else {}
+    if evidence:
+        lines.extend(["", "证据缺口"])
+        lines.extend(render_evidence_gaps(evidence))
+
     journal = data.get("journal_entry", {}) if isinstance(data.get("journal_entry"), dict) else {}
     journal_status = data.get("journal_status", {}) if isinstance(data.get("journal_status"), dict) else {}
     if data.get("journal_saved"):
@@ -701,12 +706,23 @@ def render_sync_text(payload: Dict[str, object]) -> str:
     if not isinstance(data, dict):
         return "market-intel sync quotes\n\n无数据。"
     summary = data.get("summary", {}) if isinstance(data.get("summary"), dict) else {}
+    source = str(data.get("source") or "akshare")
+    source_label = {
+        "akshare": "akshare (东方财富)",
+        "tencent": "Tencent 财经",
+        "auto": "auto",
+    }.get(source, source)
+    provider_note = ""
+    if data.get("requested_provider") and data.get("requested_provider") != source:
+        provider_note = " | requested %s" % data.get("requested_provider")
+    if data.get("fallback_used"):
+        provider_note += " | fallback true"
     lines = [
         "market-intel sync quotes",
         "",
         "状态",
-        "- 来源 akshare (东方财富) | 日期 %s | dry_run %s | written %s"
-        % (data.get("trade_date", "-"), data.get("dry_run"), data.get("written")),
+        "- 来源 %s%s | 日期 %s | dry_run %s | written %s"
+        % (source_label, provider_note, data.get("trade_date", "-"), data.get("dry_run"), data.get("written")),
         "- 标的 %s | 涨停 %s | 阶段新高 %s"
         % (summary.get("total", 0), summary.get("limit_up", 0), summary.get("stage_high", 0)),
         "",
@@ -722,6 +738,41 @@ def render_sync_text(payload: Dict[str, object]) -> str:
     lines.extend(["", "下一步"])
     lines.extend(render_command_list(data.get("next_commands", [])))
     lines.extend(["", "边界", "- dry-run 不写入 runtime。", "- 写入后建议运行 status runtime 复验新鲜度。"])
+    return "\n".join(lines)
+
+
+def render_provider_health_text(payload: Dict[str, object]) -> str:
+    data = payload.get("data", {})
+    if not isinstance(data, dict):
+        return "market-intel provider health\n\n无数据。"
+    lines = [
+        "market-intel provider health",
+        "",
+        "状态",
+        "- %s | recommended %s | full_market_fetch %s"
+        % (data.get("status"), data.get("recommended_provider") or "-", data.get("full_market_fetch")),
+        "- %s" % (data.get("summary") or "暂无摘要。"),
+        "",
+        "Providers",
+    ]
+    providers = data.get("providers", []) if isinstance(data.get("providers"), list) else []
+    if not providers:
+        lines.append("- 暂无 provider 结果。")
+    for item in providers:
+        if not isinstance(item, dict):
+            continue
+        lines.append(
+            "- %s | %s | coverage %s | reason %s"
+            % (
+                item.get("provider"),
+                "ready" if item.get("ready") else item.get("status"),
+                item.get("coverage"),
+                item.get("reason_code") or "-",
+            )
+        )
+    lines.extend(["", "下一步"])
+    lines.extend(render_command_list(data.get("next_commands", [])))
+    lines.extend(["", "边界", "- 小样本健康检查，不拉取全市场，不生成交易建议。"])
     return "\n".join(lines)
 
 
@@ -1757,6 +1808,8 @@ def render_daily_report_text(payload: Dict[str, object]) -> str:
     lines.extend(render_daily_review_tasks(data.get("review_tasks", [])))
     lines.extend(["", "标的复核队列"])
     lines.extend(render_daily_security_queue(data.get("security_review_queue", [])))
+    lines.extend(["", "证据缺口"])
+    lines.extend(render_evidence_gaps(data.get("evidence_gaps", {})))
     lines.extend(["", "标的风险画像"])
     lines.extend(render_security_risk_profile(data.get("security_risk_profile", [])))
     lines.extend(["", "风险汇总"])
@@ -3883,6 +3936,8 @@ def render_agent_briefing_text(payload: Dict[str, object]) -> str:
     lines.extend(render_risk_register(daily.get("risk_register", []) if isinstance(daily, dict) else [], daily.get("risk_flags", []) if isinstance(daily, dict) else []))
     lines.extend(["", "标的复核队列"])
     lines.extend(render_security_review_queue(data.get("security_review_queue", [])))
+    lines.extend(["", "证据缺口"])
+    lines.extend(render_evidence_gaps(daily.get("evidence_gaps", {}) if isinstance(daily, dict) else {}))
     lines.extend(["", "标的风险画像"])
     lines.extend(render_security_risk_profile(daily.get("security_risk_profile", []) if isinstance(daily, dict) else []))
     lines.extend(["", "复核焦点"])
@@ -3899,9 +3954,31 @@ def render_agent_briefing_text(payload: Dict[str, object]) -> str:
     lines.extend(render_journal_prompt(data.get("journal_prompt", {})))
     lines.extend(["", "命令队列"])
     lines.extend(render_briefing_command_queue(data.get("command_queue", [])))
+    profile = data.get("livermore_profile", {}) if isinstance(data.get("livermore_profile"), dict) else {}
+    if profile:
+        lines.extend(["", "Livermore"])
+        lines.extend(render_livermore_profile(profile))
     lines.extend(["", "下一步"])
     lines.extend(render_command_list(data.get("next_commands", [])))
     return "\n".join(lines)
+
+
+def render_livermore_profile(value: Dict[str, object]) -> List[str]:
+    evidence = value.get("evidence_gaps", {}) if isinstance(value.get("evidence_gaps"), dict) else {}
+    market = value.get("market_structure", {}) if isinstance(value.get("market_structure"), dict) else {}
+    portfolio = value.get("portfolio_relative_position", {}) if isinstance(value.get("portfolio_relative_position"), dict) else {}
+    queue = value.get("next_command_queue", []) if isinstance(value.get("next_command_queue"), list) else []
+    lines = [
+        "- %s | %s" % (value.get("mode"), value.get("summary")),
+        "- 市场: %s" % (market.get("summary") or "暂无"),
+        "- 持仓: %s 个 | 重点 %s 个 | 证据缺口 %s 个"
+        % (portfolio.get("holding_count", 0), portfolio.get("high_review_count", 0), evidence.get("item_count", 0)),
+    ]
+    if queue:
+        first = queue[0] if isinstance(queue[0], dict) else {}
+        lines.append("- 下一检查: %s" % (first.get("json_command") or first.get("command") or "-"))
+    lines.append("- 边界: checklist/review only，不生成交易信号。")
+    return lines
 
 
 def render_journal_list_text(payload: Dict[str, object]) -> str:
@@ -4648,6 +4725,26 @@ def render_note_prerequisite(value: object) -> str:
         return "先执行 %s" % command if command else "先保存日报留档"
     reason = prereq.get("archive_reason") or "需要先接入可保存的数据源。"
     return "先保存日报留档；当前保存命令不可直接执行：%s" % reason
+
+
+def render_evidence_gaps(value: object) -> List[str]:
+    gaps = value if isinstance(value, dict) else {}
+    items = gaps.get("items", []) if isinstance(gaps.get("items"), list) else []
+    lines = ["- %s" % (gaps.get("summary") or "暂无证据缺口。")]
+    if not items:
+        return lines
+    for item in items[:5]:
+        if not isinstance(item, dict):
+            continue
+        missing = item.get("missing_evidence", []) if isinstance(item.get("missing_evidence"), list) else []
+        lines.append(
+            "- %s %s | %s"
+            % (item.get("symbol") or "-", item.get("name") or "-", "、".join(str(row) for row in missing[:4]) or "待确认")
+        )
+        commands = item.get("handoff_commands", []) if isinstance(item.get("handoff_commands"), list) else []
+        if commands:
+            lines.append("   命令: %s" % commands[0])
+    return lines
 
 
 def render_daily_journal_actions(value: object) -> List[str]:

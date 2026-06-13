@@ -203,7 +203,7 @@ def test_full_flow_review_sync_failure_does_not_save_journal(tmp_path, monkeypat
     mock_ak = MagicMock()
     mock_ak.stock_zh_a_spot_em.side_effect = Exception("network down")
     with patch.dict("sys.modules", {"akshare": mock_ak}):
-        review_result = handle_review(no_sync=False, no_save=False)
+        review_result = handle_review(no_sync=False, no_save=False, provider="akshare")
 
     assert review_result["ok"] is False
     assert review_result["data"]["sync"]["status"] == "failed"
