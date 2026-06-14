@@ -1069,13 +1069,22 @@ def build_evidence_gaps(
 ) -> Dict[str, object]:
     rows: Dict[str, Dict[str, object]] = {}
     portfolio_items = portfolio_review.get("items", []) if isinstance(portfolio_review.get("items"), list) else []
+    portfolio_by_symbol: Dict[str, Dict[str, object]] = {}
     for item in portfolio_items:
         if isinstance(item, dict):
+            symbol = str(item.get("symbol") or "").strip()
+            if symbol:
+                portfolio_by_symbol[symbol] = item
             upsert_evidence_gap(rows, item, source="holding")
     watch_items = watchlist.get("items", []) if isinstance(watchlist.get("items"), list) else []
     for item in watch_items:
         if isinstance(item, dict) and item.get("is_holding"):
-            upsert_evidence_gap(rows, item, source="watchlist_holding")
+            # Prefer the portfolio-review item for holdings when available. It
+            # is the canonical holding context and includes runtime
+            # research_notes; watchlist rows can carry thinner/missing research
+            # status and should not reintroduce stale evidence gaps.
+            symbol = str(item.get("symbol") or "").strip()
+            upsert_evidence_gap(rows, portfolio_by_symbol.get(symbol, item), source="watchlist_holding")
     items = sorted(rows.values(), key=evidence_gap_sort_key)
     return {
         "summary": evidence_gap_summary(items),
