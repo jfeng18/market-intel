@@ -19,6 +19,8 @@ git diff --check
 - 2026-06-13: added selected-symbol Tencent quote fallback.
 - 2026-06-13: added provider health, Eastmoney full-A sync, Tencent batch
   fallback, tradegov holdings import, evidence gaps, and Livermore briefing.
+- 2026-06-21: added trading-calendar-aware freshness semantics for
+  `status runtime`, `daily --runtime`, and `agent briefing`.
 - Boundaries: selected coverage is never full-A; Livermore output is review-only;
   guardrails forbid trade signals, advice, targets, and position sizing.
 
@@ -38,24 +40,19 @@ Observed:
 
 Next:
 
-1. P0: Add trading-calendar-aware freshness.
-   Use states `fresh`, `market_closed_expected_stale`,
-   `stale_on_trading_day`, and `provider_failed_using_cache`. Apply them to
-   `agent briefing`, `status runtime`, and `daily`. Test weekday fresh, weekend
-   expected stale, and trading-day stale.
-2. P1: Tighten pool quality cleanup.
+1. P1: Tighten pool quality cleanup.
    Start with `column_shift_suspected`, then `missing_role`, then missing
    concepts/index membership. Dry-run output must show source rows, suggested
    fixes, and whether an overlay can safely apply them.
-3. P1: Add compact agent summary.
+2. P1: Add compact agent summary.
    Keep full `agent briefing` unchanged. Add a compact mode or command with
    state, trade date, freshness summary, top 3 hotspots, portfolio positioning,
    data quality summary, 3-5 review questions, read-only next commands, and
    guardrails.
-4. P2: Improve provider degradation semantics.
+3. P2: Improve provider degradation semantics.
    Separate full-A status, selected-symbol status, cache status, and recommended
    mode. Never present selected-symbol data as full-market coverage.
-5. P2: Explain `SESSION-STATE` inline in
+4. P2: Explain `SESSION-STATE` inline in
    `docs/LIVERMORE_WORKFLOW_INTEGRATION.md`.
 
 Acceptance gates for the next Codex pass:
