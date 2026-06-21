@@ -1,5 +1,7 @@
 # Review
 
+Short review log. Keep details in commits, tests, and command output.
+
 ## Checks
 
 ```bash
@@ -9,57 +11,66 @@ make privacy-scan
 git diff --check
 ```
 
-## 2026-06-13 Livermore workflow integration pass
+## Done
 
-Prepared `market-intel` as Livermore's post-close all-A market-structure layer;
-added concise requirements/developer/workflow docs and README links. Prior gates:
-preflight pass, pytest pass, smoke pass, privacy-scan pass, diff-check pass.
-Use `PATH=.venv/bin:$PATH <command>` on hosts whose `python3` is below 3.10.
+- 2026-06-13: prepared the all-A workflow docs and README links.
+- 2026-06-13: bootstrapped selected holdings/watchlist runtime without claiming
+  full-A breadth.
+- 2026-06-13: added selected-symbol Tencent quote fallback.
+- 2026-06-13: added provider health, Eastmoney full-A sync, Tencent batch
+  fallback, tradegov holdings import, evidence gaps, and Livermore briefing.
+- Boundaries: selected coverage is never full-A; Livermore output is review-only;
+  guardrails forbid trade signals, advice, targets, and position sizing.
 
-## 2026-06-13 Runtime bootstrap pass
+## 2026-06-21 Usage review
 
-Bootstrapped selected holding/watchlist runtime without claiming full-A breadth:
-runtime templates, `.venv` akshare, tradegov holdings import, selected Tencent
-quotes, and merged local universe rows. Runtime was degraded but daily-ready;
-research notes still needed real `researchgov` or reviewed import.
+Verdict: keep the core architecture. Improve daily usability, degraded-data
+semantics, and agent handoff. Scope remains all-A; selected pools are fixtures.
 
-## 2026-06-13 Tencent provider pass
+Observed:
 
-Added selected-symbol Tencent quote sync for holdings/watchlist fallback. It is
-not full-A breadth. TLS uses `certifi` when available; provider dry-run and full
-gates passed after the change.
+- `agent briefing --profile livermore --json`: `ok=true`,
+  `state=degraded_with_history`, trade date `2026-06-17`.
+- Full-A providers failed in this run; selected-symbol Tencent fallback was
+  ready.
+- Runtime showed `QUOTE_DATA_STALE` on `2026-06-21`, a non-trading day.
+- Knowledge checks had no blocking errors.
 
-## 2026-06-13 Provider and Livermore roadmap pass
+Next:
 
-Organized the roadmap into runtime/provider, holdings, evidence, and briefing
-stages. Removed temporary Codex prompt files from the working tree.
+1. P0: Add trading-calendar-aware freshness.
+   Use states `fresh`, `market_closed_expected_stale`,
+   `stale_on_trading_day`, and `provider_failed_using_cache`. Apply them to
+   `agent briefing`, `status runtime`, and `daily`. Test weekday fresh, weekend
+   expected stale, and trading-day stale.
+2. P1: Tighten pool quality cleanup.
+   Start with `column_shift_suspected`, then `missing_role`, then missing
+   concepts/index membership. Dry-run output must show source rows, suggested
+   fixes, and whether an overlay can safely apply them.
+3. P1: Add compact agent summary.
+   Keep full `agent briefing` unchanged. Add a compact mode or command with
+   state, trade date, freshness summary, top 3 hotspots, portfolio positioning,
+   data quality summary, 3-5 review questions, read-only next commands, and
+   guardrails.
+4. P2: Improve provider degradation semantics.
+   Separate full-A status, selected-symbol status, cache status, and recommended
+   mode. Never present selected-symbol data as full-market coverage.
+5. P2: Explain `SESSION-STATE` inline in
+   `docs/LIVERMORE_WORKFLOW_INTEGRATION.md`.
 
-Implemented:
+Acceptance gates for the next Codex pass:
 
-- `provider health --json`: small-sample provider readiness; no full-market
-  fetch; recommendation and reason codes.
-- `sync quotes --provider eastmoney`: direct Eastmoney full-A fetch with
-  controlled fields, pagination, retry/sleep, coverage, and diagnostics.
-- `sync quotes --provider tencent-batch`: universe-based Tencent fallback with
-  request limits, retry, coverage_pct, and degraded coverage status.
-- `import holdings --from-tradegov`: read-only `tradegov status-current` source;
-  writes only market-intel runtime, never tradegov.
-- `data.evidence_gaps`: daily/review/agent handoff for researchgov/companygov or
-  reviewed research notes.
-- `agent briefing --profile livermore --json`: checklist/review-only market
-  structure, portfolio mapping, data quality, evidence gaps, and next queue.
+- New or changed JSON fields are covered by contract tests.
+- Weekend expected-stale, trading-day stale, and provider-fallback cases have
+  separate fixtures.
+- Compact summary output stays review-only and includes machine-readable
+  guardrails.
+- Pool-quality dry-runs are read-only and show source row, proposed fix, and
+  overlay/apply safety.
+- `PYTHONPATH=src python3 -m pytest -q`, `make smoke`, `make privacy-scan`, and
+  `git diff --check` pass before handoff.
 
-Boundaries:
+Guardrails:
 
-- Tencent selected and Tencent batch coverage are never presented as full-A.
-- Livermore profile is checklist/review only, not a trade signal.
-- Guardrails use machine-readable `forbidden_outputs`: `trade_signal`,
-  `buy_or_sell_advice`, `price_target`, `position_sizing`.
-
-Verification after roadmap pass:
-
-- `pytest`: 403 passed.
-- `make smoke`: pass.
-- `make privacy-scan`: pass.
-- `git diff --check`: pass.
-- `knowledge-gc preflight`: 0 errors / 0 warnings.
+- No advice, target prices, sizing, personal paths, tokens, accounts, or real
+  holdings in docs.

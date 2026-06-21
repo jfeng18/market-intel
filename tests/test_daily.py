@@ -1,8 +1,9 @@
 import json
 import shlex
 import subprocess
+from datetime import date
 
-from market_intel.cli import build_daily_command_queue, handle_daily, handle_init_runtime
+from market_intel.cli import build_daily_command_queue, handle_daily, handle_import_holdings, handle_import_quotes, handle_init_runtime
 from market_intel.core.text_report import render_daily_report_text
 
 
@@ -210,6 +211,32 @@ def test_daily_runtime(monkeypatch, tmp_path):
     assert runtime_archive["runnable"] is True
     assert runtime_note["runnable"] is True
     assert runtime_note["run_after_rank"] == runtime_archive["rank"]
+
+
+def test_daily_runtime_includes_freshness_contract(monkeypatch, tmp_path):
+    monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(tmp_path / "runtime"))
+    quotes_path = tmp_path / "quotes.csv"
+    quotes_path.write_text(
+        "证券代码,证券名称,交易日期,最新价,涨跌幅,成交额,量比,换手率,振幅,涨停,阶段新高,日内回落\n"
+        "002837,英维克,2026-06-18,39.10,1.8%,20.1亿,2.1,7.3%,3.2%,否,否,0.5%\n",
+        encoding="utf-8",
+    )
+    holdings_path = tmp_path / "holdings.csv"
+    holdings_path.write_text("证券代码,证券名称,持仓数量\n002837,英维克,100\n", encoding="utf-8")
+    handle_import_quotes(str(quotes_path), use_runtime=True)
+    handle_import_holdings(str(holdings_path), use_runtime=True)
+
+    payload = handle_daily("ai-energy", use_mock=False, use_runtime=True, top=3, today=date(2026, 6, 21))
+    data = payload["data"]
+
+    assert data["freshness"]["state"] == "market_closed_expected_stale"
+    assert data["freshness"]["calendar_status"]["reason_code"] == "dragon_boat_festival"
+    assert data["freshness"]["degrades_review_confidence"] is False
+    assert "data.freshness.state" in data["agent_contract"]["stable_fields"]
+
+    text = render_daily_report_text(payload)
+    assert "行情新鲜度" in text
+    assert "market_closed_expected_stale" in text
 
 
 def test_daily_text_renderer():

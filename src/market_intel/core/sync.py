@@ -571,7 +571,19 @@ def _finish_sync(
     if not dry_run:
         output_path = runtime_quotes_path()
         _write_quotes(output_path, records)
-        mark_runtime_dataset_imported("quotes", "sync:%s" % provider)
+        mark_runtime_dataset_imported(
+            "quotes",
+            "sync:%s" % provider,
+            {
+                "provider": provider,
+                "requested_provider": requested_provider,
+                "fallback_used": bool(
+                    requested_provider == PROVIDER_AUTO
+                    and provider in {PROVIDER_EASTMONEY, PROVIDER_TENCENT_BATCH, PROVIDER_TENCENT}
+                ),
+                "provider_failed_using_cache": False,
+            },
+        )
         written = True
 
     return _build_result(

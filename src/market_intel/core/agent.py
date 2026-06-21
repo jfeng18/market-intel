@@ -132,6 +132,7 @@ def compact_daily_payload(payload: Optional[Dict[str, object]]) -> Dict[str, obj
     return {
         "available": True,
         "trade_date": data.get("latest_trade_date"),
+        "freshness": compact_freshness(data.get("freshness", {})),
         "summary": data.get("summary"),
         "top_hotspots": [
             compact_hotspot(item, rank)
@@ -202,6 +203,21 @@ def compact_market_scan(payload: Optional[Dict[str, object]]) -> Dict[str, objec
             if isinstance(item, dict)
         ],
         "errors": [],
+    }
+
+
+def compact_freshness(value: object) -> Dict[str, object]:
+    freshness = value if isinstance(value, dict) else {}
+    if not freshness:
+        return {}
+    return {
+        "state": freshness.get("state"),
+        "reason_code": freshness.get("reason_code"),
+        "summary": freshness.get("summary"),
+        "latest_trade_date": freshness.get("latest_trade_date"),
+        "quote_age_days": freshness.get("quote_age_days"),
+        "calendar_status": freshness.get("calendar_status"),
+        "degrades_review_confidence": bool(freshness.get("degrades_review_confidence")),
     }
 
 
@@ -1521,6 +1537,12 @@ def agent_briefing_contract(max_quote_age_days: int) -> Dict[str, object]:
         "stable_fields": [
             "data.state",
             "data.runtime.readiness",
+            "data.runtime.freshness",
+            "data.runtime.freshness.state",
+            "data.runtime.freshness.reason_code",
+            "data.runtime.freshness.summary",
+            "data.runtime.freshness.calendar_status",
+            "data.runtime.freshness.degrades_review_confidence",
             "data.runtime.validation",
             "data.market_scan",
             "data.market_scan.market_breadth",
@@ -1532,6 +1554,12 @@ def agent_briefing_contract(max_quote_age_days: int) -> Dict[str, object]:
             "data.market_scan.candidate_securities[].why_now",
             "data.market_scan.candidate_securities[].checklist",
             "data.daily.available",
+            "data.daily.freshness",
+            "data.daily.freshness.state",
+            "data.daily.freshness.reason_code",
+            "data.daily.freshness.summary",
+            "data.daily.freshness.calendar_status",
+            "data.daily.freshness.degrades_review_confidence",
             "data.daily.top_hotspots",
             "data.daily.watchlist",
             "data.daily.portfolio_review",

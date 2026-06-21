@@ -412,6 +412,10 @@ def test_sync_quotes_marks_manifest(tmp_path, monkeypatch):
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert manifest["datasets"]["quotes"] == "runtime"
     assert manifest["source"] == "sync:akshare"
+    assert manifest["quotes"]["provider"] == "akshare"
+    assert manifest["quotes"]["requested_provider"] == "akshare"
+    assert manifest["quotes"]["fallback_used"] is False
+    assert manifest["quotes"]["provider_failed_using_cache"] is False
 
 
 def test_sync_quotes_output_compatible_with_fixtures(tmp_path, monkeypatch):

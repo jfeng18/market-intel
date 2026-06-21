@@ -1788,6 +1788,10 @@ def render_daily_report_text(payload: Dict[str, object]) -> str:
         "数据检查",
     ]
     lines.extend(render_validation_summary(data.get("validation", {})))
+    freshness = data.get("freshness", {}) if isinstance(data.get("freshness"), dict) else {}
+    if freshness:
+        lines.extend(["", "行情新鲜度"])
+        lines.append("- %s | %s" % (freshness.get("state") or "unknown", freshness.get("summary") or "-"))
     brief = data.get("brief", {}) if isinstance(data.get("brief"), dict) else {}
     lines.extend(["", "热点摘要"])
     lines.extend(render_hotspots(brief.get("top_hotspots", [])[:3] if isinstance(brief.get("top_hotspots"), list) else []))
@@ -2102,14 +2106,17 @@ def render_runtime_status_text(payload: Dict[str, object]) -> str:
     lines.extend(render_validation_summary(data.get("validation", {})))
     lines.extend(["", "行情新鲜度"])
     lines.append(
-        "- 最新交易日 %s | 距今 %s 天 | 阈值 %s 天 | %s"
+        "- %s | 最新交易日 %s | 距今 %s 天 | 阈值 %s 天 | %s"
         % (
+            freshness.get("state") or "unknown",
             freshness.get("latest_trade_date") or "无",
             freshness.get("quote_age_days") if freshness.get("quote_age_days") is not None else "无",
             freshness.get("max_quote_age_days") if freshness.get("max_quote_age_days") is not None else "无",
             "过期" if freshness.get("is_stale") else "可用",
         )
     )
+    if freshness.get("summary"):
+        lines.append("   %s" % freshness.get("summary"))
     if freshness.get("warnings"):
         lines.append("   告警: %s" % render_issue_codes(freshness.get("warnings", [])))
     if freshness.get("errors"):
@@ -3903,6 +3910,9 @@ def render_agent_briefing_text(payload: Dict[str, object]) -> str:
     ]
     runtime_validation = runtime.get("validation", {}) if isinstance(runtime.get("validation"), dict) else {}
     lines.extend(render_runtime_validation_brief(runtime_validation))
+    freshness = runtime.get("freshness", {}) if isinstance(runtime.get("freshness"), dict) else {}
+    if freshness:
+        lines.append("- freshness: %s | %s" % (freshness.get("state") or "unknown", freshness.get("summary") or "-"))
     lines.extend(["", "今日"])
     if not daily.get("available"):
         lines.append("- 暂无可用日报。")

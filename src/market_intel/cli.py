@@ -2,6 +2,7 @@ import argparse
 import json
 import shlex
 import sys
+from datetime import date
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -1757,6 +1758,7 @@ def handle_daily(
     quotes_file: Optional[str] = None,
     holdings_file: Optional[str] = None,
     use_runtime: bool = False,
+    today: Optional[date] = None,
 ) -> Dict[str, Any]:
     if use_runtime:
         missing = runtime_missing_files()
@@ -1816,6 +1818,9 @@ def handle_daily(
     data["pool"] = pool
     data["mode"] = brief_mode(use_mock, use_runtime, quotes_file, holdings_file)
     data["coverage_context"] = daily_coverage_context(pool, items, holdings)
+    if use_runtime:
+        runtime_status = build_runtime_status(items, pool=pool, today=today)
+        data["freshness"] = runtime_status.get("freshness", {})
     data["sources"] = {
         "quotes": {"mode": quote_mode, "source": quote_source},
         "holdings": {"mode": holdings_mode, "source": holdings_source},

@@ -11,6 +11,7 @@ from market_intel.cli import (
     handle_status_runtime,
 )
 from market_intel.core.pool_loader import load_pool
+from market_intel.core.runtime import write_runtime_manifest
 from market_intel.core.status import build_runtime_status
 from market_intel.core.text_report import render_runtime_status_text
 
@@ -175,6 +176,102 @@ def test_status_runtime_degraded_when_quotes_are_stale(monkeypatch, tmp_path):
     assert status["next_actions"][0]["id"] == "refresh_quotes"
     assert status["next_actions"][0]["runnable"] is False
     assert status["next_actions"][0]["done_when"]
+
+
+def write_status_runtime_fixture(runtime, trade_date):
+    runtime.mkdir(exist_ok=True)
+    (runtime / "quotes.json").write_text(
+        json.dumps(
+            {
+                "quotes": [
+                    {
+                        "symbol": "002837",
+                        "trade_date": trade_date,
+                        "last_price": 1,
+                        "change_pct": 1,
+                        "amount": 1,
+                        "amount_ratio": 1,
+                        "turnover_rate": 1,
+                        "amplitude_pct": 1,
+                        "is_limit_up": False,
+                        "is_stage_high": False,
+                        "intraday_fade_pct": 0,
+                    }
+                ]
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    (runtime / "holdings.json").write_text(
+        json.dumps({"holdings": [{"symbol": "002837", "name": "英维克"}]}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+
+def test_status_runtime_freshness_weekday_fresh(monkeypatch, tmp_path):
+    runtime = tmp_path / "runtime"
+    monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(runtime))
+    write_status_runtime_fixture(runtime, "2026-06-08")
+
+    status = build_runtime_status(load_pool("ai-energy"), max_quote_age_days=3, today=date(2026, 6, 8), pool="ai-energy")
+
+    assert status["freshness"]["state"] == "fresh"
+    assert status["freshness"]["reason_code"] == "within_threshold"
+    assert status["freshness"]["calendar_status"]["is_trading_day"] is True
+    assert status["freshness"]["degrades_review_confidence"] is False
+    assert "data.freshness.state" in status["agent_contract"]["stable_fields"]
+
+
+def test_status_runtime_weekend_expected_stale_is_not_warning(monkeypatch, tmp_path):
+    runtime = tmp_path / "runtime"
+    monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(runtime))
+    write_status_runtime_fixture(runtime, "2026-06-18")
+
+    status = build_runtime_status(load_pool("ai-energy"), max_quote_age_days=1, today=date(2026, 6, 21), pool="ai-energy")
+
+    assert status["freshness"]["state"] == "market_closed_expected_stale"
+    assert status["freshness"]["reason_code"] == "non_trading_day_expected_stale"
+    assert status["freshness"]["calendar_status"]["reason_code"] == "dragon_boat_festival"
+    assert status["freshness"]["calendar_status"]["previous_expected_trade_date"] == "2026-06-18"
+    assert status["freshness"]["warnings"] == []
+    assert status["freshness"]["is_stale"] is False
+    assert status["readiness"]["state"] == "ready"
+    assert status["next_actions"][0]["id"] == "run_daily_report"
+
+
+def test_status_runtime_trading_day_stale_degrades(monkeypatch, tmp_path):
+    runtime = tmp_path / "runtime"
+    monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(runtime))
+    write_status_runtime_fixture(runtime, "2026-06-18")
+
+    status = build_runtime_status(load_pool("ai-energy"), max_quote_age_days=3, today=date(2026, 6, 22), pool="ai-energy")
+
+    assert status["freshness"]["state"] == "stale_on_trading_day"
+    assert status["freshness"]["reason_code"] == "trading_day_stale"
+    assert status["freshness"]["warnings"][0]["code"] == "QUOTE_DATA_STALE"
+    assert status["freshness"]["degrades_review_confidence"] is True
+    assert status["readiness"]["state"] == "degraded"
+
+
+def test_status_runtime_provider_failed_using_cache(monkeypatch, tmp_path):
+    runtime = tmp_path / "runtime"
+    monkeypatch.setenv("MARKET_INTEL_RUNTIME_DIR", str(runtime))
+    write_status_runtime_fixture(runtime, "2026-06-08")
+    write_runtime_manifest(
+        {
+            "mode": "runtime",
+            "datasets": {"quotes": "runtime", "holdings": "runtime"},
+            "quotes": {"provider_failed_using_cache": True},
+        }
+    )
+
+    status = build_runtime_status(load_pool("ai-energy"), max_quote_age_days=3, today=date(2026, 6, 8), pool="ai-energy")
+
+    assert status["freshness"]["state"] == "provider_failed_using_cache"
+    assert status["freshness"]["warnings"][0]["code"] == "PROVIDER_FAILED_USING_CACHE"
+    assert status["freshness"]["degrades_review_confidence"] is True
+    assert status["readiness"]["state"] == "degraded"
 
 
 def test_status_runtime_blocked_when_freshness_has_errors(monkeypatch, tmp_path):

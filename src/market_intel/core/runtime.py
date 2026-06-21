@@ -2,7 +2,7 @@ import shutil
 import os
 import json
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from .pool_loader import repo_root
 
@@ -146,12 +146,14 @@ def write_runtime_manifest(data: Dict[str, object]) -> Dict[str, object]:
     return {"path": display_path(path), "status": "written"}
 
 
-def mark_runtime_dataset_imported(kind: str, source: str = "import") -> Dict[str, object]:
+def mark_runtime_dataset_imported(kind: str, source: str = "import", metadata: Optional[Dict[str, object]] = None) -> Dict[str, object]:
     manifest = read_runtime_manifest()
     datasets = manifest.get("datasets", {}) if isinstance(manifest.get("datasets"), dict) else {}
     datasets[str(kind)] = "runtime"
     manifest["datasets"] = datasets
     manifest["source"] = source
+    if metadata:
+        manifest[str(kind)] = metadata
     manifest["mode"] = "sample" if any(str(value) == "sample" for value in datasets.values()) else "runtime"
     return write_runtime_manifest(manifest)
 

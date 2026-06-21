@@ -20,6 +20,7 @@ from market_intel.cli import (
     run_agent_read_command,
 )
 from market_intel.core.agent import build_agent_plan, command_queue_item
+from market_intel.core.runtime import write_runtime_manifest
 from market_intel.core.text_report import label, render_agent_briefing_text, render_agent_next_text, render_agent_plan_text, render_agent_run_text, render_dashboard_text
 
 
@@ -1082,6 +1083,28 @@ def test_agent_briefing_with_history(monkeypatch, tmp_path):
     assert any("journal compare" in command for command in data["next_commands"])
     assert "最近笔记" in text
     assert "液冷链路" in text
+
+
+def test_agent_briefing_exposes_freshness_contract(monkeypatch, tmp_path):
+    import_runtime_examples(monkeypatch, tmp_path)
+    write_runtime_manifest(
+        {
+            "mode": "runtime",
+            "datasets": {"quotes": "runtime", "holdings": "runtime"},
+            "quotes": {"provider_failed_using_cache": True},
+        }
+    )
+
+    payload = handle_agent_briefing("ai-energy", max_quote_age_days=9999)
+    data = payload["data"]
+    text = render_agent_briefing_text(payload)
+
+    assert data["runtime"]["freshness"]["state"] == "provider_failed_using_cache"
+    assert data["runtime"]["freshness"]["degrades_review_confidence"] is True
+    assert data["daily"]["freshness"]["state"] == "provider_failed_using_cache"
+    assert "data.runtime.freshness.state" in data["agent_contract"]["stable_fields"]
+    assert "data.daily.freshness.state" in data["agent_contract"]["stable_fields"]
+    assert "freshness: provider_failed_using_cache" in text
 
 
 def test_agent_briefing_compares_runtime_to_latest_archive(monkeypatch, tmp_path):

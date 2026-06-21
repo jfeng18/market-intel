@@ -63,6 +63,12 @@ def daily_contract() -> Dict[str, object]:
         "stable_fields": [
             "data.summary",
             "data.latest_trade_date",
+            "data.freshness",
+            "data.freshness.state",
+            "data.freshness.reason_code",
+            "data.freshness.summary",
+            "data.freshness.calendar_status",
+            "data.freshness.degrades_review_confidence",
             "data.validation",
             "data.validation.warnings",
             "data.brief.top_hotspots",

@@ -5,7 +5,15 @@ from typing import Dict, List, Optional
 from .fixtures import load_quotes_file
 from .models import PoolItem, Quote
 from .pool_loader import DEFAULT_POOL
-from .runtime import runtime_holdings_path, runtime_missing_files, runtime_paths, runtime_profile, runtime_quotes_path
+from .runtime import (
+    read_runtime_manifest,
+    runtime_holdings_path,
+    runtime_missing_files,
+    runtime_paths,
+    runtime_profile,
+    runtime_quotes_path,
+)
+from .trading_calendar import freshness_state
 from .validation import validate_runtime
 
 
@@ -42,6 +50,11 @@ def build_runtime_status(
                 "data.readiness.can_run_daily",
                 "data.validation.summary",
                 "data.freshness",
+                "data.freshness.state",
+                "data.freshness.reason_code",
+                "data.freshness.summary",
+                "data.freshness.calendar_status",
+                "data.freshness.degrades_review_confidence",
                 "data.universe",
                 "data.profile",
                 "data.profile.mode",
@@ -91,16 +104,23 @@ def build_freshness(max_quote_age_days: int, today: date) -> Dict[str, object]:
     quotes_path = runtime_quotes_path()
     if not quotes_path.exists():
         return missing_freshness()
+    provider_failed_cache = provider_failed_using_cache()
     try:
         quotes = load_quotes_file(quotes_path)
     except Exception as exc:
+        state = freshness_state(None, today, max_quote_age_days)
         return {
             "ok": False,
+            "state": state["state"],
+            "reason_code": "read_error",
+            "summary": "无法读取行情文件；先修复 quotes.json。",
+            "calendar_status": state["calendar_status"],
             "max_quote_age_days": max_quote_age_days,
             "trade_dates": [],
             "latest_trade_date": None,
             "quote_age_days": None,
             "is_stale": True,
+            "degrades_review_confidence": True,
             "errors": [{"code": "QUOTE_FRESHNESS_READ_ERROR", "message": str(exc), "detail": {"path": str(quotes_path)}}],
             "warnings": [],
         }
@@ -108,28 +128,41 @@ def build_freshness(max_quote_age_days: int, today: date) -> Dict[str, object]:
     date_errors = quote_trade_date_errors(quotes)
     latest = latest_trade_date(quotes)
     if date_errors:
+        state = freshness_state(latest, today, max_quote_age_days, provider_failed_cache)
         return {
             "ok": False,
+            "state": state["state"],
+            "reason_code": state["reason_code"],
+            "summary": state["summary"],
+            "calendar_status": state["calendar_status"],
             "max_quote_age_days": max_quote_age_days,
             "trade_dates": trade_dates,
             "latest_trade_date": latest.isoformat() if latest else None,
             "quote_age_days": (today - latest).days if latest else None,
             "is_stale": True,
+            "degrades_review_confidence": True,
             "errors": date_errors,
             "warnings": [],
         }
     if latest is None:
+        state = freshness_state(None, today, max_quote_age_days)
         return {
             "ok": False,
+            "state": state["state"],
+            "reason_code": state["reason_code"],
+            "summary": state["summary"],
+            "calendar_status": state["calendar_status"],
             "max_quote_age_days": max_quote_age_days,
             "trade_dates": trade_dates,
             "latest_trade_date": None,
             "quote_age_days": None,
             "is_stale": True,
+            "degrades_review_confidence": True,
             "errors": [{"code": "QUOTE_TRADE_DATE_MISSING", "message": "行情缺少 trade_date。", "detail": {}}],
             "warnings": [],
         }
     age_days = (today - latest).days
+    state = freshness_state(latest, today, max_quote_age_days, provider_failed_cache)
     warnings = []
     if age_days < 0:
         warnings.append(
@@ -139,29 +172,42 @@ def build_freshness(max_quote_age_days: int, today: date) -> Dict[str, object]:
                 "detail": {"latest_trade_date": latest.isoformat(), "today": today.isoformat()},
             }
         )
-    if age_days > max_quote_age_days:
+    if state["state"] in {"stale_on_trading_day", "stale_after_market_close", "provider_failed_using_cache"}:
         warnings.append(
             {
-                "code": "QUOTE_DATA_STALE",
-                "message": "行情日期过旧。",
+                "code": "PROVIDER_FAILED_USING_CACHE" if state["state"] == "provider_failed_using_cache" else "QUOTE_DATA_STALE",
+                "message": "行情 provider 失败后使用缓存。" if state["state"] == "provider_failed_using_cache" else "行情日期过旧。",
                 "detail": {
                     "latest_trade_date": latest.isoformat(),
                     "today": today.isoformat(),
                     "quote_age_days": age_days,
                     "max_quote_age_days": max_quote_age_days,
+                    "freshness_state": state["state"],
+                    "reason_code": state["reason_code"],
                 },
             }
         )
     return {
-        "ok": not warnings,
+        "ok": not bool(warnings) or state["state"] == "market_closed_expected_stale",
+        "state": state["state"],
+        "reason_code": state["reason_code"],
+        "summary": state["summary"],
+        "calendar_status": state["calendar_status"],
         "max_quote_age_days": max_quote_age_days,
         "trade_dates": trade_dates,
         "latest_trade_date": latest.isoformat(),
         "quote_age_days": age_days,
-        "is_stale": age_days > max_quote_age_days,
+        "is_stale": state["state"] in {"stale_on_trading_day", "stale_after_market_close", "provider_failed_using_cache"},
+        "degrades_review_confidence": state["degrades_review_confidence"],
         "errors": [],
         "warnings": warnings,
     }
+
+
+def provider_failed_using_cache() -> bool:
+    manifest = read_runtime_manifest()
+    quotes = manifest.get("quotes", {}) if isinstance(manifest.get("quotes"), dict) else {}
+    return bool(quotes.get("provider_failed_using_cache"))
 
 
 def quote_trade_date_errors(quotes: List[Quote]) -> List[Dict[str, object]]:
@@ -193,11 +239,16 @@ def quote_trade_date_errors(quotes: List[Quote]) -> List[Dict[str, object]]:
 def missing_freshness() -> Dict[str, object]:
     return {
         "ok": False,
+        "state": "missing",
+        "reason_code": "missing_quotes",
+        "summary": "runtime 缺少 quotes.json；先初始化或导入行情。",
+        "calendar_status": None,
         "max_quote_age_days": None,
         "trade_dates": [],
         "latest_trade_date": None,
         "quote_age_days": None,
         "is_stale": True,
+        "degrades_review_confidence": True,
         "errors": [],
         "warnings": [],
     }
@@ -388,12 +439,13 @@ def build_next_actions(
         return actions
 
     if freshness.get("is_stale"):
+        stale_reason = str(freshness.get("summary") or "行情日期过旧或缺失，先刷新 quotes.json。")
         actions.append(
             action(
                 10,
                 "refresh_quotes",
                 "market-intel import quotes <quotes.csv> --runtime --json",
-                "行情日期过旧或缺失，先刷新 quotes.json。",
+                stale_reason,
                 "quotes.json 已更新到可接受交易日，freshness.errors 清空且 is_stale=false。",
                 runnable=False,
             )
